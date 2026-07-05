@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { supabase } from '@/lib/supabase'
 import type { ToolkitCategory, ToolkitItem } from '@/lib/types'
-import { ChevronDown, BookOpen, Download, Sparkles } from 'lucide-react'
+import { ChevronDown, BookOpen, Download, Sparkles, Search } from 'lucide-react'
 import { ToolkitReadModal } from './ToolkitReadModal'
 import { ToolkitDownloadModal } from './ToolkitDownloadModal'
 import { ToolkitGenerateModal } from './ToolkitGenerateModal'
@@ -12,16 +14,23 @@ export default function Toolkit() {
   const [items, setItems] = useState<ToolkitItem[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const [reading, setReading] = useState<ToolkitItem | null>(null)
   const [downloading, setDownloading] = useState<ToolkitItem | null>(null)
   const [generating, setGenerating] = useState<ToolkitItem | null>(null)
 
   async function load() {
+    setError(null)
     const [catRes, itemRes] = await Promise.all([
       supabase.from('toolkit_categories').select('*').order('sort_order'),
       supabase.from('toolkit_items').select('*').order('sort_order'),
     ])
+    if (catRes.error) {
+      setError(catRes.error.message)
+      setLoading(false)
+      return
+    }
     const cats = (catRes.data ?? []) as ToolkitCategory[]
     setCategories(cats)
     setItems((itemRes.data ?? []) as ToolkitItem[])
@@ -43,10 +52,38 @@ export default function Toolkit() {
 
   return (
     <div>
-      <PageHeader eyebrow="Module 5 — Franchise Playbook" title="Post Toolkit" />
+      <PageHeader eyebrow="Module 5 — The Playbook" title="Post Toolkit" />
+
+      <Link
+        to="/meeting-records"
+        className="panel p-4 mb-6 flex items-center justify-between hover:border-gold transition-colors"
+      >
+        <div>
+          <div className="eyebrow mb-1">National Meeting Records</div>
+          <p className="text-sm text-muted">
+            Search actual submitted meeting minutes across every post — not just the blank templates below.
+          </p>
+        </div>
+        <Search size={18} className="text-gold shrink-0" />
+      </Link>
 
       {loading ? (
         <p className="text-sm text-muted">Loading…</p>
+      ) : error ? (
+        <div className="panel p-6">
+          <div className="eyebrow mb-2 text-status-attention">Couldn't load the toolkit</div>
+          <p className="text-sm text-muted mb-1">{error}</p>
+          <p className="text-xs text-muted">
+            This usually means the Post Toolkit database migration hasn't been run on this
+            Supabase project yet — run <code className="text-gold">post-toolkit-upgrade.sql</code> in
+            the SQL Editor, then refresh this page.
+          </p>
+        </div>
+      ) : categories.length === 0 ? (
+        <EmptyState
+          title="Toolkit not set up yet"
+          hint="Run post-toolkit-upgrade.sql in the Supabase SQL Editor to load all categories and items, then refresh."
+        />
       ) : (
         <div className="space-y-3">
           {categories.map((cat) => {

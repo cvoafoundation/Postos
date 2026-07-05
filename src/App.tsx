@@ -12,6 +12,7 @@ import PublicRecruitSignup from '@/pages/recruiting/PublicRecruitSignup'
 import BecomeASponsor from '@/pages/sponsors/BecomeASponsor'
 import LaunchChecklist from '@/pages/checklist/LaunchChecklist'
 import Toolkit from '@/pages/toolkit/Toolkit'
+import MeetingRecords from '@/pages/toolkit/MeetingRecords'
 import RecruitingPipeline from '@/pages/recruiting/RecruitingPipeline'
 import SponsorsCRM from '@/pages/sponsors/SponsorsCRM'
 import VeteransCongress from '@/pages/congress/VeteransCongress'
@@ -63,6 +64,7 @@ function AuthenticatedApp() {
         <Route path="/founding-team" element={<FoundingTeamBuilder />} />
         <Route path="/checklist" element={<LaunchChecklist />} />
         <Route path="/toolkit" element={<Toolkit />} />
+        <Route path="/meeting-records" element={<MeetingRecords />} />
         <Route path="/recruiting" element={<RecruitingPipeline />} />
         <Route path="/sponsors" element={<SponsorsCRM />} />
         <Route path="/congress" element={<VeteransCongress />} />

@@ -189,7 +189,34 @@ Run `post-toolkit-upgrade.sql` in the SQL Editor, then push the updated `src` fo
 `supabase/functions/generate-toolkit-document` as usual. The old `toolkit_templates` table is
 left in place untouched (just unused now) — nothing is deleted.
 
+## National Meeting Records — search across every post's actual minutes
+
+This is new: posts submit their **actual** meeting minutes (typed in, not just a template),
+and National gets a search bar across all of them. Search "PACT Act" and see how many meetings,
+across how many posts, actually discussed it — real institutional memory across the whole
+organization instead of 100 separate file cabinets.
+
+- Reachable from the top of the **Post Toolkit** page, or directly at `/meeting-records`.
+- **Submit Minutes**: title, meeting type, date, the actual minutes text (this is what gets
+  searched), and an optional attachment (scanned/signed original) stored privately.
+- **Search**: matches against title and minutes text, shows a result count and how many
+  distinct posts are represented, with a highlighted snippet around the matching term for each
+  result.
+- RLS means a post-scoped account only ever sees its own meetings; National sees everything —
+  the cross-post search is inherently a National-level capability, enforced at the database
+  level, not just hidden in the UI.
+
+**One honest limitation:** search currently matches on typed-in text (`ilike`, case-insensitive
+substring), not the *attached file* — if a post uploads a scanned PDF and doesn't also type the
+minutes into the text box, that PDF's contents won't be searchable. The schema is built with a
+proper Postgres full-text search index (`tsvector`/`GIN`) ready to swap in — the search
+currently uses simple substring matching, which will need to change to `.textSearch()` if this
+becomes the org's primary meeting-record archive and search quality/ranking matters more.
+
+Run `meeting-records.sql` in Supabase, then push the updated code.
+
 ## Stack
+
 
 
 

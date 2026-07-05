@@ -24,6 +24,17 @@ function matches(row: Row, filters: { type: string; col: string; value: any }[])
   return filters.every((f) => {
     if (f.type === 'eq') return row[f.col] === f.value
     if (f.type === 'in') return (f.value as any[]).includes(row[f.col])
+    if (f.type === 'ilike') {
+      const pattern = String(f.value).replace(/%/g, '').toLowerCase()
+      return String(row[f.col] ?? '').toLowerCase().includes(pattern)
+    }
+    if (f.type === 'or_ilike') {
+      const clauses = f.value as { col: string; value: string }[]
+      return clauses.some((c) => {
+        const pattern = c.value.replace(/%/g, '').toLowerCase()
+        return String(row[c.col] ?? '').toLowerCase().includes(pattern)
+      })
+    }
     return true
   })
 }
@@ -60,6 +71,22 @@ class QueryBuilder {
 
   in(col: string, value: any[]) {
     this.filters.push({ type: 'in', col, value })
+    return this
+  }
+
+  ilike(col: string, value: string) {
+    this.filters.push({ type: 'ilike', col, value })
+    return this
+  }
+
+  or(orString: string) {
+    // Minimal support for the specific pattern used in this app:
+    // "title.ilike.%term%,minutes_text.ilike.%term%"
+    const clauses = orString.split(',').map((c) => {
+      const [col, , ...rest] = c.split('.')
+      return { col, value: rest.join('.') }
+    })
+    this.filters.push({ type: 'or_ilike', col: '', value: clauses })
     return this
   }
 

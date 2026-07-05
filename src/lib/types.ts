@@ -179,6 +179,18 @@ export interface ToolkitItem {
   updated_at: string
 }
 
+export interface MeetingRecord {
+  id: string
+  post_id: string
+  title: string
+  meeting_type: string
+  meeting_date: string
+  minutes_text: string
+  attachment_storage_path: string | null
+  submitted_by: string | null
+  created_at: string
+}
+
 export interface ToolkitGeneratedDocument {
   id: string
   toolkit_item_id: string

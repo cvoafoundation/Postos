@@ -265,6 +265,12 @@ export const seedData: Record<string, any[]> = {
     { id: 'bp-6', name: 'Fitness Center', description: 'Wellness and physical fitness space for members.', startup_cost_low: 10000, startup_cost_high: 40000, equipment_list: ['Cardio machines', 'Free weights', 'Flooring', 'Locker area'], sponsor_opportunities: 'Fitness equipment brands, local gyms co-branding.', grant_opportunities: 'Veteran wellness grants (check state-level VA offices).', revenue_potential: 'Membership add-on fee potential.', created_at: daysAgo(50) },
   ],
 
+  meeting_records: [
+    { id: 'mr-1', post_id: 'post-1', title: 'January 2026 Monthly Meeting', meeting_type: 'Monthly Meeting', meeting_date: daysAgo(30).slice(0, 10), minutes_text: 'Called to order at 7pm. Discussed the upcoming golf scramble fundraiser and PACT Act benefits briefing scheduled for next month. Motion to approve $500 for event flyers passed 8-0.', attachment_storage_path: null, submitted_by: null, created_at: daysAgo(30) },
+    { id: 'mr-2', post_id: 'post-2', title: 'February 2026 Officer Meeting', meeting_type: 'Officer Meeting', meeting_date: daysAgo(10).slice(0, 10), minutes_text: 'Reviewed Q1 budget. Quartermaster reported sponsorship revenue from Tulsa Diesel Co. Discussed bylaws amendment proposal for membership dues.', attachment_storage_path: null, submitted_by: null, created_at: daysAgo(10) },
+    { id: 'mr-3', post_id: 'post-1', title: 'February 2026 Monthly Meeting', meeting_type: 'Monthly Meeting', meeting_date: daysAgo(3).slice(0, 10), minutes_text: 'Guest speaker from the VA presented on PACT Act claims changes. Well attended, 34 members present. Recruiting event scheduled for March.', attachment_storage_path: null, submitted_by: null, created_at: daysAgo(3) },
+  ],
+
   activity_feed: [
     { id: 'act-1', event_type: 'new_application', post_id: null, actor_id: null, summary: 'New application from James Whitfield (Missoula, MT)', created_at: daysAgo(2) },
     { id: 'act-2', event_type: 'charter_approved', post_id: 'post-5', actor_id: null, summary: 'Reno Post 3 marked Charter Ready', created_at: daysAgo(4) },

@@ -258,6 +258,29 @@ create table toolkit_generated_documents (
   created_at timestamptz not null default now()
 );
 
+-- National Meeting Records — every post's actual meeting minutes, typed in
+-- (not just a blank template) so they're genuinely searchable. This is what
+-- lets National search a term like "PACT Act" and see how many meetings
+-- across how many posts actually discussed it — real institutional memory
+-- across the whole organization, not just one post's file cabinet.
+create table meeting_records (
+  id uuid primary key default uuid_generate_v4(),
+  post_id uuid not null references posts(id) on delete cascade,
+  title text not null, -- e.g. "January 2026 Monthly Meeting"
+  meeting_type text not null default 'Monthly Meeting', -- Monthly | Officer | Special
+  meeting_date date not null,
+  minutes_text text not null, -- the actual minutes content — this is what's searched
+  attachment_storage_path text, -- optional scanned/signed original, in 'meeting-records' bucket
+  submitted_by uuid references profiles(id),
+  search_vector tsvector generated always as (
+    to_tsvector('english', coalesce(title, '') || ' ' || coalesce(minutes_text, ''))
+  ) stored,
+  created_at timestamptz not null default now()
+);
+
+create index meeting_records_search_idx on meeting_records using gin(search_vector);
+create index meeting_records_post_idx on meeting_records (post_id);
+
 -- ----------------------------------------------------------------------------
 -- MODULE 6: RECRUITING ENGINE
 -- ----------------------------------------------------------------------------
@@ -535,6 +558,7 @@ alter table checklist_items enable row level security;
 alter table toolkit_categories enable row level security;
 alter table toolkit_items enable row level security;
 alter table toolkit_generated_documents enable row level security;
+alter table meeting_records enable row level security;
 alter table recruits enable row level security;
 alter table sponsors enable row level security;
 alter table sponsor_tiers enable row level security;
@@ -640,6 +664,13 @@ create policy "toolkit_generated_read_post_or_national" on toolkit_generated_doc
   for select using (is_national_role() or post_id = current_post_id());
 create policy "toolkit_generated_write_auth" on toolkit_generated_documents
   for insert with check (auth.uid() is not null);
+
+create policy "meeting_records_select_post_or_national" on meeting_records
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "meeting_records_insert_auth" on meeting_records
+  for insert with check (auth.uid() is not null);
+create policy "meeting_records_delete_national" on meeting_records
+  for delete using (is_national_role());
 
 create policy "recruits_select_post_or_national" on recruits
   for select using (is_national_role() or post_id = current_post_id());
@@ -978,6 +1009,20 @@ create policy "toolkit_files_write_national" on storage.objects
   for all using (bucket_id = 'toolkit-files' and is_national_role());
 
 -- ============================================================================
+-- STORAGE: Meeting Records attachments
+-- Optional scanned/signed copies of meeting minutes. Private — internal
+-- record, National + the submitting post can access.
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('meeting-records', 'meeting-records', false)
+on conflict (id) do nothing;
+
+create policy "meeting_records_files_read_auth" on storage.objects
+  for select using (bucket_id = 'meeting-records' and auth.uid() is not null);
+create policy "meeting_records_files_write_auth" on storage.objects
+  for insert with check (bucket_id = 'meeting-records' and auth.uid() is not null);
+
+-- ============================================================================
 -- SEED: Post Toolkit — full category and item structure.
 --
 -- A handful of items ship with real, usable content in read_content
@@ -1038,7 +1083,7 @@ begin
      'Generate a meeting minutes template for {{post_name}} with sections for: date/time/location, attendees, approval of prior minutes, officer reports, motions made (with mover/seconder/vote result), new business, and adjournment time.', 2);
   insert into toolkit_items (category_id, title, sub_items, read_content, sort_order) values
     (cat_meeting, 'Robert''s Rules Quick Guide', array['Motions','Seconds','Voting','Quorum'],
-$$ROBERT'S RULES OF ORDER — QUICK REFERENCE FOR POST MEETINGS
+$txt$ROBERT'S RULES OF ORDER — QUICK REFERENCE FOR POST MEETINGS
 
 MOTIONS
 A motion is a formal proposal for the group to take action. To make a motion, a member says "I move that..." followed by the specific proposal. Only one motion may be on the floor at a time.
@@ -1053,11 +1098,11 @@ VOTING
 After discussion, the chair restates the motion and calls for a vote. Common methods: voice vote ("all in favor say aye... opposed say nay"), show of hands, or roll call for more formal/contested votes. The chair announces the result.
 
 QUORUM
-Quorum is the minimum number of voting members who must be present for the post to conduct official business. Check your post's bylaws for the specific number — no binding votes should happen without it.$$,
+Quorum is the minimum number of voting members who must be present for the post to conduct official business. Check your post's bylaws for the specific number — no binding votes should happen without it.$txt$,
      3);
   insert into toolkit_items (category_id, title, sub_items, read_content, sort_order) values
     (cat_meeting, 'Meeting Scripts', array['Opening','Pledge','Closing'],
-$$MEETING SCRIPTS
+$txt$MEETING SCRIPTS
 
 OPENING
 "This meeting of [Post Name] is called to order. Thank you all for being here. Before we begin, let's take a moment to remember those we've lost and those still serving."
@@ -1066,7 +1111,7 @@ PLEDGE
 "Please rise, remove your caps, and join me in the Pledge of Allegiance." [Lead the Pledge] "Please be seated."
 
 CLOSING
-"Is there any further business to come before this post? Seeing none, this meeting stands adjourned. Thank you all for your time and your service."$$,
+"Is there any further business to come before this post? Seeing none, this meeting stands adjourned. Thank you all for your time and your service."$txt$,
      4);
 
   -- Recruiting Toolkit
@@ -1080,7 +1125,7 @@ CLOSING
     (cat_recruiting, 'New Member Welcome Packet', 'Generate a warm, professional welcome packet for a new member joining {{post_name}}. Include: welcome message, what to expect at first meeting, key contacts, and next steps.', 5);
   insert into toolkit_items (category_id, title, description, read_content, sort_order) values
     (cat_recruiting, 'Elevator Pitch', 'When someone asks "What''s CVOA?" — give commanders approved answers.',
-$$THE ELEVATOR PITCH — "WHAT'S CVOA?"
+$txt$THE ELEVATOR PITCH — "WHAT'S CVOA?"
 
 SHORT VERSION (10 seconds):
 "CVOA is a combat veterans organization — we build local posts where veterans get real community, support, and a place that actually understands what they went through."
@@ -1092,7 +1137,7 @@ IF THEY ASK "IS THIS LIKE THE VFW OR AMERICAN LEGION?":
 "We share the same spirit of service and community — CVOA is newer and puts a lot of emphasis on hands-on local programs and modern support systems alongside the traditions those organizations built."
 
 IF THEY ASK "DO I HAVE TO BE COMBAT VETERAN?":
-Check your post's specific membership policy — this varies and should be answered accurately, not guessed.$$,
+Check your post's specific membership policy — this varies and should be answered accurately, not guessed.$txt$,
      6);
 
   -- Social Media Toolkit
