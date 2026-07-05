@@ -24,6 +24,8 @@ export default function JoinFoundingTeam() {
     phone: '',
     position: 'member',
     combat_status: 'Non-combat veteran',
+    proposed_site_location: '',
+    funding_commitment: '',
   })
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -62,6 +64,8 @@ export default function JoinFoundingTeam() {
       phone: form.phone || null,
       position: form.position,
       combat_status: form.combat_status,
+      proposed_site_location: form.proposed_site_location || null,
+      funding_commitment: form.funding_commitment || null,
     })
     setSubmitting(false)
     if (error) {
@@ -97,48 +101,78 @@ export default function JoinFoundingTeam() {
           ) : (
             <>
               <p className="text-sm text-muted mb-4">
-                You're joining the founding team for <strong className="text-ink">{postName}</strong>.
+                You're joining the founding team for <strong className="text-ink">{postName}</strong>. Tell us
+                about yourself, and if you have thoughts on where the post could meet or what you can help fund,
+                add that too — it all helps National Staff plan the launch.
               </p>
               <form onSubmit={handleSubmit} className="space-y-3">
-                <input
-                  required
-                  placeholder="Full name"
-                  className="input-field"
-                  value={form.name}
-                  onChange={(e) => update('name', e.target.value)}
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  className="input-field"
-                  value={form.email}
-                  onChange={(e) => update('email', e.target.value)}
-                />
-                <input
-                  placeholder="Phone"
-                  className="input-field"
-                  value={form.phone}
-                  onChange={(e) => update('phone', e.target.value)}
-                />
-                <select
-                  className="input-field"
-                  value={form.position}
-                  onChange={(e) => update('position', e.target.value)}
-                >
-                  {POSITIONS.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="input-field"
-                  value={form.combat_status}
-                  onChange={(e) => update('combat_status', e.target.value)}
-                >
-                  <option>Non-combat veteran</option>
-                  <option>Combat veteran</option>
-                </select>
+                <div>
+                  <label className="eyebrow block mb-1.5">About you</label>
+                  <div className="space-y-3">
+                    <input
+                      required
+                      placeholder="Full name"
+                      className="input-field"
+                      value={form.name}
+                      onChange={(e) => update('name', e.target.value)}
+                    />
+                    <input
+                      type="email"
+                      placeholder="Email"
+                      className="input-field"
+                      value={form.email}
+                      onChange={(e) => update('email', e.target.value)}
+                    />
+                    <input
+                      placeholder="Phone"
+                      className="input-field"
+                      value={form.phone}
+                      onChange={(e) => update('phone', e.target.value)}
+                    />
+                    <select
+                      className="input-field"
+                      value={form.position}
+                      onChange={(e) => update('position', e.target.value)}
+                    >
+                      {POSITIONS.map((p) => (
+                        <option key={p.value} value={p.value}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="input-field"
+                      value={form.combat_status}
+                      onChange={(e) => update('combat_status', e.target.value)}
+                    >
+                      <option>Non-combat veteran</option>
+                      <option>Combat veteran</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <label className="eyebrow block mb-1.5">Site &amp; funding (optional)</label>
+                  <p className="text-xs text-muted mb-2">
+                    If you have ideas here, share them — this doesn't need to be final.
+                  </p>
+                  <div className="space-y-3">
+                    <textarea
+                      placeholder="Proposed meeting location or site (e.g. a VFW hall, community center, or address you have access to)"
+                      className="input-field"
+                      rows={2}
+                      value={form.proposed_site_location}
+                      onChange={(e) => update('proposed_site_location', e.target.value)}
+                    />
+                    <textarea
+                      placeholder="Funding you can personally commit, or sources you could help raise (amounts, sponsors, grants you know of)"
+                      className="input-field"
+                      rows={2}
+                      value={form.funding_commitment}
+                      onChange={(e) => update('funding_commitment', e.target.value)}
+                    />
+                  </div>
+                </div>
 
                 {error && <p className="text-status-attention text-sm">{error}</p>}
 

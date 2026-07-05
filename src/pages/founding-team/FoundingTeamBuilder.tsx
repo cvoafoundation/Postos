@@ -126,6 +126,33 @@ export default function FoundingTeamBuilder() {
         </div>
       )}
 
+      {members.some((m) => m.proposed_site_location || m.funding_commitment) && (
+        <div className="panel p-4 mb-6">
+          <div className="eyebrow mb-3">Site &amp; Funding Notes from the Team</div>
+          <div className="space-y-3">
+            {members
+              .filter((m) => m.proposed_site_location || m.funding_commitment)
+              .map((m) => (
+                <div key={m.id} className="border-l-2 border-gold/40 pl-3">
+                  <div className="text-sm font-medium text-ink">{m.name}</div>
+                  {m.proposed_site_location && (
+                    <div className="text-xs text-muted mt-0.5">
+                      <span className="text-gold">Site: </span>
+                      {m.proposed_site_location}
+                    </div>
+                  )}
+                  {m.funding_commitment && (
+                    <div className="text-xs text-muted mt-0.5">
+                      <span className="text-gold">Funding: </span>
+                      {m.funding_commitment}
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       <div className="panel overflow-hidden">
         <table className="w-full">
           <thead>

@@ -159,6 +159,8 @@ export interface FoundingTeamMember {
   dd214_reviewed: boolean
   combat_service_verified: boolean
   membership_approved: boolean
+  proposed_site_location: string | null
+  funding_commitment: string | null
   created_at: string
 }
 

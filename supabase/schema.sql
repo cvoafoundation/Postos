@@ -171,6 +171,8 @@ create table founding_team_members (
   dd214_reviewed boolean not null default false,
   combat_service_verified boolean not null default false,
   membership_approved boolean not null default false,
+  proposed_site_location text, -- where this person suggests the post meet/operate
+  funding_commitment text, -- what they can personally commit or help raise
   created_at timestamptz not null default now()
 );
 
