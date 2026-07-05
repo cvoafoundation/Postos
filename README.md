@@ -28,6 +28,41 @@ standalone project — its own repo, its own Supabase project, separate from VHI
 Everything reads and writes real Supabase tables. There's no mock data anywhere — until you
 seed the database, screens will correctly show empty states.
 
+## DD214 upload gate + hands-off intake automation
+
+The public application form now requires a DD214 upload as Step 1 — the rest of the form
+stays disabled until a file is attached. This is enforced two ways:
+
+- **UI**: `PostApplicationForm` disables the entire form via a `<fieldset disabled>` until
+  `dd214_storage_path` is set from a successful upload.
+- **Staff pipeline**: an application without a DD214 on file shows a red "No DD214 on file"
+  flag on its kanban card, and the "Advance" button is disabled — nobody can accidentally move
+  an application forward without one.
+
+Files upload to a private Supabase Storage bucket (`dd214-uploads`, created by `schema.sql`).
+Only national roles can read them; this is enforced at the storage RLS level, not just in the
+UI.
+
+### Making intake actually hands-off
+
+Two Postgres triggers already run with zero setup once you run `schema.sql`:
+- Every new application logs itself to the Global Dashboard's activity feed automatically.
+- A DD214 being attached (if uploaded after initial submission) also logs to the feed.
+
+That covers *visibility* — you'll never have to remember to check. It does **not** cover
+*emailing anyone*, because Postgres can't send email on its own. For that:
+
+1. Sign up for [Resend](https://resend.com) (or Postmark/SendGrid — same pattern).
+2. In Supabase: **Edge Functions → Secrets**, add `RESEND_API_KEY` and `STAFF_ALERT_EMAIL`.
+3. Deploy the included function: `supabase functions deploy notify-new-application`
+   (the code is at `supabase/functions/notify-new-application/index.ts` and is fully written —
+   nothing to fill in besides the secrets above).
+4. In Supabase: **Database → Webhooks → Create a new webhook** on `post_applications`,
+   event = Insert, type = Edge Function, target = `notify-new-application`.
+
+Once that's wired up, every submission automatically emails the applicant a confirmation and
+alerts National Staff — no one has to check the dashboard for it to happen.
+
 ## Stack
 
 - React 18 + TypeScript + Vite

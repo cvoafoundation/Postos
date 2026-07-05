@@ -153,6 +153,21 @@ export const mockSupabase = {
   from(table: string) {
     return new QueryBuilder(table)
   },
+  storage: {
+    from(_bucket: string) {
+      return {
+        async upload(path: string, _file: File) {
+          // Demo mode doesn't persist real files — just simulates success
+          // so the upload-gated form flow can be exercised end to end.
+          await new Promise((r) => setTimeout(r, 400))
+          return { data: { path }, error: null }
+        },
+        async createSignedUrl(path: string, _expiresIn: number) {
+          return { data: { signedUrl: `#demo-file/${path}` }, error: null }
+        },
+      }
+    },
+  },
   auth: {
     async getSession() {
       return { data: { session: demoSession } }

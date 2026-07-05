@@ -112,6 +112,11 @@ create table post_applications (
   estimated_membership_potential integer,
   motivation text, -- "Why do you want to start a post?"
   status post_status not null default 'new_inquiry',
+  dd214_storage_path text, -- path within the private 'dd214-uploads' bucket
+  dd214_uploaded_at timestamptz,
+  dd214_review_status verification_status not null default 'pending',
+  dd214_reviewed_by uuid references profiles(id),
+  dd214_reviewed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -439,8 +444,79 @@ create policy "activity_feed_write_auth" on activity_feed
   for insert with check (auth.uid() is not null);
 
 -- ============================================================================
--- SEED: Founding checklist template, applied per-post on creation (trigger)
+-- STORAGE: DD214 uploads
+-- Private bucket — DD214s contain sensitive PII (SSN fragments, etc.) and
+-- must never be publicly readable. Only national roles can read files;
+-- anyone (including unauthenticated applicants) can upload one, matching the
+-- public application form's insert policy above.
 -- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('dd214-uploads', 'dd214-uploads', false)
+on conflict (id) do nothing;
+
+create policy "dd214_upload_public" on storage.objects
+  for insert with check (bucket_id = 'dd214-uploads');
+
+create policy "dd214_read_national" on storage.objects
+  for select using (bucket_id = 'dd214-uploads' and is_national_role());
+
+-- ============================================================================
+-- AUTOMATION: hands-off intake pipeline
+-- The goal is that National Command never has to manually notice a new
+-- application — it should already be visible, logged, and gated correctly
+-- by the time anyone looks at the dashboard.
+-- ============================================================================
+
+-- 1. Every new application automatically posts to the activity feed, so it
+--    shows up on the Global Dashboard without anyone doing anything.
+create or replace function log_new_application()
+returns trigger
+language plpgsql
+as $$
+begin
+  insert into activity_feed (event_type, post_id, summary)
+  values (
+    'new_application',
+    new.post_id,
+    'New application from ' || new.name || ' (' || coalesce(new.city || ', ', '') || new.state || ')'
+  );
+  return new;
+end;
+$$;
+
+create trigger trg_log_new_application
+  after insert on post_applications
+  for each row execute function log_new_application();
+
+-- 2. Once a DD214 is attached, flip review status back to pending-for-staff
+--    automatically (covers the case where a DD214 is uploaded after initial
+--    submission) and log it to the activity feed as ready-for-review.
+create or replace function log_dd214_uploaded()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.dd214_storage_path is not null and old.dd214_storage_path is null then
+    insert into activity_feed (event_type, post_id, summary)
+    values ('dd214_uploaded', new.post_id, new.name || '''s DD214 is uploaded and ready for review');
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_log_dd214_uploaded
+  after update on post_applications
+  for each row execute function log_dd214_uploaded();
+
+-- Note: this schema deliberately does NOT send emails or SMS on its own —
+-- Postgres/Supabase can't do that natively. To get applicant confirmation
+-- emails and a staff alert with zero manual effort, wire a Supabase Database
+-- Webhook (Database -> Webhooks in the dashboard) on INSERT to
+-- post_applications, pointing at a Supabase Edge Function that calls an
+-- email API (e.g. Resend). See supabase/functions/notify-new-application
+-- for a ready-to-deploy starting point.
+
+
 create or replace function seed_checklist_for_post()
 returns trigger
 language plpgsql

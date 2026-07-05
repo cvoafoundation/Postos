@@ -83,6 +83,11 @@ export interface PostApplication {
   estimated_membership_potential: number | null
   motivation: string | null
   status: PostStatus
+  dd214_storage_path: string | null
+  dd214_uploaded_at: string | null
+  dd214_review_status: 'pending' | 'verified' | 'rejected'
+  dd214_reviewed_by: string | null
+  dd214_reviewed_at: string | null
   created_at: string
   updated_at: string
 }

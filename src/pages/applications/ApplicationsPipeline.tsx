@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { PageHeader } from '@/components/layout/AppShell'
 import { KanbanBoard, type KanbanColumn } from '@/components/ui/Kanban'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { POST_STATUS_LABELS, POST_STATUS_ORDER, type PostApplication, type PostStatus } from '@/lib/types'
-import { Plus } from 'lucide-react'
+import { Plus, FileWarning } from 'lucide-react'
 import { NewApplicationModal } from './NewApplication'
 
 export default function ApplicationsPipeline() {
@@ -78,6 +79,7 @@ function ApplicationCard({
   const currentIndex = POST_STATUS_ORDER.indexOf(application.status)
   const next = POST_STATUS_ORDER[currentIndex + 1]
   const prev = POST_STATUS_ORDER[currentIndex - 1]
+  const hasDD214 = !!application.dd214_storage_path
 
   return (
     <div className="panel p-3">
@@ -89,6 +91,26 @@ function ApplicationCard({
       {application.military_branch && (
         <div className="text-xs text-muted mb-2">{application.military_branch}</div>
       )}
+
+      <div className="mb-2">
+        {hasDD214 ? (
+          <StatusBadge
+            label={`DD214: ${application.dd214_review_status}`}
+            tone={
+              application.dd214_review_status === 'verified'
+                ? 'active'
+                : application.dd214_review_status === 'rejected'
+                ? 'attention'
+                : 'developing'
+            }
+          />
+        ) : (
+          <div className="flex items-center gap-1.5 text-[11px] font-mono text-status-attention">
+            <FileWarning size={12} /> No DD214 on file
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-between mt-2 pt-2 border-t border-hairline/60">
         <button
           disabled={!prev}
@@ -98,8 +120,9 @@ function ApplicationCard({
           ← Back
         </button>
         <button
-          disabled={!next}
+          disabled={!next || !hasDD214}
           onClick={() => next && onMove(application.id, next)}
+          title={!hasDD214 ? 'Cannot advance without a DD214 on file' : undefined}
           className="text-[11px] font-mono text-gold hover:text-gold-bright disabled:opacity-30"
         >
           Advance →
