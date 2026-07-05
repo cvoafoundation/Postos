@@ -1,66 +1,145 @@
 import { useEffect, useState } from 'react'
 import { PageHeader } from '@/components/layout/AppShell'
-import { EmptyState } from '@/components/ui/EmptyState'
 import { supabase } from '@/lib/supabase'
-import { Download } from 'lucide-react'
-
-interface ToolkitTemplateRow {
-  id: string
-  title: string
-  category: string
-  description: string | null
-  file_url: string | null
-}
-
-const DEFAULT_TEMPLATES = [
-  'Meeting Agenda', 'Meeting Minutes', 'Recruiting Flyer', 'Sponsorship Packet', 'Press Release',
-  'Social Media Templates', 'Fundraising Letters', 'Grant Requests', 'Event Planning Guide', 'Commander Handbook',
-]
+import type { ToolkitCategory, ToolkitItem } from '@/lib/types'
+import { ChevronDown, BookOpen, Download, Sparkles } from 'lucide-react'
+import { ToolkitReadModal } from './ToolkitReadModal'
+import { ToolkitDownloadModal } from './ToolkitDownloadModal'
+import { ToolkitGenerateModal } from './ToolkitGenerateModal'
 
 export default function Toolkit() {
-  const [templates, setTemplates] = useState<ToolkitTemplateRow[]>([])
+  const [categories, setCategories] = useState<ToolkitCategory[]>([])
+  const [items, setItems] = useState<ToolkitItem[]>([])
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
+  const [reading, setReading] = useState<ToolkitItem | null>(null)
+  const [downloading, setDownloading] = useState<ToolkitItem | null>(null)
+  const [generating, setGenerating] = useState<ToolkitItem | null>(null)
+
+  async function load() {
+    const [catRes, itemRes] = await Promise.all([
+      supabase.from('toolkit_categories').select('*').order('sort_order'),
+      supabase.from('toolkit_items').select('*').order('sort_order'),
+    ])
+    const cats = (catRes.data ?? []) as ToolkitCategory[]
+    setCategories(cats)
+    setItems((itemRes.data ?? []) as ToolkitItem[])
+    if (cats.length > 0) setExpanded(new Set([cats[0].id]))
+    setLoading(false)
+  }
+
   useEffect(() => {
-    supabase
-      .from('toolkit_templates')
-      .select('*')
-      .then(({ data }) => {
-        setTemplates((data ?? []) as ToolkitTemplateRow[])
-        setLoading(false)
-      })
+    load()
   }, [])
+
+  function toggle(categoryId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.has(categoryId) ? next.delete(categoryId) : next.add(categoryId)
+      return next
+    })
+  }
 
   return (
     <div>
-      <PageHeader eyebrow="Module 5" title="Post Toolkit — Download Center" />
+      <PageHeader eyebrow="Module 5 — Franchise Playbook" title="Post Toolkit" />
 
-      {!loading && templates.length === 0 && (
-        <div className="mb-6">
-          <EmptyState
-            title="No templates uploaded yet"
-            hint={`Seed the toolkit_templates table with files for: ${DEFAULT_TEMPLATES.join(', ')}. Upload the actual files to Supabase Storage and store the path in file_url.`}
-          />
+      {loading ? (
+        <p className="text-sm text-muted">Loading…</p>
+      ) : (
+        <div className="space-y-3">
+          {categories.map((cat) => {
+            const catItems = items.filter((i) => i.category_id === cat.id)
+            const isOpen = expanded.has(cat.id)
+            return (
+              <div key={cat.id} className="panel overflow-hidden">
+                <button
+                  onClick={() => toggle(cat.id)}
+                  className="w-full flex items-center justify-between p-4 text-left hover:bg-surface/40"
+                >
+                  <div>
+                    <div className="font-display text-xl tracking-wide text-ink">{cat.name}</div>
+                    {cat.description && <div className="text-xs text-muted mt-0.5">{cat.description}</div>}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="font-mono text-[11px] text-muted">{catItems.length} items</span>
+                    <ChevronDown size={16} className={`text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-hairline divide-y divide-hairline/60">
+                    {catItems.map((item) => (
+                      <div key={item.id} className="p-4 flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-ink">{item.title}</div>
+                          {item.description && <div className="text-xs text-muted mt-0.5">{item.description}</div>}
+                          {item.sub_items && item.sub_items.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {item.sub_items.map((s) => (
+                                <span key={s} className="text-[10px] font-mono px-1.5 py-0.5 bg-surface border border-hairline rounded-sm text-muted">
+                                  {s}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => setReading(item)}
+                            className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide text-muted hover:text-gold border border-hairline hover:border-gold rounded-sm px-2.5 py-1.5"
+                          >
+                            <BookOpen size={12} /> Read
+                          </button>
+                          <button
+                            onClick={() => setDownloading(item)}
+                            className={`flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide rounded-sm px-2.5 py-1.5 border ${
+                              item.file_storage_path
+                                ? 'text-gold border-gold/50 hover:border-gold'
+                                : 'text-muted border-hairline hover:border-gold hover:text-gold'
+                            }`}
+                          >
+                            <Download size={12} /> Download
+                          </button>
+                          {item.generate_prompt_template && (
+                            <button
+                              onClick={() => setGenerating(item)}
+                              className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide bg-gold text-base rounded-sm px-2.5 py-1.5 hover:bg-gold-bright"
+                            >
+                              <Sparkles size={12} /> Generate
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {templates.map((t) => (
-          <a
-            key={t.id}
-            href={t.file_url ?? '#'}
-            target="_blank"
-            rel="noreferrer"
-            className="panel p-4 flex items-center justify-between hover:border-gold transition-colors"
-          >
-            <div>
-              <div className="text-sm font-medium">{t.title}</div>
-              <div className="eyebrow mt-1">{t.category}</div>
-            </div>
-            <Download size={16} className="text-gold" />
-          </a>
-        ))}
-      </div>
+      {reading && (
+        <ToolkitReadModal
+          item={reading}
+          onClose={() => setReading(null)}
+          onSaved={() => {
+            load()
+          }}
+        />
+      )}
+      {downloading && (
+        <ToolkitDownloadModal
+          item={downloading}
+          onClose={() => setDownloading(null)}
+          onSaved={() => {
+            load()
+          }}
+        />
+      )}
+      {generating && <ToolkitGenerateModal item={generating} onClose={() => setGenerating(null)} />}
     </div>
   )
 }

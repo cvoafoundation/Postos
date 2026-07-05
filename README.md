@@ -146,7 +146,51 @@ transaction it's created in. **Run these as two separate steps, not pasted toget
 
 Then push the updated `src` folder as usual.
 
+## Post Toolkit (Module 5) — full rebuild
+
+This went from 5 flat, generic templates to a real hierarchical operations manual matching a
+franchise playbook: 14 categories, ~70 items, each with sub-items where you specified them, and
+three actions per item — **Read, Download, Generate** — exactly as requested.
+
+**Read** — opens the actual guide content. A handful of items ship with real, usable content
+I wrote directly (Robert's Rules Quick Guide, Meeting Scripts, the Elevator Pitch) because
+that material is generic enough to write responsibly without guessing at CVOA's actual internal
+policy. **Everything else — Bylaws, Disciplinary Procedures, Charter Documents, and similar —
+ships empty on purpose.** I'm not going to fabricate your organization's actual governing
+documents. National Staff can click "Write This Guide" on any empty item and fill in the real
+content directly in the app; it saves immediately and is live for every post from then on.
+
+**Download** — private file storage, scoped to logged-in members only (not public — this is
+internal operational material). National Staff can upload a file to any item; any authenticated
+member can then download it.
+
+**Generate** — the standout feature you called out. This is real, not a stub: clicking Generate
+calls a Supabase Edge Function (`generate-toolkit-document`) that fills in a prompt template
+with the post's actual data (name, city, state) and asks Claude to write the document live —
+a golf scramble packet, a sponsorship packet, a recruiting flyer, meeting agendas, grant
+proposal outlines, and about 15 other items all have this wired up. Every generated document is
+saved so a commander can come back to a previous one instead of regenerating from scratch.
+
+### Deploying Generate (one-time setup)
+
+The Edge Function code is fully written — nothing to fill in besides secrets:
+
+1. In Supabase: **Edge Functions → Secrets**, add `ANTHROPIC_API_KEY` (get one at
+   console.anthropic.com — this is billed separately from your Claude.ai usage).
+2. Deploy: `supabase functions deploy generate-toolkit-document`
+
+Until that's deployed, clicking Generate will show a clear error rather than failing silently.
+In demo mode (no Supabase connected), Generate returns an obvious placeholder so you can see the
+interaction without needing a real API key.
+
+### Deploying this migration
+
+Run `post-toolkit-upgrade.sql` in the SQL Editor, then push the updated `src` folder and
+`supabase/functions/generate-toolkit-document` as usual. The old `toolkit_templates` table is
+left in place untouched (just unused now) — nothing is deleted.
+
 ## Stack
+
 
 
 - React 18 + TypeScript + Vite

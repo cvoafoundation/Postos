@@ -157,6 +157,38 @@ export interface Recruit {
   updated_at: string
 }
 
+export interface ToolkitCategory {
+  id: string
+  name: string
+  description: string | null
+  sort_order: number
+  created_at: string
+}
+
+export interface ToolkitItem {
+  id: string
+  category_id: string
+  title: string
+  sub_items: string[] | null
+  description: string | null
+  read_content: string | null
+  file_storage_path: string | null
+  generate_prompt_template: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ToolkitGeneratedDocument {
+  id: string
+  toolkit_item_id: string
+  post_id: string | null
+  title: string
+  content: string
+  generated_by: string | null
+  created_at: string
+}
+
 export interface ChecklistItem {
   id: string
   post_id: string

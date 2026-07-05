@@ -174,6 +174,27 @@ export const mockSupabase = {
   from(table: string) {
     return new QueryBuilder(table)
   },
+  functions: {
+    async invoke(name: string, opts: { body: any }) {
+      if (name === 'generate-toolkit-document') {
+        const item = (seedData.toolkit_items ?? []).find((i: any) => i.id === opts.body.toolkit_item_id)
+        const content = `[Demo Mode] This is a placeholder — connect a real Supabase project with the generate-toolkit-document Edge Function deployed to get an actual AI-generated "${item?.title ?? 'document'}" here.`
+        const doc = {
+          id: uid(),
+          toolkit_item_id: opts.body.toolkit_item_id,
+          post_id: opts.body.post_id ?? null,
+          title: `${item?.title ?? 'Document'} (Demo)`,
+          content,
+          generated_by: opts.body.generated_by ?? null,
+          created_at: new Date().toISOString(),
+        }
+        if (!seedData.toolkit_generated_documents) seedData.toolkit_generated_documents = []
+        seedData.toolkit_generated_documents.push(doc)
+        return { data: { document: doc }, error: null }
+      }
+      return { data: null, error: { message: `Unknown function: ${name}` } }
+    },
+  },
   storage: {
     from(_bucket: string) {
       return {

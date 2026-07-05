@@ -217,14 +217,44 @@ create table checklist_items (
 );
 
 -- ----------------------------------------------------------------------------
--- MODULE 5: POST TOOLKIT (download center)
+-- MODULE 5: POST TOOLKIT
+-- Organized like a real franchise operations manual: categories -> items ->
+-- optional sub-items, with three actions per item (Read / Download /
+-- Generate). "Generate" calls out to an Edge Function that uses Claude to
+-- produce a post-specific packet from a prompt template — see
+-- supabase/functions/generate-toolkit-document.
 -- ----------------------------------------------------------------------------
-create table toolkit_templates (
+create table toolkit_categories (
   id uuid primary key default uuid_generate_v4(),
-  title text not null,
-  category text not null,
+  name text not null,
   description text,
-  file_url text, -- Supabase Storage path
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table toolkit_items (
+  id uuid primary key default uuid_generate_v4(),
+  category_id uuid not null references toolkit_categories(id) on delete cascade,
+  title text not null,
+  sub_items text[], -- e.g. {"Duties", "Expectations", "Reporting requirements"}
+  description text, -- short one-liner shown under the title
+  read_content text, -- the actual guide text for the "Read" button, markdown-ish plain text
+  file_storage_path text, -- populated once a file is uploaded, enables "Download"
+  generate_prompt_template text, -- populated for items where an AI-generated packet makes sense, enables "Generate"
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- A record of every AI-generated packet, so a commander can come back to one
+-- later instead of regenerating it, and so National can see what's being used.
+create table toolkit_generated_documents (
+  id uuid primary key default uuid_generate_v4(),
+  toolkit_item_id uuid not null references toolkit_items(id) on delete cascade,
+  post_id uuid references posts(id),
+  title text not null,
+  content text not null,
+  generated_by uuid references profiles(id),
   created_at timestamptz not null default now()
 );
 
@@ -502,7 +532,9 @@ alter table vetting_interviews enable row level security;
 alter table vetting_decisions enable row level security;
 alter table founding_team_members enable row level security;
 alter table checklist_items enable row level security;
-alter table toolkit_templates enable row level security;
+alter table toolkit_categories enable row level security;
+alter table toolkit_items enable row level security;
+alter table toolkit_generated_documents enable row level security;
 alter table recruits enable row level security;
 alter table sponsors enable row level security;
 alter table sponsor_tiers enable row level security;
@@ -598,8 +630,16 @@ create policy "checklist_insert_national" on checklist_items
 create policy "checklist_delete_national" on checklist_items
   for delete using (is_national_role());
 
-create policy "toolkit_read_all" on toolkit_templates for select using (true);
-create policy "toolkit_write_national" on toolkit_templates for insert with check (is_national_role());
+create policy "toolkit_categories_read_auth" on toolkit_categories for select using (auth.uid() is not null);
+create policy "toolkit_categories_write_national" on toolkit_categories for all using (is_national_role());
+
+create policy "toolkit_items_read_auth" on toolkit_items for select using (auth.uid() is not null);
+create policy "toolkit_items_write_national" on toolkit_items for all using (is_national_role());
+
+create policy "toolkit_generated_read_post_or_national" on toolkit_generated_documents
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "toolkit_generated_write_auth" on toolkit_generated_documents
+  for insert with check (auth.uid() is not null);
 
 create policy "recruits_select_post_or_national" on recruits
   for select using (is_national_role() or post_id = current_post_id());
@@ -922,6 +962,242 @@ insert into committees (name, description) values
   ('Governance Committee', 'Reviews bylaws, constitutional, and governance resolutions.'),
   ('Expansion Committee', 'Reviews resolutions related to new post development and expansion.')
 on conflict do nothing;
+
+-- ============================================================================
+-- STORAGE: Post Toolkit downloads
+-- Private — internal operational material, not for the general public.
+-- Any authenticated member can read; only National can upload/manage.
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('toolkit-files', 'toolkit-files', false)
+on conflict (id) do nothing;
+
+create policy "toolkit_files_read_auth" on storage.objects
+  for select using (bucket_id = 'toolkit-files' and auth.uid() is not null);
+create policy "toolkit_files_write_national" on storage.objects
+  for all using (bucket_id = 'toolkit-files' and is_national_role());
+
+-- ============================================================================
+-- SEED: Post Toolkit — full category and item structure.
+--
+-- A handful of items ship with real, usable content in read_content
+-- (Robert's Rules, meeting scripts, the elevator pitch) because that
+-- content is generic enough to write responsibly without knowing CVOA's
+-- actual internal policies. Everything else (bylaws, disciplinary
+-- procedures, charter documents, etc.) ships as a structured placeholder —
+-- National Staff fill those in with the org's real material via the
+-- in-app editor rather than this migration guessing at official policy.
+-- ============================================================================
+do $$
+declare
+  cat_commander uuid;
+  cat_meeting uuid;
+  cat_recruiting uuid;
+  cat_social uuid;
+  cat_sponsorship uuid;
+  cat_fundraising uuid;
+  cat_congress uuid;
+  cat_officer uuid;
+  cat_compliance uuid;
+  cat_community uuid;
+  cat_facility uuid;
+  cat_grant uuid;
+  cat_media uuid;
+  cat_national uuid;
+begin
+  -- Skip entirely if already seeded (idempotent across re-runs)
+  if exists (select 1 from toolkit_categories where name = 'Commander''s Toolkit') then
+    return;
+  end if;
+
+  insert into toolkit_categories (name, description, sort_order) values ('Commander''s Toolkit', 'Everything a new commander needs to lead a post.', 1) returning id into cat_commander;
+  insert into toolkit_categories (name, description, sort_order) values ('Meeting Toolkit', 'Run meetings that are professional and on-record.', 2) returning id into cat_meeting;
+  insert into toolkit_categories (name, description, sort_order) values ('Recruiting Toolkit', 'Grow membership without waiting on National.', 3) returning id into cat_recruiting;
+  insert into toolkit_categories (name, description, sort_order) values ('Social Media Toolkit', 'Ready-to-post content for every platform and occasion.', 4) returning id into cat_social;
+  insert into toolkit_categories (name, description, sort_order) values ('Sponsorship Toolkit', 'Everything needed to land and retain local sponsors.', 5) returning id into cat_sponsorship;
+  insert into toolkit_categories (name, description, sort_order) values ('Fundraising Toolkit', 'Run a golf scramble, raffle, or campaign from scratch.', 6) returning id into cat_fundraising;
+  insert into toolkit_categories (name, description, sort_order) values ('Veterans Congress Toolkit', 'Templates for delegates and legislative work.', 7) returning id into cat_congress;
+  insert into toolkit_categories (name, description, sort_order) values ('Officer Toolkit', 'Role-specific guides for each elected position.', 8) returning id into cat_officer;
+  insert into toolkit_categories (name, description, sort_order) values ('Compliance Toolkit', 'Charter, bylaws, and governance documentation.', 9) returning id into cat_compliance;
+  insert into toolkit_categories (name, description, sort_order) values ('Community Service Toolkit', 'Plan outreach and service projects.', 10) returning id into cat_community;
+  insert into toolkit_categories (name, description, sort_order) values ('Facility Toolkit', 'This is where CVOA becomes different — running a real space.', 11) returning id into cat_facility;
+  insert into toolkit_categories (name, description, sort_order) values ('Grant Toolkit', 'Find and win grant funding.', 12) returning id into cat_grant;
+  insert into toolkit_categories (name, description, sort_order) values ('Media Toolkit', 'Brand assets and approved messaging.', 13) returning id into cat_media;
+  insert into toolkit_categories (name, description, sort_order) values ('National Resources', 'Who to contact and when.', 14) returning id into cat_national;
+
+  -- Commander's Toolkit
+  insert into toolkit_items (category_id, title, sub_items, sort_order) values
+    (cat_commander, 'Commander Handbook', array['Duties','Expectations','Reporting requirements','Recruiting guide','Meeting guide','Disciplinary procedures'], 1),
+    (cat_commander, 'First 90 Days Guide', array['Week 1','Week 2','Week 4','Month 2','Month 3'], 2);
+
+  -- Meeting Toolkit
+  insert into toolkit_items (category_id, title, sub_items, generate_prompt_template, sort_order) values
+    (cat_meeting, 'Meeting Agenda Templates', array['Monthly Meeting','Officer Meeting','Special Meeting'],
+     'Generate a professional meeting agenda for {{post_name}}''s upcoming meeting. Include: call to order, roll call, reading/approval of previous minutes, officer reports, old business, new business, announcements, and adjournment. Keep it on one page.', 1),
+    (cat_meeting, 'Meeting Minutes Templates', array['Standard format','Auto-generated PDF'],
+     'Generate a meeting minutes template for {{post_name}} with sections for: date/time/location, attendees, approval of prior minutes, officer reports, motions made (with mover/seconder/vote result), new business, and adjournment time.', 2);
+  insert into toolkit_items (category_id, title, sub_items, read_content, sort_order) values
+    (cat_meeting, 'Robert''s Rules Quick Guide', array['Motions','Seconds','Voting','Quorum'],
+$$ROBERT'S RULES OF ORDER — QUICK REFERENCE FOR POST MEETINGS
+
+MOTIONS
+A motion is a formal proposal for the group to take action. To make a motion, a member says "I move that..." followed by the specific proposal. Only one motion may be on the floor at a time.
+
+SECONDS
+After a motion is made, another member must "second" it before it can be discussed — this simply shows at least one other person thinks it's worth discussing. If no one seconds, the motion dies quietly with no vote needed.
+
+DISCUSSION
+Once seconded, the chair opens the floor for discussion. Members should be recognized by the chair before speaking, and discussion should stay focused on the motion at hand.
+
+VOTING
+After discussion, the chair restates the motion and calls for a vote. Common methods: voice vote ("all in favor say aye... opposed say nay"), show of hands, or roll call for more formal/contested votes. The chair announces the result.
+
+QUORUM
+Quorum is the minimum number of voting members who must be present for the post to conduct official business. Check your post's bylaws for the specific number — no binding votes should happen without it.$$,
+     3);
+  insert into toolkit_items (category_id, title, sub_items, read_content, sort_order) values
+    (cat_meeting, 'Meeting Scripts', array['Opening','Pledge','Closing'],
+$$MEETING SCRIPTS
+
+OPENING
+"This meeting of [Post Name] is called to order. Thank you all for being here. Before we begin, let's take a moment to remember those we've lost and those still serving."
+
+PLEDGE
+"Please rise, remove your caps, and join me in the Pledge of Allegiance." [Lead the Pledge] "Please be seated."
+
+CLOSING
+"Is there any further business to come before this post? Seeing none, this meeting stands adjourned. Thank you all for your time and your service."$$,
+     4);
+
+  -- Recruiting Toolkit
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_recruiting, 'Recruiting Flyer Templates', 'Generate the text content for a one-page recruiting flyer for {{post_name}} in {{post_city_state}}. Include a compelling headline, 3-4 bullet points on membership benefits, and a clear call to action with contact info.', 1);
+  insert into toolkit_items (category_id, title, sort_order) values (cat_recruiting, 'QR Code Generator', 2);
+  insert into toolkit_items (category_id, title, sort_order) values (cat_recruiting, 'Event Booth Setup Guide', 3);
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_recruiting, 'Recruiting Event Checklist', 'Generate a pre-event, day-of, and post-event checklist for {{post_name}} to run a successful recruiting event/booth.', 4);
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_recruiting, 'New Member Welcome Packet', 'Generate a warm, professional welcome packet for a new member joining {{post_name}}. Include: welcome message, what to expect at first meeting, key contacts, and next steps.', 5);
+  insert into toolkit_items (category_id, title, description, read_content, sort_order) values
+    (cat_recruiting, 'Elevator Pitch', 'When someone asks "What''s CVOA?" — give commanders approved answers.',
+$$THE ELEVATOR PITCH — "WHAT'S CVOA?"
+
+SHORT VERSION (10 seconds):
+"CVOA is a combat veterans organization — we build local posts where veterans get real community, support, and a place that actually understands what they went through."
+
+LONGER VERSION (30 seconds):
+"Combat Veterans of America is a national veteran-serving nonprofit. We're different from a lot of veteran orgs because we focus on building real, active local posts — not just a membership card. Each post runs its own events, peer support, and community programs, backed by national resources for things like benefits navigation and fundraising. If you're a veteran looking for community, or know one who needs it, that's exactly what we're here for."
+
+IF THEY ASK "IS THIS LIKE THE VFW OR AMERICAN LEGION?":
+"We share the same spirit of service and community — CVOA is newer and puts a lot of emphasis on hands-on local programs and modern support systems alongside the traditions those organizations built."
+
+IF THEY ASK "DO I HAVE TO BE COMBAT VETERAN?":
+Check your post's specific membership policy — this varies and should be answered accurately, not guessed.$$,
+     6);
+
+  -- Social Media Toolkit
+  insert into toolkit_items (category_id, title, sub_items, generate_prompt_template, sort_order) values
+    (cat_social, 'Facebook Post Library', array['Membership drives','Veterans Day','Memorial Day','Independence Day','Fundraisers'],
+     'Generate 3 Facebook post options for {{post_name}} for the occasion: {{occasion}}. Each should be 2-4 sentences, warm and authentic in tone (not corporate), and include a suggested call-to-action.', 1);
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_social, 'LinkedIn Templates', 'Generate a LinkedIn post for {{post_name}} suitable for a more professional audience — potential sponsors, employers, or community partners.', 2),
+    (cat_social, 'Instagram Templates', 'Generate Instagram caption options for {{post_name}} — short, visual-first, with relevant hashtags for the veteran community.', 3);
+  insert into toolkit_items (category_id, title, sort_order) values (cat_social, 'Political Cartoon Library', 4);
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_social, 'Press Release Templates', 'Generate a press release for {{post_name}} announcing: {{announcement}}. Use standard press release format with a headline, dateline, and boilerplate about CVOA.', 5);
+
+  -- Sponsorship Toolkit
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_sponsorship, 'Sponsorship Packet', 'Generate a sponsorship packet for {{post_name}} describing the post, its community impact, and the sponsorship tiers available (Bronze/Silver/Gold/Platinum) with benefits at each level.', 1),
+    (cat_sponsorship, 'Sponsor Proposal Template', 'Generate a one-page sponsor proposal letter for {{post_name}} to send to a prospective local business sponsor.', 2);
+  insert into toolkit_items (category_id, title, sub_items, sort_order) values
+    (cat_sponsorship, 'Sponsorship Levels', array['Bronze','Silver','Gold','Platinum'], 3);
+  insert into toolkit_items (category_id, title, sort_order) values (cat_sponsorship, 'Sponsor Tracking Sheet', 4);
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_sponsorship, 'Follow-Up Scripts', 'Generate 3 short follow-up message scripts (email or phone) for {{post_name}} to use when following up with a sponsor who hasn''t responded yet.', 5);
+
+  -- Fundraising Toolkit
+  insert into toolkit_items (category_id, title, sub_items, generate_prompt_template, sort_order) values
+    (cat_fundraising, 'Golf Scramble Kit', array['Budget','Timeline','Sponsor packet','Registration form'],
+     'Generate a complete golf scramble event packet for {{post_name}}, including: a sample budget outline, a 90-day planning timeline, a short sponsor pitch paragraph, and a registration form template.', 1);
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_fundraising, 'Raffle Toolkit', 'Generate a raffle event plan for {{post_name}}, including a suggested timeline, prize solicitation letter, and ticket tracking sheet format.', 2),
+    (cat_fundraising, 'Silent Auction Toolkit', 'Generate a silent auction plan for {{post_name}}, including item solicitation letter, bid sheet template, and event-day checklist.', 3),
+    (cat_fundraising, 'Community Fundraiser Toolkit', 'Generate a general community fundraiser plan for {{post_name}} adaptable to different event types.', 4),
+    (cat_fundraising, 'Annual Campaign Toolkit', 'Generate an annual giving campaign plan for {{post_name}}, including a donor letter template and suggested campaign timeline.', 5);
+
+  -- Veterans Congress Toolkit
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_congress, 'Resolution Template', 'Generate a formal resolution template following standard legislative format (title, whereas clauses, resolved clause) that a delegate can fill in for a new resolution.', 1),
+    (cat_congress, 'Amendment Template', 'Generate an amendment proposal template for modifying an existing CVOA resolution.', 2),
+    (cat_congress, 'Legislative Position Template', 'Generate a template for drafting a formal CVOA position statement on external legislation.', 3);
+  insert into toolkit_items (category_id, title, sort_order) values
+    (cat_congress, 'Delegate Handbook', 4),
+    (cat_congress, 'Voting Procedures', 5);
+
+  -- Officer Toolkit
+  insert into toolkit_items (category_id, title, sub_items, sort_order) values
+    (cat_officer, 'Adjutant', array['Record keeping','Minutes','Membership'], 1),
+    (cat_officer, 'Quartermaster', array['Budget','Accounting','Reporting'], 2),
+    (cat_officer, 'Sergeant-at-Arms', array['Meeting conduct','Ceremonies'], 3),
+    (cat_officer, 'Vice Commander', array['Succession planning'], 4);
+
+  -- Compliance Toolkit
+  insert into toolkit_items (category_id, title, sort_order) values
+    (cat_compliance, 'Charter Documents', 1),
+    (cat_compliance, 'Bylaws', 2),
+    (cat_compliance, 'Policies', 3);
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_compliance, 'Conflict of Interest Form', 'Generate a standard conflict of interest disclosure form suitable for a nonprofit veteran service organization board/officer to sign annually.', 4),
+    (cat_compliance, 'Officer Acknowledgment Form', 'Generate a standard officer acknowledgment-of-duties form for a newly elected post officer to sign.', 5),
+    (cat_compliance, 'Annual Review Checklist', 'Generate an annual compliance review checklist for a post covering: bylaws review, financial audit basics, officer roster, and required filings.', 6);
+
+  -- Community Service Toolkit
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_community, 'Food Drive Guide', 'Generate a step-by-step guide for {{post_name}} to organize a food drive, including timeline, partner outreach, and promotion tips.', 1),
+    (cat_community, 'Veteran Outreach Guide', 'Generate an outreach plan for {{post_name}} to connect with veterans who aren''t yet involved with the post.', 2),
+    (cat_community, 'School Presentation Guide', 'Generate an outline for a post representative to present to a local school about veteran history/service.', 3),
+    (cat_community, 'Community Project Guide', 'Generate a general framework for {{post_name}} to plan and execute a community service project.', 4),
+    (cat_community, 'Event After Action Report', 'Generate an after-action report template for {{post_name}} to fill out after any event — what worked, what didn''t, attendance, and recommendations.', 5);
+
+  -- Facility Toolkit
+  insert into toolkit_items (category_id, title, sort_order) values
+    (cat_facility, 'How to Find a Building', 1),
+    (cat_facility, 'Lease Negotiation Guide', 2),
+    (cat_facility, 'Bar Operations Guide', 3),
+    (cat_facility, 'Kitchen Guide', 4),
+    (cat_facility, 'Gym Guide', 5),
+    (cat_facility, 'Classroom Guide', 6),
+    (cat_facility, 'Employment Office Guide', 7),
+    (cat_facility, 'VA Partnership Guide', 8),
+    (cat_facility, 'Transitional Housing Guide', 9);
+
+  -- Grant Toolkit
+  insert into toolkit_items (category_id, title, sort_order) values
+    (cat_grant, 'Grant Database', 1),
+    (cat_grant, 'Grant Calendar', 2);
+  insert into toolkit_items (category_id, title, generate_prompt_template, sort_order) values
+    (cat_grant, 'Grant Writing Templates', 'Generate a grant proposal template/outline for {{post_name}} to adapt for veteran service grant applications, including sections for need statement, program description, budget, and evaluation.', 3);
+  insert into toolkit_items (category_id, title, sort_order) values
+    (cat_grant, 'Sample Successful Grants', 4);
+
+  -- Media Toolkit
+  insert into toolkit_items (category_id, title, sort_order) values
+    (cat_media, 'Logo Files', 1),
+    (cat_media, 'Brand Standards', 2),
+    (cat_media, 'Approved Language', 3),
+    (cat_media, 'Talking Points', 4),
+    (cat_media, 'Interview Guide', 5),
+    (cat_media, 'Crisis Response Guide', 6);
+
+  -- National Resources
+  insert into toolkit_items (category_id, title, sort_order) values
+    (cat_national, 'Contact Directory', 1),
+    (cat_national, 'National Leadership', 2),
+    (cat_national, 'State Leadership', 3),
+    (cat_national, 'Subject Matter Experts', 4),
+    (cat_national, 'Preferred Vendors', 5);
+end $$;
 
 -- ============================================================================
 -- End of schema
