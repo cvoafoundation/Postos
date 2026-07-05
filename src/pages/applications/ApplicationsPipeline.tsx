@@ -4,14 +4,16 @@ import { KanbanBoard, type KanbanColumn } from '@/components/ui/Kanban'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { POST_STATUS_LABELS, POST_STATUS_ORDER, type PostApplication, type PostStatus } from '@/lib/types'
-import { Plus, FileWarning, FileSearch } from 'lucide-react'
+import { Plus, FileWarning, FileSearch, Eye } from 'lucide-react'
 import { NewApplicationModal } from './NewApplication'
 import { Dd214ReviewModal } from './Dd214Review'
+import { ApplicationDetailModal } from './ApplicationDetail'
 
 export default function ApplicationsPipeline() {
   const [applications, setApplications] = useState<PostApplication[]>([])
   const [showNew, setShowNew] = useState(false)
   const [reviewing, setReviewing] = useState<PostApplication | null>(null)
+  const [viewing, setViewing] = useState<PostApplication | null>(null)
   const [loading, setLoading] = useState(true)
 
   async function load() {
@@ -53,7 +55,12 @@ export default function ApplicationsPipeline() {
           columns={columns}
           keyExtractor={(a) => a.id}
           renderCard={(a) => (
-            <ApplicationCard application={a} onMove={moveStatus} onReview={() => setReviewing(a)} />
+            <ApplicationCard
+              application={a}
+              onMove={moveStatus}
+              onReview={() => setReviewing(a)}
+              onView={() => setViewing(a)}
+            />
           )}
         />
       )}
@@ -78,6 +85,8 @@ export default function ApplicationsPipeline() {
           }}
         />
       )}
+
+      {viewing && <ApplicationDetailModal application={viewing} onClose={() => setViewing(null)} />}
     </div>
   )
 }
@@ -86,10 +95,12 @@ function ApplicationCard({
   application,
   onMove,
   onReview,
+  onView,
 }: {
   application: PostApplication
   onMove: (id: string, status: PostStatus) => void
   onReview: () => void
+  onView: () => void
 }) {
   const currentIndex = POST_STATUS_ORDER.indexOf(application.status)
   const next = POST_STATUS_ORDER[currentIndex + 1]
@@ -98,11 +109,23 @@ function ApplicationCard({
 
   return (
     <div className="panel p-3">
-      <div className="text-sm font-medium text-ink">{application.name}</div>
-      <div className="font-mono text-[11px] text-muted mb-2">
-        {application.city ? `${application.city}, ` : ''}
-        {application.state}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-ink truncate">{application.name}</div>
+          <div className="font-mono text-[11px] text-muted mb-2">
+            {application.city ? `${application.city}, ` : ''}
+            {application.state}
+          </div>
+        </div>
+        <button
+          onClick={onView}
+          title="View application details"
+          className="shrink-0 flex items-center gap-1 text-[11px] font-mono text-muted hover:text-gold border border-hairline hover:border-gold rounded-sm px-2 py-1"
+        >
+          <Eye size={12} /> View
+        </button>
       </div>
+
       {application.military_branch && (
         <div className="text-xs text-muted mb-2">{application.military_branch}</div>
       )}
