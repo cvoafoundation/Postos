@@ -9,16 +9,28 @@ import type { ActivityFeedItem, Post } from '@/lib/types'
 import { formatDistanceToNow, differenceInDays } from 'date-fns'
 
 interface Metrics {
-  activePosts: number
+  // Pipeline
+  openApplications: number
+  inVetting: number
   developingPosts: number
   charterReady: number
+  activePosts: number
+  // Growth & Money
   totalMembers: number
   totalSponsorRevenue: number
-  upcomingEvents: number
+  sponsorPipeline: number
+  recruitingPipeline: number
+  // Operations
   overdueOnMinutes: number
+  openResolutions: number
+  activeFacilityProjects: number
 }
 
 const OVERDUE_RED_DAYS = 60
+const OPEN_APPLICATION_STATUSES = ['new_inquiry', 'application_submitted']
+const VETTING_STATUSES = ['interview_scheduled', 'vetting']
+const RECRUIT_ACTIVE_STAGES = ['prospect', 'interested', 'attended_meeting', 'applied']
+const RESOLUTION_CLOSED_STATUSES = ['passed', 'rejected', 'implemented', 'archived']
 
 export default function Dashboard() {
   const [posts, setPosts] = useState<Post[]>([])
@@ -30,12 +42,26 @@ export default function Dashboard() {
     let cancelled = false
 
     async function load() {
-      const [postsRes, activityRes, profilesCountRes, sponsorsRes, meetingRecordsRes] = await Promise.all([
+      const [
+        postsRes,
+        activityRes,
+        profilesCountRes,
+        sponsorsRes,
+        meetingRecordsRes,
+        applicationsRes,
+        recruitsRes,
+        resolutionsRes,
+        facilityProjectsRes,
+      ] = await Promise.all([
         supabase.from('posts').select('*'),
         supabase.from('activity_feed').select('*').order('created_at', { ascending: false }).limit(8),
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('sponsors').select('sponsorship_value').eq('stage', 'won'),
+        supabase.from('sponsors').select('sponsorship_value, stage'),
         supabase.from('meeting_records').select('post_id, meeting_date'),
+        supabase.from('post_applications').select('status'),
+        supabase.from('recruits').select('stage'),
+        supabase.from('resolutions').select('status'),
+        supabase.from('post_facility_projects').select('status'),
       ])
 
       if (cancelled) return
@@ -57,14 +83,25 @@ export default function Dashboard() {
         return differenceInDays(new Date(), new Date(last)) > OVERDUE_RED_DAYS
       }).length
 
+      const applications = (applicationsRes.data ?? []) as any[]
+      const recruits = (recruitsRes.data ?? []) as any[]
+      const resolutions = (resolutionsRes.data ?? []) as any[]
+      const sponsors = (sponsorsRes.data ?? []) as any[]
+      const facilityProjects = (facilityProjectsRes.data ?? []) as any[]
+
       setMetrics({
-        activePosts: activePostList.length,
+        openApplications: applications.filter((a) => OPEN_APPLICATION_STATUSES.includes(a.status)).length,
+        inVetting: applications.filter((a) => VETTING_STATUSES.includes(a.status)).length,
         developingPosts: allPosts.filter((p) => p.status !== 'active_post').length,
         charterReady: allPosts.filter((p) => p.status === 'charter_ready').length,
+        activePosts: activePostList.length,
         totalMembers: profilesCountRes.count ?? 0,
-        totalSponsorRevenue: (sponsorsRes.data ?? []).reduce((sum, s: any) => sum + (s.sponsorship_value ?? 0), 0),
-        upcomingEvents: 0, // wire to an events table once scheduling is integrated
+        totalSponsorRevenue: sponsors.filter((s) => s.stage === 'won').reduce((sum, s) => sum + (s.sponsorship_value ?? 0), 0),
+        sponsorPipeline: sponsors.filter((s) => !['won', 'lost'].includes(s.stage)).length,
+        recruitingPipeline: recruits.filter((r) => RECRUIT_ACTIVE_STAGES.includes(r.stage)).length,
         overdueOnMinutes,
+        openResolutions: resolutions.filter((r) => !RESOLUTION_CLOSED_STATUSES.includes(r.status)).length,
+        activeFacilityProjects: facilityProjects.filter((p) => p.status !== 'complete').length,
       })
       setLoading(false)
     }
@@ -79,23 +116,58 @@ export default function Dashboard() {
     <div>
       <PageHeader eyebrow="National Command" title="Global Dashboard" />
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
-        <StatCard label="Active Posts" value={metrics?.activePosts ?? '—'} accent="active" />
-        <StatCard label="In Development" value={metrics?.developingPosts ?? '—'} accent="developing" />
-        <StatCard label="Charter Ready" value={metrics?.charterReady ?? '—'} accent="gold" />
-        <StatCard label="Total Members" value={metrics?.totalMembers ?? '—'} />
-        <StatCard
-          label="Sponsor Revenue"
-          value={metrics ? `$${metrics.totalSponsorRevenue.toLocaleString()}` : '—'}
-        />
-        <StatCard label="Upcoming Events" value={metrics?.upcomingEvents ?? '—'} />
-        <Link to="/meetings">
-          <StatCard
-            label="Overdue on Minutes"
-            value={metrics?.overdueOnMinutes ?? '—'}
-            accent={metrics && metrics.overdueOnMinutes > 0 ? 'attention' : 'gold'}
-          />
-        </Link>
+      <div className="mb-6">
+        <div className="eyebrow mb-2">Pipeline</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <Link to="/applications">
+            <StatCard label="New Applications" value={metrics?.openApplications ?? '—'} accent="developing" />
+          </Link>
+          <Link to="/vetting">
+            <StatCard label="In Vetting" value={metrics?.inVetting ?? '—'} accent="developing" />
+          </Link>
+          <Link to="/checklist">
+            <StatCard label="In Development" value={metrics?.developingPosts ?? '—'} accent="developing" />
+          </Link>
+          <StatCard label="Charter Ready" value={metrics?.charterReady ?? '—'} accent="gold" />
+          <Link to="/health">
+            <StatCard label="Active Posts" value={metrics?.activePosts ?? '—'} accent="active" />
+          </Link>
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <div className="eyebrow mb-2">Growth &amp; Money</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <StatCard label="Total Members" value={metrics?.totalMembers ?? '—'} />
+          <Link to="/sponsors">
+            <StatCard label="Sponsor Revenue" value={metrics ? `$${metrics.totalSponsorRevenue.toLocaleString()}` : '—'} accent="active" />
+          </Link>
+          <Link to="/sponsors">
+            <StatCard label="Sponsor Pipeline" value={metrics?.sponsorPipeline ?? '—'} accent="developing" />
+          </Link>
+          <Link to="/recruiting">
+            <StatCard label="Recruiting Pipeline" value={metrics?.recruitingPipeline ?? '—'} accent="developing" />
+          </Link>
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <div className="eyebrow mb-2">Operations</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <Link to="/meetings">
+            <StatCard
+              label="Overdue on Minutes"
+              value={metrics?.overdueOnMinutes ?? '—'}
+              accent={metrics && metrics.overdueOnMinutes > 0 ? 'attention' : 'gold'}
+            />
+          </Link>
+          <Link to="/congress">
+            <StatCard label="Open Resolutions" value={metrics?.openResolutions ?? '—'} accent="developing" />
+          </Link>
+          <Link to="/build-a-post">
+            <StatCard label="Facility Projects Active" value={metrics?.activeFacilityProjects ?? '—'} accent="developing" />
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

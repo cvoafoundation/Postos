@@ -1,6 +1,10 @@
-import { ComposableMap, Geographies, Geography } from 'react-simple-maps'
+import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps'
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { Post } from '@/lib/types'
+import { POST_STATUS_LABELS } from '@/lib/types'
+import { StatusBadge, healthTone } from '@/components/ui/StatusBadge'
+import { MapPin } from 'lucide-react'
 
 // Bundled at build time — no runtime network fetch required.
 import usStates from 'us-atlas/states-10m.json?url'
@@ -24,7 +28,9 @@ const FIPS_TO_ABBR: Record<string, string> = {
 }
 
 export function UsStatusMap({ posts }: { posts: Post[] }) {
+  const navigate = useNavigate()
   const [hovered, setHovered] = useState<string | null>(null)
+  const [selectedState, setSelectedState] = useState<string | null>(null)
 
   const stateStatus = useMemo(() => {
     const map: Record<string, { status: string; count: number }> = {}
@@ -39,6 +45,9 @@ export function UsStatusMap({ posts }: { posts: Post[] }) {
     }
     return map
   }, [posts])
+
+  const postsWithCoords = posts.filter((p) => p.lat != null && p.lng != null)
+  const selectedPosts = selectedState ? posts.filter((p) => p.state === selectedState) : []
 
   return (
     <div className="panel p-5">
@@ -70,9 +79,10 @@ export function UsStatusMap({ posts }: { posts: Post[] }) {
                   geography={geo}
                   onMouseEnter={() => setHovered(abbr ? `${abbr} — ${entry?.count ?? 0} post(s)` : null)}
                   onMouseLeave={() => setHovered(null)}
+                  onClick={() => abbr && entry && setSelectedState(abbr === selectedState ? null : abbr)}
                   style={{
-                    default: { fill, stroke: '#0A0A0B', strokeWidth: 0.75, outline: 'none' },
-                    hover: { fill: '#E8C468', stroke: '#0A0A0B', strokeWidth: 0.75, outline: 'none' },
+                    default: { fill, stroke: '#0A0A0B', strokeWidth: 0.75, outline: 'none', cursor: entry ? 'pointer' : 'default' },
+                    hover: { fill: '#E8C468', stroke: '#0A0A0B', strokeWidth: 0.75, outline: 'none', cursor: entry ? 'pointer' : 'default' },
                     pressed: { fill: '#E8C468', outline: 'none' },
                   }}
                 />
@@ -80,9 +90,48 @@ export function UsStatusMap({ posts }: { posts: Post[] }) {
             })
           }
         </Geographies>
+        {postsWithCoords.map((p) => (
+          <Marker key={p.id} coordinates={[p.lng as number, p.lat as number]}>
+            <circle r={4} fill="#E8C468" stroke="#0A0A0B" strokeWidth={1} />
+          </Marker>
+        ))}
       </ComposableMap>
 
       <div className="h-5 text-center font-mono text-xs text-muted">{hovered ?? ' '}</div>
+
+      {selectedState && (
+        <div className="mt-3 pt-3 border-t border-hairline">
+          <div className="flex items-center justify-between mb-2">
+            <div className="eyebrow flex items-center gap-1.5">
+              <MapPin size={12} /> {selectedState} — {selectedPosts.length} post{selectedPosts.length !== 1 ? 's' : ''}
+            </div>
+            <button onClick={() => setSelectedState(null)} className="text-[11px] text-muted hover:text-gold">
+              Close
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {selectedPosts.map((p) => (
+              <div
+                key={p.id}
+                onClick={() => p.status === 'active_post' && navigate(`/health/${p.id}`)}
+                className={`flex items-center justify-between border border-hairline rounded-sm p-2 ${
+                  p.status === 'active_post' ? 'cursor-pointer hover:border-gold' : ''
+                }`}
+              >
+                <div>
+                  <div className="text-sm">{p.name}</div>
+                  <div className="text-[11px] text-muted font-mono">
+                    {p.city ? `${p.city}, ` : ''}
+                    {p.state} · {POST_STATUS_LABELS[p.status]}
+                    {p.lat != null && p.lng != null ? ' · pinned' : ''}
+                  </div>
+                </div>
+                <StatusBadge label={p.health_status} tone={healthTone(p.health_status)} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

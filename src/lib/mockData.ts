@@ -268,6 +268,12 @@ export const seedData: Record<string, any[]> = {
     { id: 'ft-2', post_id: 'post-1', transaction_type: 'expense', category: 'Event Costs', amount: 450, description: 'Food drive supplies', transaction_date: daysAgo(45).slice(0, 10), created_by: null, created_at: daysAgo(45) },
   ],
 
+  post_facility_projects: [
+    { id: 'fp-1', post_id: 'post-1', module_id: 'bp-1', status: 'in_progress', target_budget: 15000, notes: null, created_by: null, created_at: daysAgo(20), updated_at: daysAgo(5) },
+  ],
+  post_facility_checklist_items: [],
+  build_a_post_generated_plans: [],
+
   build_a_post_modules: [
     { id: 'bp-1', name: 'Bar Layout', description: 'Social/gathering space with a serving bar.', startup_cost_low: 8000, startup_cost_high: 25000, equipment_list: ['Bar top and back bar', 'Draft system', 'Glassware', 'POS system', 'Refrigeration'], sponsor_opportunities: 'Local breweries and distributors often sponsor equipment in exchange for tap placement.', grant_opportunities: 'Not typically grant-eligible (alcohol-related).', revenue_potential: 'Moderate — steady revenue from member events, not a primary driver.', created_at: daysAgo(50) },
     { id: 'bp-2', name: 'Kitchen Layout', description: 'Full or partial kitchen for events and meal programs.', startup_cost_low: 15000, startup_cost_high: 60000, equipment_list: ['Commercial range', 'Refrigeration', 'Prep tables', 'Ventilation hood', 'Dishwashing station'], sponsor_opportunities: 'Restaurant equipment suppliers, regional grocery chains.', grant_opportunities: 'USDA rural development grants, community food security grants.', revenue_potential: 'High — meal programs and rentals for community events.', created_at: daysAgo(50) },
