@@ -100,7 +100,16 @@ class QueryBuilder {
     let rows = store.filter((r) => matches(r, this.filters))
 
     if (this.op === 'update') {
-      rows.forEach((r) => Object.assign(r, this.payload))
+      rows.forEach((r) => {
+        Object.assign(r, this.payload)
+        if (this.table === 'founding_team_members') {
+          if (r.dd214_reviewed && r.combat_service_verified && r.membership_approved) {
+            r.verification_status = 'verified'
+          } else if (r.verification_status === 'verified') {
+            r.verification_status = 'pending'
+          }
+        }
+      })
       return { data: rows, error: null, count: null }
     }
 

@@ -5,9 +5,16 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import type { FoundingTeamMember, Post } from '@/lib/types'
-import { Copy, Check, Trash2 } from 'lucide-react'
+import { Copy, Check, Trash2, FileText } from 'lucide-react'
 
 const REQUIRED_POSITIONS = ['commander', 'vice_commander', 'adjutant', 'quartermaster', 'sergeant_at_arms']
+
+async function openDocument(path: string) {
+  const { data, error } = await supabase.storage.from('dd214-uploads').createSignedUrl(path, 600)
+  if (!error && data?.signedUrl) {
+    window.open(data.signedUrl, '_blank')
+  }
+}
 
 export default function FoundingTeamBuilder() {
   const { profile, isNational } = useAuth()
@@ -45,9 +52,14 @@ export default function FoundingTeamBuilder() {
   }, [selectedPostId])
 
   async function toggleVerification(member: FoundingTeamMember, field: keyof FoundingTeamMember) {
-    const updated = { ...member, [field]: !member[field] }
-    setMembers((prev) => prev.map((m) => (m.id === member.id ? (updated as FoundingTeamMember) : m)))
-    await supabase.from('founding_team_members').update({ [field]: updated[field] }).eq('id', member.id)
+    await supabase
+      .from('founding_team_members')
+      .update({ [field]: !member[field] })
+      .eq('id', member.id)
+    // Re-fetch rather than update local state optimistically — verification_status
+    // is computed server-side by a trigger based on all three checkboxes, so the
+    // only way to reflect it correctly is to read back what the database decided.
+    if (selectedPostId) loadMembers(selectedPostId)
   }
 
   async function removeMember(member: FoundingTeamMember) {
@@ -159,6 +171,7 @@ export default function FoundingTeamBuilder() {
             <tr>
               <th className="table-head">Name</th>
               <th className="table-head">Position</th>
+              <th className="table-head">Document</th>
               <th className="table-head">DD214</th>
               <th className="table-head">Combat Verified</th>
               <th className="table-head">Membership</th>
@@ -174,6 +187,18 @@ export default function FoundingTeamBuilder() {
                   {m.email && <div className="text-[11px] text-muted font-mono">{m.email}</div>}
                 </td>
                 <td className="table-cell capitalize">{m.position.replaceAll('_', ' ')}</td>
+                <td className="table-cell">
+                  {m.dd214_storage_path ? (
+                    <button
+                      onClick={() => openDocument(m.dd214_storage_path!)}
+                      className="flex items-center gap-1 text-gold hover:text-gold-bright text-xs"
+                    >
+                      <FileText size={13} /> View
+                    </button>
+                  ) : (
+                    <span className="text-[11px] text-status-attention">None uploaded</span>
+                  )}
+                </td>
                 <td className="table-cell">
                   <input
                     type="checkbox"

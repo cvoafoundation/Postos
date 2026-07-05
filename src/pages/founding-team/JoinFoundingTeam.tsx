@@ -1,15 +1,15 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, Upload, FileCheck, Loader2 } from 'lucide-react'
 
 const POSITIONS = [
-  { value: 'commander', label: 'Commander' },
+  { value: 'member', label: 'Additional Member' },
   { value: 'vice_commander', label: 'Vice Commander' },
   { value: 'adjutant', label: 'Adjutant' },
   { value: 'quartermaster', label: 'Quartermaster' },
   { value: 'sergeant_at_arms', label: 'Sergeant-at-Arms' },
-  { value: 'member', label: 'Additional Member' },
+  { value: 'commander', label: 'Commander' },
 ]
 
 export default function JoinFoundingTeam() {
@@ -24,12 +24,15 @@ export default function JoinFoundingTeam() {
     phone: '',
     position: 'member',
     combat_status: 'Non-combat veteran',
-    proposed_site_location: '',
-    funding_commitment: '',
   })
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [docFile, setDocFile] = useState<File | null>(null)
+  const [docPath, setDocPath] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!postId) return
@@ -52,6 +55,30 @@ export default function JoinFoundingTeam() {
     setForm((f) => ({ ...f, [key]: value }))
   }
 
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadError(null)
+
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('File is too large — please keep it under 10MB.')
+      return
+    }
+
+    setDocFile(file)
+    setUploading(true)
+    const path = `founding-team/${crypto.randomUUID()}-${file.name}`
+    const { data, error } = await supabase.storage.from('dd214-uploads').upload(path, file)
+    setUploading(false)
+
+    if (error) {
+      setUploadError(error.message)
+      setDocFile(null)
+      return
+    }
+    setDocPath(data?.path ?? path)
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!postId) return
@@ -64,8 +91,7 @@ export default function JoinFoundingTeam() {
       phone: form.phone || null,
       position: form.position,
       combat_status: form.combat_status,
-      proposed_site_location: form.proposed_site_location || null,
-      funding_commitment: form.funding_commitment || null,
+      dd214_storage_path: docPath,
     })
     setSubmitting(false)
     if (error) {
@@ -74,6 +100,8 @@ export default function JoinFoundingTeam() {
     }
     setSubmitted(true)
   }
+
+  const canFillOutRest = !!docPath
 
   return (
     <div className="min-h-screen bg-base px-4 py-16 flex items-start justify-center">
@@ -101,85 +129,113 @@ export default function JoinFoundingTeam() {
           ) : (
             <>
               <p className="text-sm text-muted mb-4">
-                You're joining the founding team for <strong className="text-ink">{postName}</strong>. Tell us
-                about yourself, and if you have thoughts on where the post could meet or what you can help fund,
-                add that too — it all helps National Staff plan the launch.
+                You're joining the founding team for <strong className="text-ink">{postName}</strong>.
               </p>
-              <form onSubmit={handleSubmit} className="space-y-3">
-                <div>
-                  <label className="eyebrow block mb-1.5">About you</label>
-                  <div className="space-y-3">
+
+              <div className="mb-4">
+                <label className="eyebrow block mb-2">Step 1 — Upload ID or DD214</label>
+                <p className="text-xs text-muted mb-3">
+                  Stored privately — only visible to National Staff.
+                </p>
+
+                {!docPath ? (
+                  <label
+                    className={`flex flex-col items-center justify-center gap-2 border border-dashed rounded-sm p-6 cursor-pointer transition-colors ${
+                      uploadError ? 'border-status-attention' : 'border-hairline hover:border-gold'
+                    }`}
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="animate-spin text-gold" size={22} />
+                        <span className="text-sm text-muted">Uploading {docFile?.name}…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="text-muted" size={22} />
+                        <span className="text-sm text-muted">Click to upload PDF, JPG, or PNG (max 10MB)</span>
+                      </>
+                    )}
                     <input
-                      required
-                      placeholder="Full name"
-                      className="input-field"
-                      value={form.name}
-                      onChange={(e) => update('name', e.target.value)}
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      className="hidden"
+                      onChange={handleFileChange}
+                      disabled={uploading}
                     />
-                    <input
-                      type="email"
-                      placeholder="Email"
-                      className="input-field"
-                      value={form.email}
-                      onChange={(e) => update('email', e.target.value)}
-                    />
-                    <input
-                      placeholder="Phone"
-                      className="input-field"
-                      value={form.phone}
-                      onChange={(e) => update('phone', e.target.value)}
-                    />
-                    <select
-                      className="input-field"
-                      value={form.position}
-                      onChange={(e) => update('position', e.target.value)}
+                  </label>
+                ) : (
+                  <div className="flex items-center gap-3 border border-status-active/40 bg-status-active/10 rounded-sm p-3">
+                    <FileCheck className="text-status-active shrink-0" size={20} />
+                    <div className="text-sm text-ink truncate">{docFile?.name}</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDocPath(null)
+                        setDocFile(null)
+                      }}
+                      className="ml-auto text-xs text-muted hover:text-gold shrink-0"
                     >
-                      {POSITIONS.map((p) => (
-                        <option key={p.value} value={p.value}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="input-field"
-                      value={form.combat_status}
-                      onChange={(e) => update('combat_status', e.target.value)}
-                    >
-                      <option>Non-combat veteran</option>
-                      <option>Combat veteran</option>
-                    </select>
+                      Replace
+                    </button>
                   </div>
-                </div>
+                )}
+                {uploadError && <p className="text-status-attention text-sm mt-2">{uploadError}</p>}
+              </div>
 
-                <div className="pt-2">
-                  <label className="eyebrow block mb-1.5">Site &amp; funding (optional)</label>
-                  <p className="text-xs text-muted mb-2">
-                    If you have ideas here, share them — this doesn't need to be final.
-                  </p>
-                  <div className="space-y-3">
-                    <textarea
-                      placeholder="Proposed meeting location or site (e.g. a VFW hall, community center, or address you have access to)"
-                      className="input-field"
-                      rows={2}
-                      value={form.proposed_site_location}
-                      onChange={(e) => update('proposed_site_location', e.target.value)}
-                    />
-                    <textarea
-                      placeholder="Funding you can personally commit, or sources you could help raise (amounts, sponsors, grants you know of)"
-                      className="input-field"
-                      rows={2}
-                      value={form.funding_commitment}
-                      onChange={(e) => update('funding_commitment', e.target.value)}
-                    />
-                  </div>
-                </div>
+              <fieldset disabled={!canFillOutRest} className={!canFillOutRest ? 'opacity-40 pointer-events-none' : ''}>
+                <div className="mb-2 eyebrow">Step 2 — Your information</div>
+                <form onSubmit={handleSubmit} className="space-y-3">
+                  <input
+                    required
+                    placeholder="Full name"
+                    className="input-field"
+                    value={form.name}
+                    onChange={(e) => update('name', e.target.value)}
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    className="input-field"
+                    value={form.email}
+                    onChange={(e) => update('email', e.target.value)}
+                  />
+                  <input
+                    placeholder="Phone"
+                    className="input-field"
+                    value={form.phone}
+                    onChange={(e) => update('phone', e.target.value)}
+                  />
+                  <select
+                    className="input-field"
+                    value={form.position}
+                    onChange={(e) => update('position', e.target.value)}
+                  >
+                    {POSITIONS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="input-field"
+                    value={form.combat_status}
+                    onChange={(e) => update('combat_status', e.target.value)}
+                  >
+                    <option>Non-combat veteran</option>
+                    <option>Combat veteran</option>
+                  </select>
 
-                {error && <p className="text-status-attention text-sm">{error}</p>}
+                  {error && <p className="text-status-attention text-sm">{error}</p>}
 
-                <button type="submit" disabled={submitting} className="btn-gold w-full disabled:opacity-50">
-                  {submitting ? 'Joining…' : 'Join Founding Team'}
-                </button>
-              </form>
+                  <button
+                    type="submit"
+                    disabled={submitting || !canFillOutRest}
+                    className="btn-gold w-full disabled:opacity-50"
+                  >
+                    {submitting ? 'Joining…' : 'Join Founding Team'}
+                  </button>
+                </form>
+              </fieldset>
             </>
           )}
         </div>

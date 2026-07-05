@@ -171,8 +171,9 @@ create table founding_team_members (
   dd214_reviewed boolean not null default false,
   combat_service_verified boolean not null default false,
   membership_approved boolean not null default false,
-  proposed_site_location text, -- where this person suggests the post meet/operate
-  funding_commitment text, -- what they can personally commit or help raise
+  proposed_site_location text, -- optional, mainly populated by the founding commander
+  funding_commitment text, -- optional, mainly populated by the founding commander
+  dd214_storage_path text, -- this member's own ID/DD214 upload, in the shared 'dd214-uploads' bucket
   created_at timestamptz not null default now()
 );
 
@@ -521,6 +522,30 @@ $$;
 create trigger trg_log_dd214_uploaded
   after update on post_applications
   for each row execute function log_dd214_uploaded();
+
+-- 3. Founding team member verification status auto-computes from the three
+--    checkboxes on the roster (DD214 reviewed, combat service verified,
+--    membership approved) instead of needing a separate manual toggle that's
+--    easy to forget — checking all three is what "verified" means.
+create or replace function compute_founding_team_verification()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.dd214_reviewed and new.combat_service_verified and new.membership_approved then
+    new.verification_status := 'verified';
+  elsif old.verification_status = 'verified' then
+    -- unchecking any box after being verified drops it back to pending —
+    -- rejection remains a deliberate separate action, not a side effect.
+    new.verification_status := 'pending';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_compute_founding_team_verification
+  before update on founding_team_members
+  for each row execute function compute_founding_team_verification();
 
 -- Note: this schema deliberately does NOT send emails or SMS on its own —
 -- Postgres/Supabase can't do that natively. To get applicant confirmation
