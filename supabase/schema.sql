@@ -322,6 +322,7 @@ create table sponsors (
   agreement_start_date date,
   agreement_end_date date,
   agreement_storage_path text, -- signed agreement, in the private 'sponsor-agreements' bucket
+  category text, -- e.g. "Restaurant/Food Service", "Fitness/Sporting Goods" — powers Build A Post sponsor matching
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -570,7 +571,13 @@ create table financial_transactions (
 
 -- ----------------------------------------------------------------------------
 -- MODULE 10: BUILD A POST (franchise planning tool)
+-- Reference content on 8 facility layouts, plus real per-post tracking: a
+-- post can commit to building one, get a checklist, log actual spend
+-- against a target budget, and generate an AI business case using their
+-- own data and their own actual sponsor list.
 -- ----------------------------------------------------------------------------
+create type facility_project_status as enum ('planning', 'in_progress', 'complete');
+
 create table build_a_post_modules (
   id uuid primary key default uuid_generate_v4(),
   name text not null, -- e.g. "Bar Layout", "Kitchen Layout", "Classroom Layout"
@@ -579,10 +586,52 @@ create table build_a_post_modules (
   startup_cost_high numeric,
   equipment_list text[],
   sponsor_opportunities text,
+  relevant_sponsor_categories text[], -- matched against sponsors.category for the "sponsors who might fund this" feature
   grant_opportunities text,
   revenue_potential text,
+  build_checklist_template text[], -- seeded onto a post_facility_projects row when a post starts this build
+  generate_prompt_template text, -- powers "Generate Business Case"
   created_at timestamptz not null default now()
 );
+
+-- A post's actual commitment to building one of the above out — this is
+-- what makes the module a planning tool instead of just a brochure.
+create table post_facility_projects (
+  id uuid primary key default uuid_generate_v4(),
+  post_id uuid not null references posts(id) on delete cascade,
+  module_id uuid not null references build_a_post_modules(id),
+  status facility_project_status not null default 'planning',
+  target_budget numeric(12,2),
+  notes text,
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (post_id, module_id)
+);
+
+create table post_facility_checklist_items (
+  id uuid primary key default uuid_generate_v4(),
+  project_id uuid not null references post_facility_projects(id) on delete cascade,
+  label text not null,
+  is_complete boolean not null default false,
+  completed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table build_a_post_generated_plans (
+  id uuid primary key default uuid_generate_v4(),
+  module_id uuid not null references build_a_post_modules(id),
+  post_id uuid references posts(id),
+  title text not null,
+  content text not null,
+  generated_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+-- Link the financial ledger (Module 9) to a specific facility project, so a
+-- post can see real budget-vs-actual instead of just an estimate.
+alter table financial_transactions
+  add column facility_project_id uuid references post_facility_projects(id);
 
 -- ----------------------------------------------------------------------------
 -- ACTIVITY FEED (national dashboard)
@@ -636,6 +685,9 @@ alter table annual_reviews enable row level security;
 alter table community_service_events enable row level security;
 alter table financial_transactions enable row level security;
 alter table build_a_post_modules enable row level security;
+alter table post_facility_projects enable row level security;
+alter table post_facility_checklist_items enable row level security;
+alter table build_a_post_generated_plans enable row level security;
 alter table activity_feed enable row level security;
 
 -- Helper: is the current user national-level staff?
@@ -832,6 +884,23 @@ create policy "financial_transactions_insert_auth" on financial_transactions
 create policy "build_a_post_read_all" on build_a_post_modules for select using (true);
 create policy "build_a_post_write_national" on build_a_post_modules
   for all using (is_national_role());
+
+create policy "facility_projects_select_post_or_national" on post_facility_projects
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "facility_projects_write_auth" on post_facility_projects
+  for all using (auth.uid() is not null);
+
+create policy "facility_checklist_select_post_or_national" on post_facility_checklist_items
+  for select using (
+    is_national_role() or project_id in (select id from post_facility_projects where post_id = current_post_id())
+  );
+create policy "facility_checklist_write_auth" on post_facility_checklist_items
+  for all using (auth.uid() is not null);
+
+create policy "facility_plans_select_post_or_national" on build_a_post_generated_plans
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "facility_plans_write_auth" on build_a_post_generated_plans
+  for insert with check (auth.uid() is not null);
 
 create policy "activity_feed_read_all" on activity_feed for select using (true);
 create policy "activity_feed_write_auth" on activity_feed
@@ -1067,6 +1136,98 @@ insert into committees (name, description) values
   ('Governance Committee', 'Reviews bylaws, constitutional, and governance resolutions.'),
   ('Expansion Committee', 'Reviews resolutions related to new post development and expansion.')
 on conflict do nothing;
+
+-- ============================================================================
+-- SEED: Build A Post — 8 facility layouts with real starter content.
+-- Cost ranges are general industry estimates, not CVOA-specific figures —
+-- always adjust for local market, region, and whether space is leased vs.
+-- donated. Skipped entirely if already seeded.
+-- ============================================================================
+do $$ begin
+  if exists (select 1 from build_a_post_modules where name = 'Bar Layout') then
+    return;
+  end if;
+
+  insert into build_a_post_modules
+    (name, description, startup_cost_low, startup_cost_high, equipment_list, sponsor_opportunities, relevant_sponsor_categories, grant_opportunities, revenue_potential, build_checklist_template, generate_prompt_template)
+  values
+    ('Bar Layout',
+     'A social/gathering space with a serving bar — the most common heart-of-the-post gathering spot.',
+     8000, 25000,
+     array['Bar top and back bar', 'Draft beer system', 'Glassware and barware', 'POS/register system', 'Under-bar refrigeration', 'Liquor license (state-dependent)'],
+     'Local breweries and beverage distributors will often sponsor equipment (draft systems, signage, glassware) in exchange for tap placement and brand visibility.',
+     array['Restaurant/Food Service', 'Beverage/Alcohol Distribution'],
+     'Not typically grant-eligible due to alcohol association — fund through member dues, sponsor equipment donations, or event revenue instead.',
+     'Moderate, steady — usually a member-retention and event-revenue driver more than a primary income source. Expect modest net margin after licensing and insurance costs.',
+     array['Confirm state/local liquor licensing requirements', 'Secure liability insurance rider', 'Source bar equipment (new or donated)', 'Set up POS and inventory tracking', 'Train designated bartenders/servers', 'Establish house rules and closing procedures'],
+     'Write a facility business case for adding a Bar Layout at {{post_name}} in {{post_city_state}}. Include: startup cost estimate, key licensing/insurance considerations, a simple revenue projection, and 2-3 next steps to get started. Keep it concise and practical for a volunteer-run post.'),
+
+    ('Kitchen Layout',
+     'A full or partial commercial kitchen for meal programs, fundraisers, and event catering.',
+     15000, 60000,
+     array['Commercial range/oven', 'Refrigeration (reach-in or walk-in)', 'Prep tables (stainless steel)', 'Ventilation hood system', 'Three-compartment sink', 'Dishwashing station', 'Food storage shelving'],
+     'Restaurant equipment suppliers and regional grocery chains will sometimes donate equipment or provide in-kind food donations for community meal programs in exchange for recognition.',
+     array['Restaurant/Food Service', 'Grocery/Retail'],
+     'Strong candidate for USDA rural development grants and community food security grants — meal programs for veterans are a compelling, fundable use case.',
+     'High — meal programs, facility rentals for community events, and fundraising dinners can all generate real revenue once operational.',
+     array['Confirm local health department permitting requirements', 'Pass health inspection before first use', 'Source commercial-grade equipment', 'Establish food safety protocols and certifications for volunteers', 'Set up a meal program schedule or rental calendar'],
+     'Write a facility business case for adding a Kitchen Layout at {{post_name}} in {{post_city_state}}. Include: startup cost estimate, health permitting considerations, a simple revenue/impact projection (e.g. meal program reach), and 2-3 next steps. Keep it concise and practical for a volunteer-run post.'),
+
+    ('Classroom Layout',
+     'Flexible space for training sessions, education programs, and general meetings.',
+     3000, 12000,
+     array['Tables and stackable chairs', 'AV equipment/projector', 'Whiteboard or smart board', 'Wifi infrastructure', 'Storage for supplies'],
+     'Local colleges, trade schools, and tech companies will sometimes donate equipment (projectors, computers) in exchange for being named an education partner.',
+     array['Education/Training', 'Technology'],
+     'Department of Education adult education grants, workforce development grants, and some VA education partnership programs may apply.',
+     'Low direct revenue, high mission value — this space typically enables other revenue-generating or grant-eligible programs rather than earning directly.',
+     array['Identify recurring programs that will use the space', 'Source tables, chairs, and AV equipment', 'Set up reliable wifi', 'Build a room-booking/scheduling process'],
+     'Write a facility business case for adding a Classroom Layout at {{post_name}} in {{post_city_state}}. Include: startup cost estimate, what programs it could support, and 2-3 next steps. Keep it concise and practical for a volunteer-run post.'),
+
+    ('Employment Office',
+     'A dedicated space for job placement and career services staff to meet with members one-on-one.',
+     2000, 8000,
+     array['Desks and office chairs', 'Computers with internet access', 'Phone line', 'Filing/document storage', 'Privacy partition or separate room'],
+     'Regional employers actively seeking veteran hires, and staffing agencies with veteran hiring initiatives, are natural partners — some will fund the space directly for referral access.',
+     array['Staffing/Recruiting', 'Professional Services'],
+     'DOL Veterans Employment and Training Service (VETS) grants are the most direct fit — this is one of the more fundable facility types.',
+     'Indirect — strong member retention and community reputation value, and can become a genuine revenue source if paired with employer referral fees.',
+     array['Identify 1-2 founding employer partners', 'Set up basic office equipment', 'Establish confidentiality/privacy practices for job seekers', 'Create an intake process for members seeking help'],
+     'Write a facility business case for adding an Employment Office at {{post_name}} in {{post_city_state}}. Include: startup cost estimate, potential employer partnerships, and 2-3 next steps. Keep it concise and practical for a volunteer-run post.'),
+
+    ('VA Clinic Space',
+     'Space leased or donated to the VA for satellite clinic visits, bringing services directly to members.',
+     5000, 20000,
+     array['Exam room build-out (walls, door, sink)', 'Waiting area seating', 'ADA-compliant access', 'Basic medical storage'],
+     'Regional health systems and medical equipment suppliers may support build-out costs in exchange for community partnership recognition.',
+     array['Healthcare', 'Medical Equipment/Supplies'],
+     'VA community partnership grants and some regional health system community benefit funds are worth exploring — the VA itself may also have facility-sharing programs.',
+     'Lease income if the VA compensates for space use — check with your regional VA office on their community space programs before building this out.',
+     array['Contact regional VA office about community clinic partnerships', 'Confirm ADA compliance requirements', 'Build out exam space to VA specifications', 'Establish visit scheduling process with VA staff'],
+     'Write a facility business case for adding a VA Clinic Space at {{post_name}} in {{post_city_state}}. Include: startup cost estimate, how to approach the regional VA about a partnership, and 2-3 next steps. Keep it concise and practical for a volunteer-run post.'),
+
+    ('Transitional Housing Rooms',
+     'On-site or adjacent housing rooms for veterans in transition — the most resource-intensive facility type.',
+     20000, 100000,
+     array['Bedroom furnishings (bed, storage)', 'Shared bathroom facilities', 'Fire safety/egress compliance', 'Security system', 'Laundry facilities'],
+     'This is typically too capital-intensive for standard local sponsorship alone — most successful programs combine sponsor support with grant funding and possibly municipal partnership.',
+     array['Construction/Hardware', 'Real Estate'],
+     'HUD-VASH and Supportive Services for Veteran Families (SSVF) grants are the primary funding mechanisms — this facility type essentially requires grant funding to be viable.',
+     'Can generate program revenue through per-diem reimbursement models if properly licensed, but primarily a mission-driven investment requiring sustained funding.',
+     array['Research HUD-VASH/SSVF eligibility requirements before committing', 'Confirm zoning and occupancy permitting', 'Complete fire/safety code compliance', 'Establish resident intake and support-services partnerships'],
+     'Write a facility feasibility summary for adding Transitional Housing Rooms at {{post_name}} in {{post_city_state}}. Include: startup cost estimate, the most relevant federal funding programs to research first, and 2-3 realistic next steps. Be direct that this is the most resource-intensive facility type and requires grant funding to be viable. Keep it concise.'),
+
+    ('Fitness Center',
+     'A wellness and physical fitness space for members — supports both physical and mental health programming.',
+     10000, 40000,
+     array['Cardio machines', 'Free weights and racks', 'Rubber flooring', 'Locker/changing area', 'Mirrors and safety equipment'],
+     'Fitness equipment brands and local gyms looking for co-branding opportunities are strong candidates — equipment donations are common in this category.',
+     array['Fitness/Sporting Goods', 'Health & Wellness'],
+     'Veteran wellness grants exist at some state VA offices — worth checking your state-level veteran affairs department specifically.',
+     'Membership add-on fee potential if run as a modest paid amenity, though many posts offer it as a free member benefit instead.',
+     array['Source equipment (new, used, or donated)', 'Install proper flooring and safety equipment', 'Establish usage hours and waiver/liability process', 'Consider a certified fitness volunteer or partnership for programming'],
+     'Write a facility business case for adding a Fitness Center at {{post_name}} in {{post_city_state}}. Include: startup cost estimate, equipment sourcing ideas, and 2-3 next steps. Keep it concise and practical for a volunteer-run post.');
+end $$;
 
 -- ============================================================================
 -- STORAGE: Post Toolkit downloads

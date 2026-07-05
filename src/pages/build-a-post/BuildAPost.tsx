@@ -1,92 +1,103 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
-
-interface BuildModule {
-  id: string
-  name: string
-  description: string | null
-  startup_cost_low: number | null
-  startup_cost_high: number | null
-  equipment_list: string[] | null
-  sponsor_opportunities: string | null
-  grant_opportunities: string | null
-  revenue_potential: string | null
-}
+import type { BuildAPostModule, Post, PostFacilityProject } from '@/lib/types'
 
 export default function BuildAPost() {
-  const [modules, setModules] = useState<BuildModule[]>([])
-  const [selected, setSelected] = useState<BuildModule | null>(null)
+  const navigate = useNavigate()
+  const { profile, isNational } = useAuth()
+  const [modules, setModules] = useState<BuildAPostModule[]>([])
+  const [posts, setPosts] = useState<Post[]>([])
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
+  const [projects, setProjects] = useState<PostFacilityProject[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase
-      .from('build_a_post_modules')
-      .select('*')
-      .then(({ data }) => setModules((data ?? []) as BuildModule[]))
-  }, [])
+    supabase.from('build_a_post_modules').select('*').order('name').then(({ data }: any) => {
+      setModules((data ?? []) as BuildAPostModule[])
+      setLoading(false)
+    })
+    if (isNational) {
+      supabase.from('posts').select('*').then(({ data }: any) => setPosts((data ?? []) as Post[]))
+    } else if (profile?.post_id) {
+      setSelectedPostId(profile.post_id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNational, profile?.post_id])
+
+  useEffect(() => {
+    if (!selectedPostId) {
+      setProjects([])
+      return
+    }
+    supabase.from('post_facility_projects').select('*').eq('post_id', selectedPostId).then(({ data }: any) => {
+      setProjects((data ?? []) as PostFacilityProject[])
+    })
+  }, [selectedPostId])
+
+  function projectFor(moduleId: string) {
+    return projects.find((p) => p.module_id === moduleId)
+  }
 
   return (
     <div>
-      <PageHeader eyebrow="Module 10 — Franchise Playbook" title="Build A Post" />
+      <PageHeader
+        eyebrow="Module 10 — The Playbook"
+        title="Build A Post"
+        action={
+          isNational && posts.length > 0 ? (
+            <select
+              className="input-field w-64"
+              value={selectedPostId ?? ''}
+              onChange={(e) => setSelectedPostId(e.target.value || null)}
+            >
+              <option value="">View content only (no post selected)</option>
+              {posts.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          ) : undefined
+        }
+      />
 
-      {modules.length === 0 ? (
-        <EmptyState
-          title="Planning modules not seeded yet"
-          hint="Populate build_a_post_modules with layouts: Bar, Kitchen, Classroom, Employment Office, Education Office, VA Clinic Space, Transitional Housing Rooms, Fitness Center — each with cost estimates, equipment, sponsor/grant opportunities, and revenue potential."
-        />
+      <p className="text-sm text-muted mb-6 max-w-2xl">
+        Explore what it takes to build out each part of a post — cost estimates, equipment,
+        sponsor and grant angles, and revenue potential. Select a post above to start tracking a
+        real project: a checklist, a budget, and actual spend against it.
+      </p>
+
+      {loading ? (
+        <p className="text-sm text-muted">Loading…</p>
+      ) : modules.length === 0 ? (
+        <EmptyState title="Planning modules not seeded yet" />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 space-y-2">
-            {modules.map((m) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {modules.map((m) => {
+            const project = projectFor(m.id)
+            return (
               <button
                 key={m.id}
-                onClick={() => setSelected(m)}
-                className={`panel w-full text-left p-3 ${selected?.id === m.id ? 'border-gold' : ''}`}
+                onClick={() => navigate(`/build-a-post/${m.id}${selectedPostId ? `?post=${selectedPostId}` : ''}`)}
+                className="panel p-5 text-left hover:border-gold transition-colors"
               >
-                {m.name}
+                <div className="font-display text-xl tracking-wide mb-1">{m.name}</div>
+                <p className="text-xs text-muted mb-3 line-clamp-2">{m.description}</p>
+                <div className="font-mono text-xs text-gold mb-2">
+                  ${m.startup_cost_low?.toLocaleString() ?? '—'} – ${m.startup_cost_high?.toLocaleString() ?? '—'}
+                </div>
+                {project && (
+                  <div className="text-[11px] font-mono uppercase tracking-wide text-status-developing">
+                    Project: {project.status.replaceAll('_', ' ')}
+                  </div>
+                )}
               </button>
-            ))}
-          </div>
-          <div className="lg:col-span-2">
-            {selected ? (
-              <div className="panel p-6 space-y-4">
-                <div className="font-display text-2xl">{selected.name}</div>
-                <p className="text-sm text-muted">{selected.description}</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="eyebrow mb-1">Startup Cost</div>
-                    <div className="font-mono text-gold">
-                      ${selected.startup_cost_low?.toLocaleString() ?? '—'} – $
-                      {selected.startup_cost_high?.toLocaleString() ?? '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="eyebrow mb-1">Revenue Potential</div>
-                    <div className="text-sm">{selected.revenue_potential ?? '—'}</div>
-                  </div>
-                </div>
-                <div>
-                  <div className="eyebrow mb-1">Equipment List</div>
-                  <ul className="text-sm list-disc list-inside text-muted">
-                    {(selected.equipment_list ?? []).map((eq) => (
-                      <li key={eq}>{eq}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="eyebrow mb-1">Sponsor Opportunities</div>
-                  <p className="text-sm text-muted">{selected.sponsor_opportunities ?? '—'}</p>
-                </div>
-                <div>
-                  <div className="eyebrow mb-1">Grant Opportunities</div>
-                  <p className="text-sm text-muted">{selected.grant_opportunities ?? '—'}</p>
-                </div>
-              </div>
-            ) : (
-              <EmptyState title="Select a layout" hint="Choose a facility area to see the build-out plan." />
-            )}
-          </div>
+            )
+          })}
         </div>
       )}
     </div>

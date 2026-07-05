@@ -230,8 +230,25 @@ function SponsorCard({
   )
 }
 
+const SPONSOR_CATEGORIES = [
+  'Restaurant/Food Service',
+  'Beverage/Alcohol Distribution',
+  'Grocery/Retail',
+  'Education/Training',
+  'Technology',
+  'Staffing/Recruiting',
+  'Professional Services',
+  'Healthcare',
+  'Medical Equipment/Supplies',
+  'Construction/Hardware',
+  'Real Estate',
+  'Fitness/Sporting Goods',
+  'Health & Wellness',
+  'Other',
+]
+
 function AddSponsorModal({ postId, onClose, onAdded }: { postId: string; onClose: () => void; onAdded: () => void }) {
-  const [form, setForm] = useState({ company: '', contact_name: '', email: '', phone: '', sponsorship_value: '' })
+  const [form, setForm] = useState({ company: '', contact_name: '', email: '', phone: '', sponsorship_value: '', category: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -250,6 +267,7 @@ function AddSponsorModal({ postId, onClose, onAdded }: { postId: string; onClose
       email: form.email || null,
       phone: form.phone || null,
       sponsorship_value: form.sponsorship_value ? Number(form.sponsorship_value) : 0,
+      category: form.category || null,
       stage: 'identified',
     })
     setSaving(false)
@@ -269,6 +287,14 @@ function AddSponsorModal({ postId, onClose, onAdded }: { postId: string; onClose
           <input type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
           <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
         </div>
+        <select className="input-field" value={form.category} onChange={(e) => update('category', e.target.value)}>
+          <option value="">Business category (optional)</option>
+          {SPONSOR_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
         <input
           type="number"
           min={0}

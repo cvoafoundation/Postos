@@ -256,7 +256,48 @@ Click into any post from the Post Health list for the full breakdown and to log 
 Run `post-health-upgrade.sql` in Supabase, then push the code. The old `post_health_metrics`
 table is left in place untouched — nothing is deleted.
 
+## Build A Post (Module 10) — full rebuild, all 3 levels
+
+This went from an empty, unseeded table to a real franchise planning tool with all three levels
+we discussed built in.
+
+**Level 1 — Reference content**, for all 8 facility layouts from the spec (Bar, Kitchen,
+Classroom, Employment Office, VA Clinic Space, Transitional Housing, Fitness Center): real cost
+ranges, equipment lists, sponsor angles, grant angles, and revenue potential. These are general
+industry-standard estimates, not CVOA-specific figures — always worth adjusting for local
+market and region, which the content itself says.
+
+**Level 2 — Real per-post tracking.** A post can click "Start Project" on any layout, which
+seeds a real build checklist (sourced from that module's template) and lets them set a target
+budget. Actual spend is logged directly against the project and pulled from the same financial
+ledger built into Post Health — so "budget vs. actual" is real math on real data, not a
+separate spreadsheet.
+
+**Level 3 — Smart matching + AI generation.**
+- Sponsors now have an optional `category` field (Restaurant/Food Service, Fitness/Sporting
+  Goods, Healthcare, etc.). Each facility module lists which categories are relevant to it, so
+  a post opening the Fitness Center module sees which of *their own actual sponsors* are
+  plausible funders for it — not a generic suggestion, a real match against their CRM data.
+- "Generate Business Case" calls a new Edge Function (`generate-facility-plan`) that writes a
+  real, post-specific business case using Claude — pulling in the post's name, location, target
+  budget if set, and any matched sponsors, the same pattern as the Toolkit's Generate feature.
+
+**Honest limitation:** sponsor category matching only works going forward — any sponsors
+already in your database from before this update won't have a category until someone sets one
+(there's a dropdown on the "Add Sponsor" form now). The public "Become a Sponsor" form doesn't
+ask for it either, since a business self-categorizing isn't reliable — staff should set it when
+reviewing a new sponsor instead.
+
+### Deploying this
+
+1. Run `build-a-post-upgrade.sql` in the SQL Editor.
+2. Push the updated `src` folder and the new `supabase/functions/generate-facility-plan` folder.
+3. If you haven't already deployed `generate-toolkit-document`'s `ANTHROPIC_API_KEY` secret,
+   set it up now (Project Settings → Edge Functions → Secrets) and deploy
+   `generate-facility-plan` — same key works for both functions.
+
 ## Stack
+
 
 
 

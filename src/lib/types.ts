@@ -114,6 +114,7 @@ export interface Sponsor {
   agreement_start_date: string | null
   agreement_end_date: string | null
   agreement_storage_path: string | null
+  category: string | null
   created_at: string
   updated_at: string
 }
@@ -485,6 +486,55 @@ export interface CongressCalendarEvent {
   event_date: string
   description: string | null
   resolution_id: string | null
+  created_at: string
+}
+
+export type FacilityProjectStatus = 'planning' | 'in_progress' | 'complete'
+
+export interface BuildAPostModule {
+  id: string
+  name: string
+  description: string | null
+  startup_cost_low: number | null
+  startup_cost_high: number | null
+  equipment_list: string[] | null
+  sponsor_opportunities: string | null
+  relevant_sponsor_categories: string[] | null
+  grant_opportunities: string | null
+  revenue_potential: string | null
+  build_checklist_template: string[] | null
+  generate_prompt_template: string | null
+  created_at: string
+}
+
+export interface PostFacilityProject {
+  id: string
+  post_id: string
+  module_id: string
+  status: FacilityProjectStatus
+  target_budget: number | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PostFacilityChecklistItem {
+  id: string
+  project_id: string
+  label: string
+  is_complete: boolean
+  completed_at: string | null
+  created_at: string
+}
+
+export interface BuildAPostGeneratedPlan {
+  id: string
+  module_id: string
+  post_id: string | null
+  title: string
+  content: string
+  generated_by: string | null
   created_at: string
 }
 

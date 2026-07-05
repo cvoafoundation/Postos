@@ -25,6 +25,7 @@ import TransparencyPortal from '@/pages/congress/TransparencyPortal'
 import PostHealth from '@/pages/health/PostHealth'
 import PostHealthDetail from '@/pages/health/PostHealthDetail'
 import BuildAPost from '@/pages/build-a-post/BuildAPost'
+import BuildAPostDetail from '@/pages/build-a-post/BuildAPostDetail'
 
 export default function App() {
   return (
@@ -77,6 +78,7 @@ function AuthenticatedApp() {
         <Route path="/health" element={<PostHealth />} />
         <Route path="/health/:postId" element={<PostHealthDetail />} />
         <Route path="/build-a-post" element={<BuildAPost />} />
+        <Route path="/build-a-post/:moduleId" element={<BuildAPostDetail />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>
