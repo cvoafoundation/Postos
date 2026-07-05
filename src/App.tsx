@@ -8,6 +8,7 @@ import VettingBoard from '@/pages/vetting/VettingBoard'
 import FoundingTeamBuilder from '@/pages/founding-team/FoundingTeamBuilder'
 import JoinFoundingTeam from '@/pages/founding-team/JoinFoundingTeam'
 import PublicChecklist from '@/pages/checklist/PublicChecklist'
+import PublicRecruitSignup from '@/pages/recruiting/PublicRecruitSignup'
 import LaunchChecklist from '@/pages/checklist/LaunchChecklist'
 import Toolkit from '@/pages/toolkit/Toolkit'
 import RecruitingPipeline from '@/pages/recruiting/RecruitingPipeline'
@@ -22,6 +23,7 @@ export default function App() {
       {/* Public — no login required, shared via link */}
       <Route path="/join-founding-team/:postId" element={<JoinFoundingTeam />} />
       <Route path="/post-checklist/:postId" element={<PublicChecklist />} />
+      <Route path="/join-post/:postId" element={<PublicRecruitSignup />} />
       {/* Everything else is gated behind auth */}
       <Route path="/*" element={<AuthenticatedApp />} />
     </Routes>

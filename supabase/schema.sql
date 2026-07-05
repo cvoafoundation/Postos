@@ -424,8 +424,14 @@ create policy "checklist_delete_national" on checklist_items
 create policy "toolkit_read_all" on toolkit_templates for select using (true);
 create policy "toolkit_write_national" on toolkit_templates for insert with check (is_national_role());
 
-create policy "recruits_post_or_national" on recruits
-  for all using (is_national_role() or post_id = current_post_id());
+create policy "recruits_select_post_or_national" on recruits
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "recruits_insert_public" on recruits
+  for insert with check (true); -- public recruiting link — anyone can self-signup as a prospect
+create policy "recruits_update_post_or_national" on recruits
+  for update using (is_national_role() or post_id = current_post_id());
+create policy "recruits_delete_national" on recruits
+  for delete using (is_national_role());
 
 create policy "sponsors_post_or_national" on sponsors
   for all using (is_national_role() or post_id = current_post_id());
