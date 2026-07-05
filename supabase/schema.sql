@@ -472,6 +472,8 @@ create policy "dd214_read_national" on storage.objects
 create or replace function log_new_application()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 begin
   insert into activity_feed (event_type, post_id, summary)
@@ -494,6 +496,8 @@ create trigger trg_log_new_application
 create or replace function log_dd214_uploaded()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 begin
   if new.dd214_storage_path is not null and old.dd214_storage_path is null then

@@ -4,12 +4,14 @@ import { KanbanBoard, type KanbanColumn } from '@/components/ui/Kanban'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { POST_STATUS_LABELS, POST_STATUS_ORDER, type PostApplication, type PostStatus } from '@/lib/types'
-import { Plus, FileWarning } from 'lucide-react'
+import { Plus, FileWarning, FileSearch } from 'lucide-react'
 import { NewApplicationModal } from './NewApplication'
+import { Dd214ReviewModal } from './Dd214Review'
 
 export default function ApplicationsPipeline() {
   const [applications, setApplications] = useState<PostApplication[]>([])
   const [showNew, setShowNew] = useState(false)
+  const [reviewing, setReviewing] = useState<PostApplication | null>(null)
   const [loading, setLoading] = useState(true)
 
   async function load() {
@@ -51,7 +53,7 @@ export default function ApplicationsPipeline() {
           columns={columns}
           keyExtractor={(a) => a.id}
           renderCard={(a) => (
-            <ApplicationCard application={a} onMove={moveStatus} />
+            <ApplicationCard application={a} onMove={moveStatus} onReview={() => setReviewing(a)} />
           )}
         />
       )}
@@ -65,6 +67,17 @@ export default function ApplicationsPipeline() {
           }}
         />
       )}
+
+      {reviewing && (
+        <Dd214ReviewModal
+          application={reviewing}
+          onClose={() => setReviewing(null)}
+          onReviewed={() => {
+            setReviewing(null)
+            load()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -72,9 +85,11 @@ export default function ApplicationsPipeline() {
 function ApplicationCard({
   application,
   onMove,
+  onReview,
 }: {
   application: PostApplication
   onMove: (id: string, status: PostStatus) => void
+  onReview: () => void
 }) {
   const currentIndex = POST_STATUS_ORDER.indexOf(application.status)
   const next = POST_STATUS_ORDER[currentIndex + 1]
@@ -94,16 +109,18 @@ function ApplicationCard({
 
       <div className="mb-2">
         {hasDD214 ? (
-          <StatusBadge
-            label={`DD214: ${application.dd214_review_status}`}
-            tone={
-              application.dd214_review_status === 'verified'
-                ? 'active'
-                : application.dd214_review_status === 'rejected'
-                ? 'attention'
-                : 'developing'
-            }
-          />
+          <button onClick={onReview} className="hover:opacity-80">
+            <StatusBadge
+              label={`DD214: ${application.dd214_review_status} · review`}
+              tone={
+                application.dd214_review_status === 'verified'
+                  ? 'active'
+                  : application.dd214_review_status === 'rejected'
+                  ? 'attention'
+                  : 'developing'
+              }
+            />
+          </button>
         ) : (
           <div className="flex items-center gap-1.5 text-[11px] font-mono text-status-attention">
             <FileWarning size={12} /> No DD214 on file
@@ -119,14 +136,25 @@ function ApplicationCard({
         >
           ← Back
         </button>
-        <button
-          disabled={!next || !hasDD214}
-          onClick={() => next && onMove(application.id, next)}
-          title={!hasDD214 ? 'Cannot advance without a DD214 on file' : undefined}
-          className="text-[11px] font-mono text-gold hover:text-gold-bright disabled:opacity-30"
-        >
-          Advance →
-        </button>
+        <div className="flex items-center gap-3">
+          {hasDD214 && (
+            <button
+              onClick={onReview}
+              title="Review DD214"
+              className="text-muted hover:text-gold"
+            >
+              <FileSearch size={14} />
+            </button>
+          )}
+          <button
+            disabled={!next || !hasDD214}
+            onClick={() => next && onMove(application.id, next)}
+            title={!hasDD214 ? 'Cannot advance without a DD214 on file' : undefined}
+            className="text-[11px] font-mono text-gold hover:text-gold-bright disabled:opacity-30"
+          >
+            Advance →
+          </button>
+        </div>
       </div>
     </div>
   )
