@@ -186,16 +186,218 @@ export interface FoundingTeamMember {
   created_at: string
 }
 
+export type ResolutionStatus =
+  | 'draft'
+  | 'under_review'
+  | 'committee_review'
+  | 'discussion'
+  | 'voting'
+  | 'passed'
+  | 'rejected'
+  | 'implemented'
+  | 'archived'
+
+export const RESOLUTION_STATUS_ORDER: ResolutionStatus[] = [
+  'draft',
+  'under_review',
+  'committee_review',
+  'discussion',
+  'voting',
+  'passed',
+  'implemented',
+]
+
+export const RESOLUTION_STATUS_LABELS: Record<ResolutionStatus, string> = {
+  draft: 'Draft',
+  under_review: 'Under Review',
+  committee_review: 'Committee',
+  discussion: 'Discussion',
+  voting: 'Voting',
+  passed: 'Passed',
+  rejected: 'Rejected',
+  implemented: 'Implemented',
+  archived: 'Archived',
+}
+
+export type ResolutionCategory =
+  | 'membership'
+  | 'governance'
+  | 'budget'
+  | 'legislative_affairs'
+  | 'national_policy'
+  | 'bylaws'
+  | 'constitution'
+  | 'expansion'
+  | 'programs'
+  | 'veterans_benefits'
+  | 'other'
+
+export const RESOLUTION_CATEGORIES: ResolutionCategory[] = [
+  'membership',
+  'governance',
+  'budget',
+  'legislative_affairs',
+  'national_policy',
+  'bylaws',
+  'constitution',
+  'expansion',
+  'programs',
+  'veterans_benefits',
+  'other',
+]
+
+export type CongressVoteType = 'informal_poll' | 'delegate_vote' | 'constitutional_amendment' | 'national_referendum'
+
+export const VOTE_TYPE_LABELS: Record<CongressVoteType, string> = {
+  informal_poll: 'Informal Poll (non-binding)',
+  delegate_vote: 'Delegate Vote (binding)',
+  constitutional_amendment: 'Constitutional Amendment (supermajority)',
+  national_referendum: 'National Referendum',
+}
+
+export type DebateResponseType = 'support' | 'oppose' | 'question' | 'amendment' | 'clarification'
+
+export type CommitteeRecommendation = 'approve' | 'reject' | 'request_revisions'
+
+export type LegislativeBillStatus = 'monitoring' | 'active' | 'passed' | 'failed' | 'stalled'
+
+export type CalendarEventType = 'hearing' | 'vote' | 'deadline' | 'committee_meeting' | 'national_meeting' | 'session'
+
 export interface Resolution {
   id: string
+  resolution_number: string | null
   submitted_by: string | null
   post_id: string | null
   title: string
-  category: string | null
+  category: ResolutionCategory
+  executive_summary: string | null
   body: string
-  status: 'draft' | 'submitted' | 'in_discussion' | 'voting' | 'adopted' | 'archived'
+  purpose: string | null
+  financial_impact_cost: number | null
+  financial_impact_funding_source: string | null
+  financial_impact_revenue_note: string | null
+  organizational_impact: string | null
+  status: ResolutionStatus
+  vote_type: CongressVoteType | null
+  supermajority_threshold: number | null
+  voting_opens_at: string | null
+  voting_closes_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ResolutionCoSponsor {
+  id: string
+  resolution_id: string
+  profile_id: string | null
+  created_at: string
+}
+
+export interface ResolutionAmendment {
+  id: string
+  resolution_id: string
+  amended_by: string | null
+  amendment_summary: string
+  previous_body: string
+  new_body: string
+  created_at: string
+}
+
+export interface ResolutionDocument {
+  id: string
+  resolution_id: string
+  title: string
+  storage_path: string
+  uploaded_by: string | null
+  created_at: string
+}
+
+export interface ResolutionComment {
+  id: string
+  resolution_id: string
+  parent_comment_id: string | null
+  author_id: string | null
+  response_type: DebateResponseType
+  body: string
+  created_at: string
+}
+
+export interface ResolutionVote {
+  id: string
+  resolution_id: string
+  vote_type: CongressVoteType
+  voter_id: string | null
+  voter_post_id: string | null
+  vote: boolean
+  created_at: string
+}
+
+export interface Committee {
+  id: string
+  name: string
+  description: string | null
+  created_at: string
+}
+
+export interface CommitteeMember {
+  id: string
+  committee_id: string
+  profile_id: string | null
+  is_chair: boolean
+  created_at: string
+}
+
+export interface CommitteeReview {
+  id: string
+  resolution_id: string
+  committee_id: string
+  recommendation: CommitteeRecommendation
+  notes: string | null
+  reviewed_by: string | null
+  created_at: string
+}
+
+export interface LegislativeBill {
+  id: string
+  bill_number: string | null
+  title: string
+  level: string
+  jurisdiction: string | null
+  summary: string | null
+  status: LegislativeBillStatus
+  cvoa_position: string | null
+  impact_analysis: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CongressAnnouncement {
+  id: string
+  title: string
+  body: string
+  category: string
+  published_by: string | null
+  created_at: string
+}
+
+export interface CongressCalendarEvent {
+  id: string
+  title: string
+  event_type: CalendarEventType
+  event_date: string
+  description: string | null
+  resolution_id: string | null
+  created_at: string
+}
+
+export interface CongressDelegate {
+  id: string
+  post_id: string
+  profile_id: string | null
+  is_alternate: boolean
+  term_start: string | null
+  term_end: string | null
+  created_at: string
 }
 
 export interface ActivityFeedItem {

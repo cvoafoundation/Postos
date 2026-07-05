@@ -15,6 +15,12 @@ import Toolkit from '@/pages/toolkit/Toolkit'
 import RecruitingPipeline from '@/pages/recruiting/RecruitingPipeline'
 import SponsorsCRM from '@/pages/sponsors/SponsorsCRM'
 import VeteransCongress from '@/pages/congress/VeteransCongress'
+import ResolutionDetail from '@/pages/congress/ResolutionDetail'
+import Committees from '@/pages/congress/Committees'
+import Delegates from '@/pages/congress/Delegates'
+import LegislativeTracker from '@/pages/congress/LegislativeTracker'
+import CongressCalendar from '@/pages/congress/CongressCalendar'
+import TransparencyPortal from '@/pages/congress/TransparencyPortal'
 import PostHealth from '@/pages/health/PostHealth'
 import BuildAPost from '@/pages/build-a-post/BuildAPost'
 
@@ -26,6 +32,7 @@ export default function App() {
       <Route path="/post-checklist/:postId" element={<PublicChecklist />} />
       <Route path="/join-post/:postId" element={<PublicRecruitSignup />} />
       <Route path="/become-a-sponsor/:postId" element={<BecomeASponsor />} />
+      <Route path="/transparency" element={<TransparencyPortal />} />
       {/* Everything else is gated behind auth */}
       <Route path="/*" element={<AuthenticatedApp />} />
     </Routes>
@@ -59,6 +66,11 @@ function AuthenticatedApp() {
         <Route path="/recruiting" element={<RecruitingPipeline />} />
         <Route path="/sponsors" element={<SponsorsCRM />} />
         <Route path="/congress" element={<VeteransCongress />} />
+        <Route path="/congress/resolutions/:id" element={<ResolutionDetail />} />
+        <Route path="/congress/committees" element={<Committees />} />
+        <Route path="/congress/delegates" element={<Delegates />} />
+        <Route path="/congress/legislative" element={<LegislativeTracker />} />
+        <Route path="/congress/calendar" element={<CongressCalendar />} />
         <Route path="/health" element={<PostHealth />} />
         <Route path="/build-a-post" element={<BuildAPost />} />
         <Route path="*" element={<Navigate to="/" replace />} />

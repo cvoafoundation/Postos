@@ -104,21 +104,57 @@ export const seedData: Record<string, any[]> = {
   ],
 
   congress_delegates: [
-    { id: 'del-1', post_id: 'post-1', profile_id: null, is_alternate: false, created_at: daysAgo(100) },
+    { id: 'del-1', post_id: 'post-1', profile_id: null, is_alternate: false, term_start: daysAgo(100).slice(0, 10), term_end: null, created_at: daysAgo(100) },
   ],
 
   resolutions: [
-    { id: 'res-1', submitted_by: null, post_id: 'post-1', title: 'Standardize VA Claims Navigation Support Across All Posts', category: 'Resolution', body: 'Proposes every active post maintain at least one trained VA claims navigator.', status: 'voting', created_at: daysAgo(20), updated_at: daysAgo(2) },
-    { id: 'res-2', submitted_by: null, post_id: 'post-2', title: 'National Fundraising Minimum for Charter Renewal', category: 'Legislative Priority', body: 'Sets a minimum annual fundraising benchmark tied to charter renewal.', status: 'in_discussion', created_at: daysAgo(15), updated_at: daysAgo(1) },
-    { id: 'res-3', submitted_by: null, post_id: 'post-3', title: 'Rural Access Grant Program', category: 'National Concern', body: 'Calls for a dedicated grant pool for posts serving rural, low-density regions.', status: 'submitted', created_at: daysAgo(8), updated_at: daysAgo(8) },
+    { id: 'res-1', resolution_number: 'VC-2026-001', submitted_by: null, post_id: 'post-1', title: 'Standardize VA Claims Navigation Support Across All Posts', category: 'veterans_benefits', executive_summary: 'Every post should have at least one trained VA claims navigator available to members.', body: 'Proposes every active post maintain at least one trained VA claims navigator.', purpose: 'Reduce inconsistency in benefits support across posts.', financial_impact_cost: 5000, financial_impact_funding_source: 'National training budget', financial_impact_revenue_note: null, organizational_impact: 'Requires each post to designate and train one member annually.', status: 'voting', vote_type: 'delegate_vote', supermajority_threshold: null, voting_opens_at: daysAgo(10), voting_closes_at: null, created_at: daysAgo(20), updated_at: daysAgo(2) },
+    { id: 'res-2', resolution_number: 'VC-2026-002', submitted_by: null, post_id: 'post-2', title: 'National Fundraising Minimum for Charter Renewal', category: 'governance', executive_summary: 'Sets a minimum annual fundraising benchmark tied to charter renewal.', body: 'Sets a minimum annual fundraising benchmark tied to charter renewal.', purpose: 'Ensure posts remain financially sustainable.', financial_impact_cost: null, financial_impact_funding_source: null, financial_impact_revenue_note: null, organizational_impact: 'Posts failing to meet the minimum enter a review period.', status: 'discussion', vote_type: null, supermajority_threshold: null, voting_opens_at: null, voting_closes_at: null, created_at: daysAgo(15), updated_at: daysAgo(1) },
+    { id: 'res-3', resolution_number: 'VC-2026-003', submitted_by: null, post_id: 'post-3', title: 'Rural Access Grant Program', category: 'expansion', executive_summary: 'Calls for a dedicated grant pool for posts serving rural, low-density regions.', body: 'Calls for a dedicated grant pool for posts serving rural, low-density regions.', purpose: 'Support posts in areas with fewer local sponsorship opportunities.', financial_impact_cost: 50000, financial_impact_funding_source: 'National reserve fund', financial_impact_revenue_note: null, organizational_impact: 'Creates an application and review process for grant disbursement.', status: 'under_review', vote_type: null, supermajority_threshold: null, voting_opens_at: null, voting_closes_at: null, created_at: daysAgo(8), updated_at: daysAgo(8) },
   ],
 
-  resolution_comments: [],
+  resolution_co_sponsors: [],
+  resolution_amendments: [],
+  resolution_documents: [],
+
+  committees: [
+    { id: 'comm-1', name: 'Membership Committee', description: 'Reviews membership policy and standards resolutions.', created_at: daysAgo(200) },
+    { id: 'comm-2', name: 'Legislative Committee', description: 'Reviews legislative affairs and external policy resolutions.', created_at: daysAgo(200) },
+    { id: 'comm-3', name: 'Finance Committee', description: 'Reviews resolutions with budgetary or financial impact.', created_at: daysAgo(200) },
+    { id: 'comm-4', name: 'Programs Committee', description: 'Reviews resolutions affecting national programs and services.', created_at: daysAgo(200) },
+    { id: 'comm-5', name: 'Governance Committee', description: 'Reviews bylaws, constitutional, and governance resolutions.', created_at: daysAgo(200) },
+    { id: 'comm-6', name: 'Expansion Committee', description: 'Reviews resolutions related to new post development and expansion.', created_at: daysAgo(200) },
+  ],
+  committee_members: [],
+  committee_reviews: [
+    { id: 'rev-1', resolution_id: 'res-3', committee_id: 'comm-6', recommendation: 'approve', notes: 'Strongly supports our rural expansion goals.', reviewed_by: null, created_at: daysAgo(5) },
+  ],
+
+  legislative_bills: [
+    { id: 'bill-1', bill_number: 'H.R. 1234', title: 'Veterans Disability Benefits Modernization Act', level: 'federal', jurisdiction: null, summary: 'Proposes updates to the VA disability rating schedule.', status: 'active', cvoa_position: 'Support with amendments', impact_analysis: 'Would streamline claims for several common conditions.', created_at: daysAgo(30), updated_at: daysAgo(5) },
+    { id: 'bill-2', bill_number: 'SB 456', title: 'State Veteran Property Tax Exemption Expansion', level: 'state', jurisdiction: 'Montana', summary: 'Expands property tax exemptions for disabled veterans.', status: 'monitoring', cvoa_position: 'Support', impact_analysis: null, created_at: daysAgo(12), updated_at: daysAgo(12) },
+  ],
+
+  congress_announcements: [
+    { id: 'ann-1', title: 'CVOA Supports VA Claims Modernization Act', body: 'National leadership has issued a formal position supporting H.R. 1234 with recommended amendments.', category: 'Official Position', published_by: null, created_at: daysAgo(5) },
+    { id: 'ann-2', title: 'Q2 Congressional Summary Published', body: 'Summary of all resolutions and votes from the second quarter session is now available.', category: 'Congressional Summary', published_by: null, created_at: daysAgo(15) },
+  ],
+
+  congress_calendar_events: [
+    { id: 'cal-1', title: 'VC-2026-001 Delegate Vote Closes', event_type: 'vote', event_date: daysAgo(-5), description: 'Final day to cast delegate votes on VA Claims Navigation resolution.', resolution_id: 'res-1', created_at: daysAgo(10) },
+    { id: 'cal-2', title: 'Q3 National Congressional Session', event_type: 'session', event_date: daysAgo(-20), description: 'Quarterly full session for all delegates.', resolution_id: null, created_at: daysAgo(30) },
+  ],
+
+  resolution_comments: [
+    { id: 'c-1', resolution_id: 'res-1', parent_comment_id: null, author_id: null, response_type: 'support', body: 'This is long overdue — our post has struggled with claims navigation for years.', created_at: daysAgo(9) },
+    { id: 'c-2', resolution_id: 'res-1', parent_comment_id: null, author_id: null, response_type: 'question', body: 'Who covers the cost of the navigator training?', created_at: daysAgo(8) },
+    { id: 'c-3', resolution_id: 'res-2', parent_comment_id: null, author_id: null, response_type: 'oppose', body: 'A hard fundraising minimum could hurt newer, smaller posts unfairly.', created_at: daysAgo(6) },
+  ],
   resolution_votes: [
-    { id: 'v-1', resolution_id: 'res-1', voter_id: null, vote: true, created_at: daysAgo(10) },
-    { id: 'v-2', resolution_id: 'res-1', voter_id: null, vote: true, created_at: daysAgo(9) },
-    { id: 'v-3', resolution_id: 'res-1', voter_id: null, vote: true, created_at: daysAgo(8) },
-    { id: 'v-4', resolution_id: 'res-2', voter_id: null, vote: true, created_at: daysAgo(7) },
+    { id: 'v-1', resolution_id: 'res-1', vote_type: 'delegate_vote', voter_id: null, voter_post_id: 'post-1', vote: true, created_at: daysAgo(10) },
+    { id: 'v-2', resolution_id: 'res-1', vote_type: 'delegate_vote', voter_id: null, voter_post_id: 'post-2', vote: true, created_at: daysAgo(9) },
+    { id: 'v-3', resolution_id: 'res-1', vote_type: 'delegate_vote', voter_id: null, voter_post_id: 'post-3', vote: true, created_at: daysAgo(8) },
+    { id: 'v-4', resolution_id: 'res-2', vote_type: 'informal_poll', voter_id: null, voter_post_id: 'post-2', vote: true, created_at: daysAgo(7) },
   ],
 
   post_health_metrics: [],

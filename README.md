@@ -88,6 +88,64 @@ team, and everyone who fills out that link is added to `founding_team_members` a
 no manual data entry required to populate the roster. National roles see a post selector at
 the top of the module if there's more than one post currently in formation.
 
+## Veterans Congress (Module 8) — full build
+
+This went from a read-only resolutions list to an actual legislative system: numbered
+resolutions, full detail pages, amendment history, a real debate floor, a multi-type voting
+engine, committees, a delegate dashboard, a legislative tracker, a calendar, and a public
+Transparency Portal.
+
+**What's real and working:**
+- **Resolution numbering** — `VC-2026-001` format, auto-assigned by a database trigger, never
+  reused, sequential per year.
+- **Full resolution detail pages** (`/congress/resolutions/:id`) — executive summary, full
+  text, purpose, financial impact (cost/funding source), organizational impact, supporting
+  documents (public storage bucket), and amendment history that's genuinely append-only — the
+  previous text is preserved in `resolution_amendments`, never overwritten.
+- **Debate Floor** — categorized responses (Support/Oppose/Question/Amendment/Clarification),
+  one level of threading via replies.
+- **Real voting engine** — all four vote types from the spec (informal poll, binding delegate
+  vote, constitutional amendment with a configurable supermajority threshold, national
+  referendum). Casting a vote updates live participation numbers and a post-by-post breakdown.
+- **Committees** — six seeded by default (Membership, Legislative, Finance, Programs,
+  Governance, Expansion). National Staff can submit a recommendation (approve/reject/request
+  revisions) against any resolution.
+- **Delegate Dashboard** (`/congress/delegates`) — votes cast and resolutions sponsored per
+  delegate, computed live from actual data, plus term dates.
+- **Legislative Affairs Tracker** (`/congress/legislative`) — external federal/state bills,
+  separate from CVOA's own resolutions, each with a summary and a formal CVOA position.
+- **Congressional Calendar** (`/congress/calendar`) — hearings, votes, deadlines, meetings.
+- **Public Transparency Portal** (`/transparency`, no login required) — every passed/rejected
+  resolution, official positions, and legislative priorities, publicly readable. This directly
+  answers the spec's core requirement: a member should never have to ask "who decided this?"
+
+**Where I simplified, on purpose, rather than silently under-build:**
+- **Vote-casting isn't restricted by role at the database level.** The spec distinguishes
+  "informal poll = any member" from "delegate vote = binding, delegates only." Right now, RLS
+  allows any authenticated user to cast a vote of any type — the UI labels it correctly, but
+  nothing stops a non-delegate from casting a "binding" vote server-side. Tightening this needs
+  a real decision about how delegate status maps to auth (there's no delegate login flow yet,
+  same gap as Post Commanders) — flagging it rather than half-enforcing it.
+- **Supermajority pass/fail isn't auto-computed.** The threshold is stored and displayed, but
+  nothing automatically flips a resolution to "Passed" vs. "Rejected" when voting closes —
+  National Staff makes that call manually via the status-advance button, using the displayed
+  vote count as reference.
+- **Co-sponsors and committee membership don't have dedicated management UI yet** — the tables
+  exist and are readable, but adding a co-sponsor or assigning someone to a committee currently
+  needs a direct SQL insert.
+- **The AI Policy Analyst was explicitly out of scope** — the spec itself calls it a "future
+  module."
+
+### Deploying the Congress upgrade
+
+This migration changes an existing enum type, which Postgres won't let you use in the same
+transaction it's created in. **Run these as two separate steps, not pasted together:**
+
+1. Run `veterans-congress-upgrade-part1.sql` in the SQL Editor. Wait for it to say success.
+2. Open a **fresh query tab**, paste `veterans-congress-upgrade-part2.sql`, and run that.
+
+Then push the updated `src` folder as usual.
+
 ## Stack
 
 
