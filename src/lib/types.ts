@@ -201,6 +201,60 @@ export interface ToolkitGeneratedDocument {
   created_at: string
 }
 
+export type GovernanceFormType = 'conflict_of_interest' | 'officer_acknowledgment'
+export type LedgerTransactionType = 'income' | 'expense'
+
+export interface GovernanceSignature {
+  id: string
+  post_id: string
+  profile_id: string | null
+  signer_name: string
+  form_type: GovernanceFormType
+  signed_at: string
+  document_storage_path: string | null
+  recorded_by: string | null
+  created_at: string
+}
+
+export interface AnnualReview {
+  id: string
+  post_id: string
+  review_year: number
+  bylaws_reviewed: boolean
+  financial_audit_complete: boolean
+  officer_roster_current: boolean
+  required_filings_current: boolean
+  completed_at: string | null
+  reviewed_by: string | null
+  notes: string | null
+  created_at: string
+}
+
+export interface CommunityServiceEvent {
+  id: string
+  post_id: string
+  title: string
+  category: string
+  event_date: string
+  attendees_count: number | null
+  hours_contributed: number | null
+  description: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface FinancialTransaction {
+  id: string
+  post_id: string
+  transaction_type: LedgerTransactionType
+  category: string
+  amount: number
+  description: string | null
+  transaction_date: string
+  created_by: string | null
+  created_at: string
+}
+
 export interface ChecklistItem {
   id: string
   post_id: string

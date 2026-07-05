@@ -23,6 +23,7 @@ import LegislativeTracker from '@/pages/congress/LegislativeTracker'
 import CongressCalendar from '@/pages/congress/CongressCalendar'
 import TransparencyPortal from '@/pages/congress/TransparencyPortal'
 import PostHealth from '@/pages/health/PostHealth'
+import PostHealthDetail from '@/pages/health/PostHealthDetail'
 import BuildAPost from '@/pages/build-a-post/BuildAPost'
 
 export default function App() {
@@ -74,6 +75,7 @@ function AuthenticatedApp() {
         <Route path="/congress/legislative" element={<LegislativeTracker />} />
         <Route path="/congress/calendar" element={<CongressCalendar />} />
         <Route path="/health" element={<PostHealth />} />
+        <Route path="/health/:postId" element={<PostHealthDetail />} />
         <Route path="/build-a-post" element={<BuildAPost />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

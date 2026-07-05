@@ -256,6 +256,18 @@ export const seedData: Record<string, any[]> = {
 
   post_health_metrics: [],
 
+  governance_signatures: [
+    { id: 'gs-1', post_id: 'post-1', profile_id: null, signer_name: 'Derek Payne', form_type: 'conflict_of_interest', signed_at: daysAgo(60).slice(0, 10), document_storage_path: null, recorded_by: null, created_at: daysAgo(60) },
+  ],
+  annual_reviews: [],
+  community_service_events: [
+    { id: 'cs-1', post_id: 'post-1', title: 'Thanksgiving Food Drive', category: 'Food Drive', event_date: daysAgo(45).slice(0, 10), attendees_count: 12, hours_contributed: 36, description: 'Collected and distributed food boxes to 40 local veteran families.', created_by: null, created_at: daysAgo(45) },
+  ],
+  financial_transactions: [
+    { id: 'ft-1', post_id: 'post-1', transaction_type: 'income', category: 'Dues', amount: 1200, description: 'Q1 membership dues', transaction_date: daysAgo(80).slice(0, 10), created_by: null, created_at: daysAgo(80) },
+    { id: 'ft-2', post_id: 'post-1', transaction_type: 'expense', category: 'Event Costs', amount: 450, description: 'Food drive supplies', transaction_date: daysAgo(45).slice(0, 10), created_by: null, created_at: daysAgo(45) },
+  ],
+
   build_a_post_modules: [
     { id: 'bp-1', name: 'Bar Layout', description: 'Social/gathering space with a serving bar.', startup_cost_low: 8000, startup_cost_high: 25000, equipment_list: ['Bar top and back bar', 'Draft system', 'Glassware', 'POS system', 'Refrigeration'], sponsor_opportunities: 'Local breweries and distributors often sponsor equipment in exchange for tap placement.', grant_opportunities: 'Not typically grant-eligible (alcohol-related).', revenue_potential: 'Moderate — steady revenue from member events, not a primary driver.', created_at: daysAgo(50) },
     { id: 'bp-2', name: 'Kitchen Layout', description: 'Full or partial kitchen for events and meal programs.', startup_cost_low: 15000, startup_cost_high: 60000, equipment_list: ['Commercial range', 'Refrigeration', 'Prep tables', 'Ventilation hood', 'Dishwashing station'], sponsor_opportunities: 'Restaurant equipment suppliers, regional grocery chains.', grant_opportunities: 'USDA rural development grants, community food security grants.', revenue_potential: 'High — meal programs and rentals for community events.', created_at: daysAgo(50) },

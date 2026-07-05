@@ -215,7 +215,49 @@ becomes the org's primary meeting-record archive and search quality/ranking matt
 
 Run `meeting-records.sql` in Supabase, then push the updated code.
 
+## Post Health System (Module 9) — full rebuild
+
+This went from a manually-set color dropdown nobody was updating to a real composite score
+computed from ten signals across the app — most of it from data that already existed elsewhere,
+plus new tracking for the things nothing captured before.
+
+**Computed from data you already have (zero new data entry):**
+- Officer position completeness (Founding Team)
+- Sponsor revenue concentration — is funding diversified or one business away from a cliff (Sponsorship CRM)
+- Meeting compliance (Meetings module)
+- Membership count + recent growth (Recruiting Engine)
+- Veterans Congress participation — has a delegate, have they actually voted
+
+**New tracking, built specifically to close real gaps:**
+- **Governance sign-offs** — who actually signed a Conflict of Interest or Officer Acknowledgment
+  form, and when (previously: generating the form via the Toolkit didn't mean anyone signed it)
+- **Annual Review** — a real, trackable per-year record (bylaws reviewed, financial audit,
+  officer roster, filings), not just a static checklist document
+- **Community Service log** — an actual record of what a post did and when, not just a guide on
+  how to do it
+- **A basic financial ledger** — income/expense entries per post, giving a real balance. This is
+  new: there was zero financial tracking anywhere in the app before this.
+
+**One dimension is an honest proxy, not the real thing:** "Member Engagement" flags members whose
+record hasn't been touched in 90+ days as possibly disengaged. That's a proxy — it's not real
+attendance tracking or a true churn history, because the app doesn't log a member's stage-change
+history over time, only their current stage. If retention becomes a bigger priority, the next
+step is logging every stage transition instead of overwriting it.
+
+**Judgment calls that are visible, not hidden:** a post under 6 months old isn't penalized on
+membership size or dinged for not having an annual review yet — those dimensions show as
+"neutral" (excluded from the score) rather than red, so a new post and a 5-year post aren't
+graded on the same curve. The score itself is a simple average of whichever dimensions actually
+apply — transparent, not a black box.
+
+Click into any post from the Post Health list for the full breakdown and to log new data
+(signatures, service events, transactions, annual review progress) directly.
+
+Run `post-health-upgrade.sql` in Supabase, then push the code. The old `post_health_metrics`
+table is left in place untouched — nothing is deleted.
+
 ## Stack
+
 
 
 

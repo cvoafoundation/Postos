@@ -496,20 +496,75 @@ create table congress_calendar_events (
 
 -- ----------------------------------------------------------------------------
 -- MODULE 9: POST HEALTH SYSTEM
+-- A real composite score, computed from data already collected elsewhere in
+-- the app (officers, sponsors, meetings, membership, Congress) plus new
+-- tracking for the things nothing else in the app captures: governance
+-- form sign-offs, annual reviews, community service activity, and a basic
+-- income/expense ledger.
 -- ----------------------------------------------------------------------------
-create table post_health_metrics (
+
+create type governance_form_type as enum ('conflict_of_interest', 'officer_acknowledgment');
+create type ledger_transaction_type as enum ('income', 'expense');
+
+-- Governance sign-offs — who actually signed a Conflict of Interest or
+-- Officer Acknowledgment form, and when. Nothing tracked this before;
+-- generating the form via the Toolkit didn't mean anyone signed it.
+create table governance_signatures (
   id uuid primary key default uuid_generate_v4(),
   post_id uuid not null references posts(id) on delete cascade,
-  period_start date not null,
-  period_end date not null,
-  membership_growth numeric,
-  attendance_rate numeric,
-  events_held integer,
-  funds_raised numeric,
-  retention_rate numeric,
-  reporting_compliance boolean,
-  community_service_hours numeric,
-  computed_status post_health_status,
+  profile_id uuid references profiles(id),
+  signer_name text not null, -- kept as text too, since not every officer has a login yet
+  form_type governance_form_type not null,
+  signed_at date not null,
+  document_storage_path text, -- optional scanned signed copy
+  recorded_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+-- Annual Review — one row per post per year, mirroring the Compliance
+-- Toolkit's "Annual Review Checklist" but as a real, trackable record
+-- instead of a static document.
+create table annual_reviews (
+  id uuid primary key default uuid_generate_v4(),
+  post_id uuid not null references posts(id) on delete cascade,
+  review_year integer not null,
+  bylaws_reviewed boolean not null default false,
+  financial_audit_complete boolean not null default false,
+  officer_roster_current boolean not null default false,
+  required_filings_current boolean not null default false,
+  completed_at timestamptz,
+  reviewed_by uuid references profiles(id),
+  notes text,
+  created_at timestamptz not null default now(),
+  unique (post_id, review_year)
+);
+
+-- Community Service log — an actual record of what a post did, not just a
+-- guide on how to do it.
+create table community_service_events (
+  id uuid primary key default uuid_generate_v4(),
+  post_id uuid not null references posts(id) on delete cascade,
+  title text not null,
+  category text not null default 'Other', -- Food Drive | Veteran Outreach | School Presentation | Community Project | Other
+  event_date date not null,
+  attendees_count integer,
+  hours_contributed numeric,
+  description text,
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+-- A basic financial ledger — the thing this app had zero of before. Not a
+-- full accounting system, but enough to answer "is this post solvent."
+create table financial_transactions (
+  id uuid primary key default uuid_generate_v4(),
+  post_id uuid not null references posts(id) on delete cascade,
+  transaction_type ledger_transaction_type not null,
+  category text not null default 'Other',
+  amount numeric(12,2) not null,
+  description text,
+  transaction_date date not null,
+  created_by uuid references profiles(id),
   created_at timestamptz not null default now()
 );
 
@@ -576,7 +631,10 @@ alter table committee_reviews enable row level security;
 alter table legislative_bills enable row level security;
 alter table congress_announcements enable row level security;
 alter table congress_calendar_events enable row level security;
-alter table post_health_metrics enable row level security;
+alter table governance_signatures enable row level security;
+alter table annual_reviews enable row level security;
+alter table community_service_events enable row level security;
+alter table financial_transactions enable row level security;
 alter table build_a_post_modules enable row level security;
 alter table activity_feed enable row level security;
 
@@ -751,9 +809,25 @@ create policy "congress_announcements_write_national" on congress_announcements
 create policy "congress_calendar_read_all" on congress_calendar_events for select using (true);
 create policy "congress_calendar_write_national" on congress_calendar_events for all using (is_national_role());
 
-create policy "health_metrics_read_all" on post_health_metrics for select using (true);
-create policy "health_metrics_write_national" on post_health_metrics
-  for insert with check (is_national_role());
+create policy "governance_signatures_select_post_or_national" on governance_signatures
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "governance_signatures_insert_auth" on governance_signatures
+  for insert with check (auth.uid() is not null);
+
+create policy "annual_reviews_select_post_or_national" on annual_reviews
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "annual_reviews_write_auth" on annual_reviews
+  for all using (auth.uid() is not null);
+
+create policy "community_service_select_post_or_national" on community_service_events
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "community_service_insert_auth" on community_service_events
+  for insert with check (auth.uid() is not null);
+
+create policy "financial_transactions_select_post_or_national" on financial_transactions
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "financial_transactions_insert_auth" on financial_transactions
+  for insert with check (auth.uid() is not null);
 
 create policy "build_a_post_read_all" on build_a_post_modules for select using (true);
 create policy "build_a_post_write_national" on build_a_post_modules
@@ -1021,6 +1095,18 @@ create policy "meeting_records_files_read_auth" on storage.objects
   for select using (bucket_id = 'meeting-records' and auth.uid() is not null);
 create policy "meeting_records_files_write_auth" on storage.objects
   for insert with check (bucket_id = 'meeting-records' and auth.uid() is not null);
+
+-- ============================================================================
+-- STORAGE: Governance signature documents (optional scanned signed copies)
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('governance-documents', 'governance-documents', false)
+on conflict (id) do nothing;
+
+create policy "governance_documents_read_auth" on storage.objects
+  for select using (bucket_id = 'governance-documents' and auth.uid() is not null);
+create policy "governance_documents_write_auth" on storage.objects
+  for insert with check (bucket_id = 'governance-documents' and auth.uid() is not null);
 
 -- ============================================================================
 -- SEED: Post Toolkit — full category and item structure.
