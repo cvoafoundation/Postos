@@ -14,6 +14,7 @@ import {
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { isDemoMode } from '@/lib/supabase'
 import clsx from 'clsx'
 
 const NAV_ITEMS = [
@@ -38,6 +39,11 @@ export function Sidebar() {
       <div className="px-5 py-6 border-b border-hairline">
         <div className="font-display text-2xl tracking-wide text-gold leading-none">CVOA</div>
         <div className="eyebrow mt-1">Post Operating System</div>
+        {isDemoMode && (
+          <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-status-developing/40 bg-status-developing/10 text-status-developing font-mono text-[10px] uppercase tracking-wide">
+            Demo Mode — local data
+          </div>
+        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto py-4">

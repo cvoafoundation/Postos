@@ -37,7 +37,25 @@ seed the database, screens will correctly show empty states.
 - react-simple-maps + us-atlas for the national map (bundled at build time, no runtime map API key needed)
 - lucide-react for icons
 
-## Getting started
+## Running with no backend at all (demo mode)
+
+**You don't need Supabase to work on this right now.** If `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_ANON_KEY` aren't set — i.e. there's no `.env.local`, or it's missing those
+values — the app automatically runs on an in-memory mock client (`src/lib/mockClient.ts`)
+seeded with realistic sample data (`src/lib/mockData.ts`): a few posts in different pipeline
+stages, applications, a founding team, a partially-complete checklist, sponsors, recruits,
+resolutions, and the Build A Post content. You'll see a small "Demo Mode" badge in the
+sidebar whenever this is active. You're logged in automatically as a demo National Commander
+— no login screen needed.
+
+Every page reads/writes through the exact same `supabase.from(...)` calls either way, so
+nothing changes in the page code when you're ready to connect a real project — you just add
+the two env vars and it switches over. The mock client supports `select`, `insert`, `update`,
+`delete`, `eq`, `in`, `order`, `limit`, `single`, and the `{count:'exact', head:true}` pattern
+used on the dashboard — everything this app currently calls. Data resets on page reload since
+it's in-memory only.
+
+## Getting started with a real Supabase backend (when you're ready)
 
 ### 1. Create a Supabase project
 
