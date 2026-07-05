@@ -55,13 +55,13 @@ export default function Toolkit() {
       <PageHeader eyebrow="Module 5 — The Playbook" title="Post Toolkit" />
 
       <Link
-        to="/meeting-records"
+        to="/meetings"
         className="panel p-4 mb-6 flex items-center justify-between hover:border-gold transition-colors"
       >
         <div>
-          <div className="eyebrow mb-1">National Meeting Records</div>
+          <div className="eyebrow mb-1">Meetings Module</div>
           <p className="text-sm text-muted">
-            Search actual submitted meeting minutes across every post — not just the blank templates below.
+            Submit and search actual meeting minutes across every post — not just the blank templates below.
           </p>
         </div>
         <Search size={18} className="text-gold shrink-0" />

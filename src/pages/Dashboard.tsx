@@ -89,7 +89,7 @@ export default function Dashboard() {
           value={metrics ? `$${metrics.totalSponsorRevenue.toLocaleString()}` : '—'}
         />
         <StatCard label="Upcoming Events" value={metrics?.upcomingEvents ?? '—'} />
-        <Link to="/meeting-records">
+        <Link to="/meetings">
           <StatCard
             label="Overdue on Minutes"
             value={metrics?.overdueOnMinutes ?? '—'}
