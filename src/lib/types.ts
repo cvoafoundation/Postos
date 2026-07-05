@@ -110,8 +110,29 @@ export interface Sponsor {
   sponsorship_value: number
   stage: SponsorStage
   notes: string | null
+  tier_id: string | null
+  agreement_start_date: string | null
+  agreement_end_date: string | null
+  agreement_storage_path: string | null
   created_at: string
   updated_at: string
+}
+
+export interface SponsorTier {
+  id: string
+  name: string
+  min_value: number
+  benefits: string[] | null
+  sort_order: number
+  created_at: string
+}
+
+export interface SponsorNote {
+  id: string
+  sponsor_id: string
+  author_id: string | null
+  note: string
+  created_at: string
 }
 
 export type RecruitStage =

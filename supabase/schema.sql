@@ -221,6 +221,15 @@ create table recruits (
 -- ----------------------------------------------------------------------------
 -- MODULE 7: SPONSORSHIP CRM
 -- ----------------------------------------------------------------------------
+create table sponsor_tiers (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  min_value numeric(12,2) not null default 0,
+  benefits text[], -- e.g. {"Logo on website", "Mentioned at 2 events/year"}
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
 create table sponsors (
   id uuid primary key default uuid_generate_v4(),
   post_id uuid references posts(id) on delete set null,
@@ -231,8 +240,20 @@ create table sponsors (
   sponsorship_value numeric(12,2) default 0,
   stage sponsor_stage not null default 'identified',
   notes text,
+  tier_id uuid references sponsor_tiers(id), -- auto-assigned by trigger, see below
+  agreement_start_date date,
+  agreement_end_date date,
+  agreement_storage_path text, -- signed agreement, in the private 'sponsor-agreements' bucket
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table sponsor_notes (
+  id uuid primary key default uuid_generate_v4(),
+  sponsor_id uuid not null references sponsors(id) on delete cascade,
+  author_id uuid references profiles(id),
+  note text not null,
+  created_at timestamptz not null default now()
 );
 
 -- ----------------------------------------------------------------------------
@@ -339,6 +360,8 @@ alter table checklist_items enable row level security;
 alter table toolkit_templates enable row level security;
 alter table recruits enable row level security;
 alter table sponsors enable row level security;
+alter table sponsor_tiers enable row level security;
+alter table sponsor_notes enable row level security;
 alter table congress_delegates enable row level security;
 alter table resolutions enable row level security;
 alter table resolution_comments enable row level security;
@@ -433,8 +456,22 @@ create policy "recruits_update_post_or_national" on recruits
 create policy "recruits_delete_national" on recruits
   for delete using (is_national_role());
 
-create policy "sponsors_post_or_national" on sponsors
-  for all using (is_national_role() or post_id = current_post_id());
+create policy "sponsors_select_post_or_national" on sponsors
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "sponsors_insert_public" on sponsors
+  for insert with check (true); -- public "Become a Sponsor" link
+create policy "sponsors_update_post_or_national" on sponsors
+  for update using (is_national_role() or post_id = current_post_id());
+create policy "sponsors_delete_national" on sponsors
+  for delete using (is_national_role());
+
+create policy "sponsor_tiers_read_all" on sponsor_tiers for select using (true);
+create policy "sponsor_tiers_write_national" on sponsor_tiers for all using (is_national_role());
+
+create policy "sponsor_notes_read_national" on sponsor_notes
+  for select using (is_national_role());
+create policy "sponsor_notes_write_national" on sponsor_notes
+  for insert with check (is_national_role());
 
 create policy "delegates_read_all" on congress_delegates for select using (true);
 create policy "delegates_write_post_or_national" on congress_delegates
@@ -558,6 +595,49 @@ $$;
 create trigger trg_compute_founding_team_verification
   before update on founding_team_members
   for each row execute function compute_founding_team_verification();
+
+-- 4. Sponsor tier auto-assignment — whichever tier's threshold the sponsorship
+--    value clears (highest one that fits) is assigned automatically. Nobody
+--    has to remember "oh, that's a Gold sponsor now" after a value changes.
+create or replace function assign_sponsor_tier()
+returns trigger
+language plpgsql
+as $$
+begin
+  select id into new.tier_id
+  from sponsor_tiers
+  where min_value <= coalesce(new.sponsorship_value, 0)
+  order by min_value desc
+  limit 1;
+  return new;
+end;
+$$;
+
+create trigger trg_assign_sponsor_tier
+  before insert or update of sponsorship_value on sponsors
+  for each row execute function assign_sponsor_tier();
+
+-- ============================================================================
+-- STORAGE: signed sponsorship agreements
+-- Private bucket — staff-only, uploaded after a deal closes (not part of the
+-- public interest form).
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('sponsor-agreements', 'sponsor-agreements', false)
+on conflict (id) do nothing;
+
+create policy "sponsor_agreements_national_only" on storage.objects
+  for all using (bucket_id = 'sponsor-agreements' and is_national_role());
+
+-- ============================================================================
+-- SEED: default sponsorship tiers
+-- ============================================================================
+insert into sponsor_tiers (name, min_value, benefits, sort_order) values
+  ('Bronze', 0, array['Listed on post website', 'Thank-you shoutout at monthly meeting'], 1),
+  ('Silver', 1000, array['Logo on post website', 'Mentioned at 2 events/year', 'Social media shoutout'], 2),
+  ('Gold', 2500, array['Logo on website + printed materials', 'Named sponsor at all events', 'Booth space at annual event', 'Social media feature'], 3),
+  ('Platinum', 5000, array['Top billing on all materials', 'Named sponsor of a signature event', 'Booth + speaking opportunity', 'Dedicated social media campaign', 'Annual recognition plaque'], 4)
+on conflict do nothing;
 
 -- Note: this schema deliberately does NOT send emails or SMS on its own —
 -- Postgres/Supabase can't do that natively. To get applicant confirmation

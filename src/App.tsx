@@ -9,6 +9,7 @@ import FoundingTeamBuilder from '@/pages/founding-team/FoundingTeamBuilder'
 import JoinFoundingTeam from '@/pages/founding-team/JoinFoundingTeam'
 import PublicChecklist from '@/pages/checklist/PublicChecklist'
 import PublicRecruitSignup from '@/pages/recruiting/PublicRecruitSignup'
+import BecomeASponsor from '@/pages/sponsors/BecomeASponsor'
 import LaunchChecklist from '@/pages/checklist/LaunchChecklist'
 import Toolkit from '@/pages/toolkit/Toolkit'
 import RecruitingPipeline from '@/pages/recruiting/RecruitingPipeline'
@@ -24,6 +25,7 @@ export default function App() {
       <Route path="/join-founding-team/:postId" element={<JoinFoundingTeam />} />
       <Route path="/post-checklist/:postId" element={<PublicChecklist />} />
       <Route path="/join-post/:postId" element={<PublicRecruitSignup />} />
+      <Route path="/become-a-sponsor/:postId" element={<BecomeASponsor />} />
       {/* Everything else is gated behind auth */}
       <Route path="/*" element={<AuthenticatedApp />} />
     </Routes>

@@ -83,12 +83,24 @@ export const seedData: Record<string, any[]> = {
     { id: 'rc-6', post_id: 'post-1', name: 'Sophie Turner', email: null, phone: null, stage: 'leader', source: 'Member referral', created_at: daysAgo(90), updated_at: daysAgo(15) },
   ],
 
+  sponsor_tiers: [
+    { id: 'tier-bronze', name: 'Bronze', min_value: 0, benefits: ['Listed on post website', 'Thank-you shoutout at monthly meeting'], sort_order: 1, created_at: daysAgo(200) },
+    { id: 'tier-silver', name: 'Silver', min_value: 1000, benefits: ['Logo on post website', 'Mentioned at 2 events/year', 'Social media shoutout'], sort_order: 2, created_at: daysAgo(200) },
+    { id: 'tier-gold', name: 'Gold', min_value: 2500, benefits: ['Logo on website + printed materials', 'Named sponsor at all events', 'Booth space at annual event', 'Social media feature'], sort_order: 3, created_at: daysAgo(200) },
+    { id: 'tier-platinum', name: 'Platinum', min_value: 5000, benefits: ['Top billing on all materials', 'Named sponsor of a signature event', 'Booth + speaking opportunity', 'Dedicated social media campaign', 'Annual recognition plaque'], sort_order: 4, created_at: daysAgo(200) },
+  ],
+
+  sponsor_notes: [
+    { id: 'note-1', sponsor_id: 'sp-1', author_id: null, note: 'Renewed for another year at the same rate.', created_at: daysAgo(60) },
+    { id: 'note-2', sponsor_id: 'sp-2', author_id: null, note: 'Sponsored the golf scramble banner + 2 hole sponsorships.', created_at: daysAgo(28) },
+  ],
+
   sponsors: [
-    { id: 'sp-1', post_id: 'post-1', company: 'Big Sky Hardware', contact_name: 'Frank Miller', email: 'frank@bigskyhardware.com', phone: null, sponsorship_value: 2500, stage: 'won', notes: 'Annual sponsor, renews every January.', created_at: daysAgo(200), updated_at: daysAgo(60) },
-    { id: 'sp-2', post_id: 'post-2', company: 'Tulsa Diesel Co.', contact_name: 'Renee Adams', email: 'renee@tulsadiesel.com', phone: null, sponsorship_value: 5000, stage: 'won', notes: 'Sponsored the golf scramble.', created_at: daysAgo(150), updated_at: daysAgo(30) },
-    { id: 'sp-3', post_id: 'post-1', company: 'Rocky Mountain Bank', contact_name: 'Chris Dole', email: null, phone: null, sponsorship_value: 1000, stage: 'proposal_sent', notes: null, created_at: daysAgo(20), updated_at: daysAgo(5) },
-    { id: 'sp-4', post_id: 'post-2', company: 'Green Country Roofing', contact_name: 'Pat Nguyen', email: null, phone: null, sponsorship_value: 750, stage: 'meeting_scheduled', notes: null, created_at: daysAgo(15), updated_at: daysAgo(3) },
-    { id: 'sp-5', post_id: null, company: 'Summit Outdoor Gear', contact_name: null, email: null, phone: null, sponsorship_value: 0, stage: 'identified', notes: 'Cold lead from trade show.', created_at: daysAgo(8), updated_at: daysAgo(8) },
+    { id: 'sp-1', post_id: 'post-1', company: 'Big Sky Hardware', contact_name: 'Frank Miller', email: 'frank@bigskyhardware.com', phone: null, sponsorship_value: 2500, stage: 'won', notes: 'Annual sponsor, renews every January.', tier_id: 'tier-gold', agreement_start_date: daysAgo(60).slice(0, 10), agreement_end_date: null, agreement_storage_path: null, created_at: daysAgo(200), updated_at: daysAgo(60) },
+    { id: 'sp-2', post_id: 'post-2', company: 'Tulsa Diesel Co.', contact_name: 'Renee Adams', email: 'renee@tulsadiesel.com', phone: null, sponsorship_value: 5000, stage: 'won', notes: 'Sponsored the golf scramble.', tier_id: 'tier-platinum', agreement_start_date: daysAgo(150).slice(0, 10), agreement_end_date: null, agreement_storage_path: null, created_at: daysAgo(150), updated_at: daysAgo(30) },
+    { id: 'sp-3', post_id: 'post-1', company: 'Rocky Mountain Bank', contact_name: 'Chris Dole', email: null, phone: null, sponsorship_value: 1000, stage: 'proposal_sent', notes: null, tier_id: 'tier-silver', agreement_start_date: null, agreement_end_date: null, agreement_storage_path: null, created_at: daysAgo(20), updated_at: daysAgo(5) },
+    { id: 'sp-4', post_id: 'post-2', company: 'Green Country Roofing', contact_name: 'Pat Nguyen', email: null, phone: null, sponsorship_value: 750, stage: 'meeting_scheduled', notes: null, tier_id: 'tier-bronze', agreement_start_date: null, agreement_end_date: null, agreement_storage_path: null, created_at: daysAgo(15), updated_at: daysAgo(3) },
+    { id: 'sp-5', post_id: null, company: 'Summit Outdoor Gear', contact_name: null, email: null, phone: null, sponsorship_value: 0, stage: 'identified', notes: 'Cold lead from trade show.', tier_id: 'tier-bronze', agreement_start_date: null, agreement_end_date: null, agreement_storage_path: null, created_at: daysAgo(8), updated_at: daysAgo(8) },
   ],
 
   congress_delegates: [

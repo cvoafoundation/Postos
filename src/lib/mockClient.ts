@@ -6,6 +6,14 @@
 
 import { DEMO_USER_ID, seedData } from './mockData'
 
+function assignSponsorTier(row: Row) {
+  const tiers = (seedData.sponsor_tiers ?? []) as Row[]
+  const eligible = tiers
+    .filter((t) => t.min_value <= (row.sponsorship_value ?? 0))
+    .sort((a, b) => b.min_value - a.min_value)
+  row.tier_id = eligible[0]?.id ?? null
+}
+
 type Row = Record<string, any>
 
 function uid() {
@@ -93,6 +101,7 @@ class QueryBuilder {
 
     if (this.op === 'insert') {
       const row = { id: uid(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...this.payload }
+      if (this.table === 'sponsors') assignSponsorTier(row)
       store.push(row)
       return { data: [row], error: null, count: null }
     }
@@ -102,6 +111,9 @@ class QueryBuilder {
     if (this.op === 'update') {
       rows.forEach((r) => {
         Object.assign(r, this.payload)
+        if (this.table === 'sponsors' && this.payload && 'sponsorship_value' in this.payload) {
+          assignSponsorTier(r)
+        }
         if (this.table === 'founding_team_members') {
           if (r.dd214_reviewed && r.combat_service_verified && r.membership_approved) {
             r.verification_status = 'verified'
