@@ -63,7 +63,33 @@ That covers *visibility* — you'll never have to remember to check. It does **n
 Once that's wired up, every submission automatically emails the applicant a confirmation and
 alerts National Staff — no one has to check the dashboard for it to happen.
 
+## Vetting scores, the Approved → Founding Team handoff, and the invite link
+
+**Scores are now always visible.** Every application's detail view (the "View" button on its
+pipeline card) shows a live average across every submitted scorecard, broken out by category
+(Leadership, Communication, Professionalism, Reliability, Mission Alignment), plus a quick
+score badge directly on the kanban card itself — no need to open anything to see where a
+candidate stands.
+
+**The Approved → Founding Team Building handoff is now real, not just a label change.**
+Previously, advancing an application's status didn't actually connect it to anything — Module
+3 (Founding Team Builder) and Module 4 (Launch Checklist) both key off a real `posts` row, not
+`post_applications`. Now, the moment an application is advanced into Founding Team Building:
+1. A new `posts` row is created automatically (status `founding_team_building`).
+2. The application is linked to it (`post_applications.post_id` gets set).
+3. The applicant is automatically added to `founding_team_members` as Commander — they already
+   did the work to get here, so they shouldn't have to be manually re-entered.
+4. The Post Launch Checklist auto-seeds for the new post (this trigger already existed).
+
+**Founding Team Builder now has a shareable public invite link**, the same pattern as the
+public application form. National Staff (or the Post Commander, once post-scoped logins exist)
+click "Copy Invite Link" on the Founding Team module, send it to whoever's building out their
+team, and everyone who fills out that link is added to `founding_team_members` automatically —
+no manual data entry required to populate the roster. National roles see a post selector at
+the top of the module if there's more than one post currently in formation.
+
 ## Stack
+
 
 - React 18 + TypeScript + Vite
 - Tailwind CSS (military command-board theme: black/charcoal/white/gold)

@@ -390,6 +390,8 @@ create policy "applications_insert_public" on post_applications
   for insert with check (true); -- public application form, no auth required at submit time
 create policy "applications_update_national" on post_applications
   for update using (is_national_role());
+create policy "applications_delete_national" on post_applications
+  for delete using (is_national_role());
 
 create policy "vetting_scorecards_national" on vetting_scorecards
   for all using (is_national_role());
@@ -399,7 +401,13 @@ create policy "vetting_decisions_national" on vetting_decisions
   for all using (is_national_role());
 
 create policy "founding_team_post_or_national" on founding_team_members
-  for all using (is_national_role() or post_id = current_post_id());
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "founding_team_insert_public" on founding_team_members
+  for insert with check (true); -- public invite link — anyone with the post's link can add themselves
+create policy "founding_team_update_national" on founding_team_members
+  for update using (is_national_role() or post_id = current_post_id());
+create policy "founding_team_delete_national" on founding_team_members
+  for delete using (is_national_role());
 
 create policy "checklist_post_or_national" on checklist_items
   for all using (is_national_role() or post_id = current_post_id());

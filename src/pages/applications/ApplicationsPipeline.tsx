@@ -4,22 +4,51 @@ import { KanbanBoard, type KanbanColumn } from '@/components/ui/Kanban'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { POST_STATUS_LABELS, POST_STATUS_ORDER, type PostApplication, type PostStatus } from '@/lib/types'
-import { Plus, FileWarning, FileSearch, Eye } from 'lucide-react'
+import { Plus, FileWarning, FileSearch, Eye, Star } from 'lucide-react'
 import { NewApplicationModal } from './NewApplication'
 import { Dd214ReviewModal } from './Dd214Review'
 import { ApplicationDetailModal } from './ApplicationDetail'
 
 export default function ApplicationsPipeline() {
   const [applications, setApplications] = useState<PostApplication[]>([])
+  const [scoreByApplication, setScoreByApplication] = useState<Record<string, number>>({})
   const [showNew, setShowNew] = useState(false)
   const [reviewing, setReviewing] = useState<PostApplication | null>(null)
   const [viewing, setViewing] = useState<PostApplication | null>(null)
   const [loading, setLoading] = useState(true)
+  const [notice, setNotice] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('post_applications').select('*').order('created_at', { ascending: false })
-    setApplications((data ?? []) as PostApplication[])
+    const [appsRes, scoresRes] = await Promise.all([
+      supabase.from('post_applications').select('*').order('created_at', { ascending: false }),
+      supabase
+        .from('vetting_scorecards')
+        .select('application_id, leadership_score, communication_score, professionalism_score, reliability_score, mission_alignment_score'),
+    ])
+    setApplications((appsRes.data ?? []) as PostApplication[])
+
+    // Average every category across every scorecard for each application, for
+    // a quick at-a-glance score on the kanban card itself.
+    const grouped: Record<string, number[]> = {}
+    for (const row of (scoresRes.data ?? []) as any[]) {
+      const scores = [
+        row.leadership_score,
+        row.communication_score,
+        row.professionalism_score,
+        row.reliability_score,
+        row.mission_alignment_score,
+      ].filter((v) => typeof v === 'number')
+      if (!grouped[row.application_id]) grouped[row.application_id] = []
+      grouped[row.application_id].push(...scores)
+    }
+    const averages: Record<string, number> = {}
+    for (const [appId, scores] of Object.entries(grouped)) {
+      if (scores.length > 0) {
+        averages[appId] = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+      }
+    }
+    setScoreByApplication(averages)
     setLoading(false)
   }
 
@@ -28,8 +57,50 @@ export default function ApplicationsPipeline() {
   }, [])
 
   async function moveStatus(id: string, status: PostStatus) {
+    const application = applications.find((a) => a.id === id)
     setApplications((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)))
     await supabase.from('post_applications').update({ status }).eq('id', id)
+
+    // The hand-off moment: moving an application past "Approved" into
+    // "Founding Team Building" is where it stops being just an application
+    // and needs to become a real post record — Module 3 (Founding Team
+    // Builder) and Module 4 (Launch Checklist) both key off posts.id, not
+    // post_applications.id. Without this, advancing here would silently
+    // lead nowhere.
+    if (status === 'founding_team_building' && application && !application.post_id) {
+      const postName = `${application.city ? application.city + ' ' : ''}${application.state} Post (Forming)`
+      const { data: newPost, error: postError } = await supabase
+        .from('posts')
+        .insert({
+          name: postName,
+          city: application.city,
+          state: application.state,
+          status: 'founding_team_building',
+          health_status: 'yellow',
+        })
+        .select()
+        .single()
+
+      if (!postError && newPost) {
+        await supabase.from('post_applications').update({ post_id: newPost.id }).eq('id', id)
+        await supabase.from('founding_team_members').insert({
+          post_id: newPost.id,
+          name: application.name,
+          email: application.email,
+          phone: application.phone,
+          position: 'commander',
+          combat_status: application.combat_service ? 'Combat veteran' : 'Non-combat veteran',
+          verification_status: application.dd214_review_status === 'verified' ? 'verified' : 'pending',
+          dd214_reviewed: application.dd214_review_status !== 'pending',
+          combat_service_verified: application.dd214_review_status === 'verified',
+          membership_approved: true,
+        })
+        setNotice(
+          `${postName} created — ${application.name} was added as Commander. Head to the Founding Team module to invite the rest of the team.`
+        )
+      }
+      load()
+    }
   }
 
   const columns: KanbanColumn<PostApplication>[] = POST_STATUS_ORDER.map((status) => ({
@@ -50,6 +121,15 @@ export default function ApplicationsPipeline() {
         }
       />
 
+      {notice && (
+        <div className="panel p-4 mb-6 border-status-active/40 flex items-start justify-between gap-4">
+          <p className="text-sm text-ink">{notice}</p>
+          <button onClick={() => setNotice(null)} className="text-muted hover:text-gold text-xs shrink-0">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {!loading && (
         <KanbanBoard
           columns={columns}
@@ -57,6 +137,7 @@ export default function ApplicationsPipeline() {
           renderCard={(a) => (
             <ApplicationCard
               application={a}
+              score={scoreByApplication[a.id]}
               onMove={moveStatus}
               onReview={() => setReviewing(a)}
               onView={() => setViewing(a)}
@@ -86,18 +167,26 @@ export default function ApplicationsPipeline() {
         />
       )}
 
-      {viewing && <ApplicationDetailModal application={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <ApplicationDetailModal
+          application={viewing}
+          onClose={() => setViewing(null)}
+          onDeleted={load}
+        />
+      )}
     </div>
   )
 }
 
 function ApplicationCard({
   application,
+  score,
   onMove,
   onReview,
   onView,
 }: {
   application: PostApplication
+  score?: number
   onMove: (id: string, status: PostStatus) => void
   onReview: () => void
   onView: () => void
@@ -126,9 +215,14 @@ function ApplicationCard({
         </button>
       </div>
 
-      {application.military_branch && (
-        <div className="text-xs text-muted mb-2">{application.military_branch}</div>
-      )}
+      <div className="flex items-center gap-2 mb-2">
+        {application.military_branch && <div className="text-xs text-muted">{application.military_branch}</div>}
+        {typeof score === 'number' && (
+          <div className="flex items-center gap-1 text-[11px] font-mono text-gold ml-auto">
+            <Star size={11} className="fill-gold" /> {score}/10
+          </div>
+        )}
+      </div>
 
       <div className="mb-2">
         {hasDD214 ? (
