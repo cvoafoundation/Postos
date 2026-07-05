@@ -412,8 +412,14 @@ create policy "founding_team_update_national" on founding_team_members
 create policy "founding_team_delete_national" on founding_team_members
   for delete using (is_national_role());
 
-create policy "checklist_post_or_national" on checklist_items
-  for all using (is_national_role() or post_id = current_post_id());
+create policy "checklist_select_shared" on checklist_items
+  for select using (true); -- viewable via the post's shareable checklist link
+create policy "checklist_update_shared" on checklist_items
+  for update using (true); -- the post's own team can check things off via that same link
+create policy "checklist_insert_national" on checklist_items
+  for insert with check (is_national_role());
+create policy "checklist_delete_national" on checklist_items
+  for delete using (is_national_role());
 
 create policy "toolkit_read_all" on toolkit_templates for select using (true);
 create policy "toolkit_write_national" on toolkit_templates for insert with check (is_national_role());
@@ -565,6 +571,7 @@ begin
     (new.id, 'Administration', 'Charter Packet Completed', false),
     (new.id, 'Administration', 'Bylaws Signed', false),
     (new.id, 'Administration', 'Officers Appointed', false),
+    (new.id, 'Administration', 'Founding Team Verified', true),
     (new.id, 'Administration', 'EIN Issued', false),
     (new.id, 'Administration', 'Bank Account Opened', false),
     (new.id, 'Administration', 'State Filing Complete', false),
