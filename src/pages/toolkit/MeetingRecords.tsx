@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { StatusBadge, healthTone } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import type { MeetingRecord, Post } from '@/lib/types'
-import { Search, Plus, FileText, Upload } from 'lucide-react'
-import { format } from 'date-fns'
+import { Search, Plus, FileText, Upload, AlertTriangle } from 'lucide-react'
+import { format, differenceInDays } from 'date-fns'
+
+const OVERDUE_YELLOW_DAYS = 30
+const OVERDUE_RED_DAYS = 60
 
 function snippet(text: string, term: string, radius = 80): string {
   const idx = text.toLowerCase().indexOf(term.toLowerCase())
@@ -15,9 +19,19 @@ function snippet(text: string, term: string, radius = 80): string {
   return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '')
 }
 
+function complianceStatus(lastDate: string | null): 'green' | 'yellow' | 'red' {
+  if (!lastDate) return 'red'
+  const days = differenceInDays(new Date(), new Date(lastDate))
+  if (days <= OVERDUE_YELLOW_DAYS) return 'green'
+  if (days <= OVERDUE_RED_DAYS) return 'yellow'
+  return 'red'
+}
+
 export default function MeetingRecords() {
   const { profile, isNational } = useAuth()
   const [posts, setPosts] = useState<Record<string, string>>({})
+  const [activePosts, setActivePosts] = useState<Post[]>([])
+  const [lastSubmission, setLastSubmission] = useState<Record<string, string>>({})
   const [showSubmit, setShowSubmit] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<MeetingRecord[]>([])
@@ -30,7 +44,26 @@ export default function MeetingRecords() {
       for (const p of data ?? []) map[p.id] = p.name
       setPosts(map)
     })
-  }, [])
+    if (isNational) {
+      loadCompliance()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNational])
+
+  async function loadCompliance() {
+    const [postsRes, recordsRes] = await Promise.all([
+      supabase.from('posts').select('*').eq('status', 'active_post'),
+      supabase.from('meeting_records').select('post_id, meeting_date'),
+    ])
+    setActivePosts((postsRes.data ?? []) as Post[])
+    const latest: Record<string, string> = {}
+    for (const r of (recordsRes.data ?? []) as any[]) {
+      if (!latest[r.post_id] || r.meeting_date > latest[r.post_id]) {
+        latest[r.post_id] = r.meeting_date
+      }
+    }
+    setLastSubmission(latest)
+  }
 
   async function runSearch(e?: FormEvent) {
     e?.preventDefault()
@@ -69,6 +102,37 @@ export default function MeetingRecords() {
         how many meetings across how many posts have discussed it — real institutional memory,
         not just files sitting in 100 separate cabinets.
       </p>
+
+      {isNational && activePosts.length > 0 && (
+        <div className="panel p-4 mb-6">
+          <div className="eyebrow mb-3">Post Compliance — Meeting Minutes Submission</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {activePosts
+              .map((p) => ({ post: p, last: lastSubmission[p.id] ?? null, status: complianceStatus(lastSubmission[p.id] ?? null) }))
+              .sort((a, b) => {
+                const rank = { red: 0, yellow: 1, green: 2 }
+                return rank[a.status] - rank[b.status]
+              })
+              .map(({ post, last, status }) => (
+                <div key={post.id} className="flex items-center justify-between border border-hairline rounded-sm p-2.5">
+                  <div className="min-w-0">
+                    <div className="text-sm truncate">{post.name}</div>
+                    <div className="text-[11px] text-muted font-mono">
+                      {last ? `Last: ${format(new Date(last), 'MMM d, yyyy')}` : 'Never submitted'}
+                    </div>
+                  </div>
+                  <StatusBadge
+                    label={status === 'green' ? 'Current' : status === 'yellow' ? 'Due Soon' : 'Overdue'}
+                    tone={healthTone(status)}
+                  />
+                </div>
+              ))}
+          </div>
+          <p className="text-[11px] text-muted mt-3 flex items-center gap-1.5">
+            <AlertTriangle size={11} /> Overdue = no minutes submitted in {OVERDUE_RED_DAYS}+ days. Due Soon = {OVERDUE_YELLOW_DAYS}–{OVERDUE_RED_DAYS} days.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={runSearch} className="flex gap-2 mb-4">
         <div className="relative flex-1">
@@ -138,6 +202,7 @@ export default function MeetingRecords() {
           onSubmitted={() => {
             setShowSubmit(false)
             runSearch()
+            if (isNational) loadCompliance()
           }}
         />
       )}

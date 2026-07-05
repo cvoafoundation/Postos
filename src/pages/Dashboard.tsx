@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { StatCard } from '@/components/ui/StatCard'
 import { UsStatusMap } from '@/components/map/UsStatusMap'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { supabase } from '@/lib/supabase'
 import type { ActivityFeedItem, Post } from '@/lib/types'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow, differenceInDays } from 'date-fns'
 
 interface Metrics {
   activePosts: number
@@ -14,7 +15,10 @@ interface Metrics {
   totalMembers: number
   totalSponsorRevenue: number
   upcomingEvents: number
+  overdueOnMinutes: number
 }
+
+const OVERDUE_RED_DAYS = 60
 
 export default function Dashboard() {
   const [posts, setPosts] = useState<Post[]>([])
@@ -26,11 +30,12 @@ export default function Dashboard() {
     let cancelled = false
 
     async function load() {
-      const [postsRes, activityRes, profilesCountRes, sponsorsRes] = await Promise.all([
+      const [postsRes, activityRes, profilesCountRes, sponsorsRes, meetingRecordsRes] = await Promise.all([
         supabase.from('posts').select('*'),
         supabase.from('activity_feed').select('*').order('created_at', { ascending: false }).limit(8),
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
         supabase.from('sponsors').select('sponsorship_value').eq('stage', 'won'),
+        supabase.from('meeting_records').select('post_id, meeting_date'),
       ])
 
       if (cancelled) return
@@ -38,13 +43,28 @@ export default function Dashboard() {
       const allPosts = (postsRes.data ?? []) as Post[]
       setPosts(allPosts)
       setActivity((activityRes.data ?? []) as ActivityFeedItem[])
+
+      const activePostList = allPosts.filter((p) => p.status === 'active_post')
+      const lastByPost: Record<string, string> = {}
+      for (const r of (meetingRecordsRes.data ?? []) as any[]) {
+        if (!lastByPost[r.post_id] || r.meeting_date > lastByPost[r.post_id]) {
+          lastByPost[r.post_id] = r.meeting_date
+        }
+      }
+      const overdueOnMinutes = activePostList.filter((p) => {
+        const last = lastByPost[p.id]
+        if (!last) return true
+        return differenceInDays(new Date(), new Date(last)) > OVERDUE_RED_DAYS
+      }).length
+
       setMetrics({
-        activePosts: allPosts.filter((p) => p.status === 'active_post').length,
+        activePosts: activePostList.length,
         developingPosts: allPosts.filter((p) => p.status !== 'active_post').length,
         charterReady: allPosts.filter((p) => p.status === 'charter_ready').length,
         totalMembers: profilesCountRes.count ?? 0,
         totalSponsorRevenue: (sponsorsRes.data ?? []).reduce((sum, s: any) => sum + (s.sponsorship_value ?? 0), 0),
         upcomingEvents: 0, // wire to an events table once scheduling is integrated
+        overdueOnMinutes,
       })
       setLoading(false)
     }
@@ -59,7 +79,7 @@ export default function Dashboard() {
     <div>
       <PageHeader eyebrow="National Command" title="Global Dashboard" />
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
         <StatCard label="Active Posts" value={metrics?.activePosts ?? '—'} accent="active" />
         <StatCard label="In Development" value={metrics?.developingPosts ?? '—'} accent="developing" />
         <StatCard label="Charter Ready" value={metrics?.charterReady ?? '—'} accent="gold" />
@@ -69,6 +89,13 @@ export default function Dashboard() {
           value={metrics ? `$${metrics.totalSponsorRevenue.toLocaleString()}` : '—'}
         />
         <StatCard label="Upcoming Events" value={metrics?.upcomingEvents ?? '—'} />
+        <Link to="/meeting-records">
+          <StatCard
+            label="Overdue on Minutes"
+            value={metrics?.overdueOnMinutes ?? '—'}
+            accent={metrics && metrics.overdueOnMinutes > 0 ? 'attention' : 'gold'}
+          />
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
