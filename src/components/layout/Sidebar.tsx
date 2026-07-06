@@ -18,10 +18,14 @@ import { useAuth } from '@/context/AuthContext'
 import { isDemoMode } from '@/lib/supabase'
 import clsx from 'clsx'
 
-const NAV_ITEMS = [
-  { to: '/', label: 'Global Dashboard', icon: LayoutGrid, end: true },
+const NATIONAL_ONLY_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
   { to: '/applications', label: 'Application Pipeline', icon: GitBranch },
   { to: '/vetting', label: 'Vetting System', icon: ClipboardCheck },
+]
+
+// Shared by everyone — for post-scoped accounts, "Post Health" gets pointed
+// at their own post directly rather than the National list view.
+const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
   { to: '/founding-team', label: 'Founding Team', icon: Users },
   { to: '/checklist', label: 'Launch Checklist', icon: ListChecks },
   { to: '/meetings', label: 'Meetings', icon: CalendarCheck },
@@ -34,7 +38,17 @@ const NAV_ITEMS = [
 ]
 
 export function Sidebar() {
-  const { profile, signOut } = useAuth()
+  const { profile, isNational, signOut } = useAuth()
+
+  const navItems = [
+    { to: '/', label: 'Global Dashboard', icon: LayoutGrid, end: true },
+    ...(isNational ? NATIONAL_ONLY_ITEMS : []),
+    ...SHARED_ITEMS.map((item) =>
+      item.to === '/health' && !isNational && profile?.post_id
+        ? { ...item, to: `/health/${profile.post_id}` }
+        : item
+    ),
+  ]
 
   return (
     <aside className="w-64 shrink-0 bg-charcoal border-r border-hairline flex flex-col h-screen sticky top-0">
@@ -46,12 +60,17 @@ export function Sidebar() {
             Demo Mode — local data
           </div>
         )}
+        {!isNational && profile?.post_id && (
+          <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-hairline text-muted font-mono text-[10px] uppercase tracking-wide">
+            Post Account
+          </div>
+        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto py-4">
-        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+        {navItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink
-            key={to}
+            key={label}
             to={to}
             end={end}
             className={({ isActive }) =>

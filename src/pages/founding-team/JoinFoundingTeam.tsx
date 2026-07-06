@@ -1,7 +1,8 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { CheckCircle2, Upload, FileCheck, Loader2 } from 'lucide-react'
+import type { UserRole } from '@/lib/types'
+import { CheckCircle2, Upload, FileCheck, Loader2, KeyRound } from 'lucide-react'
 
 const POSITIONS = [
   { value: 'member', label: 'Additional Member' },
@@ -11,6 +12,12 @@ const POSITIONS = [
   { value: 'sergeant_at_arms', label: 'Sergeant-at-Arms' },
   { value: 'commander', label: 'Commander' },
 ]
+
+function roleForPosition(position: string): UserRole {
+  if (position === 'commander') return 'post_commander'
+  if (position === 'member') return 'member'
+  return 'post_officer'
+}
 
 export default function JoinFoundingTeam() {
   const { postId } = useParams<{ postId: string }>()
@@ -24,9 +31,12 @@ export default function JoinFoundingTeam() {
     phone: '',
     position: 'member',
     combat_status: 'Non-combat veteran',
+    password: '',
   })
+  const [wantsAccount, setWantsAccount] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [accountStatus, setAccountStatus] = useState<'immediate' | 'confirm_email' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const [docFile, setDocFile] = useState<File | null>(null)
@@ -84,7 +94,8 @@ export default function JoinFoundingTeam() {
     if (!postId) return
     setSubmitting(true)
     setError(null)
-    const { error } = await supabase.from('founding_team_members').insert({
+
+    const { error: teamError } = await supabase.from('founding_team_members').insert({
       post_id: postId,
       name: form.name,
       email: form.email || null,
@@ -93,11 +104,44 @@ export default function JoinFoundingTeam() {
       combat_status: form.combat_status,
       dd214_storage_path: docPath,
     })
-    setSubmitting(false)
-    if (error) {
-      setError(error.message)
+    if (teamError) {
+      setSubmitting(false)
+      setError(teamError.message)
       return
     }
+
+    // Optional account creation — the whole point being that stepping up
+    // for a post shouldn't require a National admin to run SQL for you.
+    if (wantsAccount && form.email && form.password) {
+      const role = roleForPosition(form.position)
+
+      // Stage the intended profile so it completes automatically whether or
+      // not Supabase requires email confirmation before a session exists.
+      await supabase.from('pending_profile_signups').insert({
+        email: form.email,
+        full_name: form.name,
+        post_id: postId,
+        role,
+      })
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+      })
+
+      if (signUpError) {
+        // Founding team record already saved — don't block on account issues,
+        // just surface it so they know to try signing in separately.
+        setError(`Joined the team, but account creation failed: ${signUpError.message}`)
+        setSubmitting(false)
+        setSubmitted(true)
+        return
+      }
+
+      setAccountStatus(signUpData.session ? 'immediate' : 'confirm_email')
+    }
+
+    setSubmitting(false)
     setSubmitted(true)
   }
 
@@ -122,9 +166,21 @@ export default function JoinFoundingTeam() {
             <div className="text-center py-8">
               <CheckCircle2 className="mx-auto mb-4 text-status-active" size={40} />
               <div className="font-display text-2xl tracking-wide mb-2">You're on the team</div>
-              <p className="text-sm text-muted">
-                Thanks for stepping up for {postName}. National Staff will follow up on next steps.
+              <p className="text-sm text-muted mb-2">
+                Thanks for stepping up for {postName}.
               </p>
+              {accountStatus === 'immediate' && (
+                <p className="text-sm text-status-active">
+                  Your account is ready — you can sign in with the email and password you set.
+                </p>
+              )}
+              {accountStatus === 'confirm_email' && (
+                <p className="text-sm text-muted">
+                  Check your email to confirm your account, then sign in — your access to {postName}'s tools
+                  will be ready automatically.
+                </p>
+              )}
+              {error && <p className="text-status-attention text-sm mt-2">{error}</p>}
             </div>
           ) : (
             <>
@@ -193,6 +249,7 @@ export default function JoinFoundingTeam() {
                     onChange={(e) => update('name', e.target.value)}
                   />
                   <input
+                    required={wantsAccount}
                     type="email"
                     placeholder="Email"
                     className="input-field"
@@ -224,6 +281,24 @@ export default function JoinFoundingTeam() {
                     <option>Non-combat veteran</option>
                     <option>Combat veteran</option>
                   </select>
+
+                  <div className="border-t border-hairline pt-3">
+                    <label className="flex items-center gap-2 text-sm text-muted cursor-pointer mb-2">
+                      <input type="checkbox" checked={wantsAccount} onChange={(e) => setWantsAccount(e.target.checked)} />
+                      <KeyRound size={13} /> Create an account so I can manage things for {postName ?? 'my post'}
+                    </label>
+                    {wantsAccount && (
+                      <input
+                        required={wantsAccount}
+                        type="password"
+                        placeholder="Set a password"
+                        className="input-field"
+                        minLength={6}
+                        value={form.password}
+                        onChange={(e) => update('password', e.target.value)}
+                      />
+                    )}
+                  </div>
 
                   {error && <p className="text-status-attention text-sm">{error}</p>}
 

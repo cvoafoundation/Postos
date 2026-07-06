@@ -42,6 +42,15 @@ export const POST_STATUS_LABELS: Record<PostStatus, string> = {
 
 export type PostHealthStatus = 'green' | 'yellow' | 'red'
 
+export interface PendingProfileSignup {
+  id: string
+  email: string
+  full_name: string
+  post_id: string | null
+  role: UserRole
+  created_at: string
+}
+
 export interface Profile {
   id: string
   full_name: string

@@ -296,7 +296,52 @@ reviewing a new sponsor instead.
    set it up now (Project Settings → Edge Functions → Secrets) and deploy
    `generate-facility-plan` — same key works for both functions.
 
+## Self-serve post accounts + role-restricted access (the foundation for everything post-facing)
+
+Until now, every login had to be created by hand via SQL — there was no way for a post to get
+their own account, and there was a real gap where the `profiles` table had no INSERT policy at
+all, meaning self-serve signup was structurally impossible even if the UI had asked for it.
+
+**What's fixed:**
+- `profiles` now has an INSERT policy (`id = auth.uid()`) — the actual missing piece.
+- The **Founding Team invite link** now has an optional "Create an account" step. Whoever joins
+  can set a password right there. Their role is inferred from their position (Commander →
+  `post_commander`, other named officer roles → `post_officer`, Additional Member → `member`)
+  and their `post_id` is set automatically.
+- This works whether or not your Supabase project requires email confirmation before a session
+  exists — a `pending_profile_signups` table stages the intended profile, and `AuthContext`
+  finishes creating it automatically the first time that person gets a real authenticated
+  session (immediately, or after they confirm their email and log in).
+
+**Role-restricted sidebar and routes:**
+- A post-scoped account (`post_commander`, `post_officer`, `member`) now sees a smaller sidebar:
+  Founding Team, Launch Checklist, Meetings, Post Toolkit, Recruiting Engine, Sponsorship CRM,
+  Veterans Congress, Post Health, Build A Post. No Application Pipeline, no Vetting System —
+  those are National-only and now enforced with `RoleGuard` at the route level, not just hidden
+  from the sidebar (typing the URL directly now shows "Access Restricted" instead of the page).
+- Their "Post Health" sidebar link points straight at their own post's detail page, not the
+  National list view (which they wouldn't see anything on anyway, since Post Health's list page
+  is National-only).
+- **Veterans Congress now branches by role**: National sees the full admin dashboard
+  (introduce resolutions, manage committees, open voting, etc.). Everyone else sees a
+  stripped-down "Open Votes" view — just resolutions currently open for voting and a way to
+  cast a ballot, no admin controls. This is the "customer-facing, vote-only" experience you
+  asked for.
+
+**What this unlocks, mostly for free:** Sponsorship CRM and Build A Post already worked
+correctly for a post-scoped account once they had a real login — both already default to the
+logged-in user's own `post_id` instead of needing a National post-selector. Getting real
+accounts working was the actual blocker, not those pages themselves.
+
+**Still genuinely missing, called out honestly:** a real Membership Roster. Recruiting Engine
+tracks pipeline *stage* (prospect → member → officer), not a clean directory of every member
+with contact info that a post could self-maintain. If "posts upload all their members and
+contact info" is the next priority, that's a new feature — not covered by this pass.
+
+Run `self-serve-accounts-foundation.sql` in Supabase, then push the code.
+
 ## Stack
+
 
 
 

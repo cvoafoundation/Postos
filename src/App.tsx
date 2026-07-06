@@ -1,6 +1,7 @@
 import { Route, Routes, Navigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { AppShell } from '@/components/layout/AppShell'
+import { RoleGuard } from '@/components/layout/RoleGuard'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import ApplicationsPipeline from '@/pages/applications/ApplicationsPipeline'
@@ -16,6 +17,7 @@ import Meetings from '@/pages/meetings/Meetings'
 import RecruitingPipeline from '@/pages/recruiting/RecruitingPipeline'
 import SponsorsCRM from '@/pages/sponsors/SponsorsCRM'
 import VeteransCongress from '@/pages/congress/VeteransCongress'
+import CongressMemberView from '@/pages/congress/CongressMemberView'
 import ResolutionDetail from '@/pages/congress/ResolutionDetail'
 import Committees from '@/pages/congress/Committees'
 import Delegates from '@/pages/congress/Delegates'
@@ -61,20 +63,55 @@ function AuthenticatedApp() {
     <AppShell>
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/applications" element={<ApplicationsPipeline />} />
-        <Route path="/vetting" element={<VettingBoard />} />
+        <Route
+          path="/applications"
+          element={
+            <RoleGuard roles={[]}>
+              <ApplicationsPipeline />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/vetting"
+          element={
+            <RoleGuard roles={[]}>
+              <VettingBoard />
+            </RoleGuard>
+          }
+        />
         <Route path="/founding-team" element={<FoundingTeamBuilder />} />
         <Route path="/checklist" element={<LaunchChecklist />} />
         <Route path="/toolkit" element={<Toolkit />} />
         <Route path="/meetings" element={<Meetings />} />
         <Route path="/recruiting" element={<RecruitingPipeline />} />
         <Route path="/sponsors" element={<SponsorsCRM />} />
-        <Route path="/congress" element={<VeteransCongress />} />
+        <Route path="/congress" element={<CongressRoute />} />
         <Route path="/congress/resolutions/:id" element={<ResolutionDetail />} />
-        <Route path="/congress/committees" element={<Committees />} />
+        <Route
+          path="/congress/committees"
+          element={
+            <RoleGuard roles={[]}>
+              <Committees />
+            </RoleGuard>
+          }
+        />
         <Route path="/congress/delegates" element={<Delegates />} />
-        <Route path="/congress/legislative" element={<LegislativeTracker />} />
-        <Route path="/congress/calendar" element={<CongressCalendar />} />
+        <Route
+          path="/congress/legislative"
+          element={
+            <RoleGuard roles={[]}>
+              <LegislativeTracker />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/congress/calendar"
+          element={
+            <RoleGuard roles={[]}>
+              <CongressCalendar />
+            </RoleGuard>
+          }
+        />
         <Route path="/health" element={<PostHealth />} />
         <Route path="/health/:postId" element={<PostHealthDetail />} />
         <Route path="/build-a-post" element={<BuildAPost />} />
@@ -83,4 +120,9 @@ function AuthenticatedApp() {
       </Routes>
     </AppShell>
   )
+}
+
+function CongressRoute() {
+  const { isNational } = useAuth()
+  return isNational ? <VeteransCongress /> : <CongressMemberView />
 }

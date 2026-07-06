@@ -44,8 +44,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select('*')
       .eq('id', session.user.id)
       .single()
-      .then(({ data }) => {
-        setProfile(data as Profile | null)
+      .then(async ({ data }) => {
+        if (data) {
+          setProfile(data as Profile)
+          setLoading(false)
+          return
+        }
+
+        // No profile yet — check whether this email has a pending signup
+        // staged (from a founding-team invite, etc.) and finish creating
+        // their profile now that they have a real session. This is what
+        // makes self-serve account creation work regardless of whether
+        // Supabase required email confirmation before this moment.
+        const email = session.user.email
+        if (email) {
+          const { data: pending } = await supabase
+            .from('pending_profile_signups')
+            .select('*')
+            .eq('email', email)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single()
+
+          if (pending) {
+            const { data: newProfile } = await supabase
+              .from('profiles')
+              .insert({
+                id: session.user.id,
+                full_name: pending.full_name,
+                email,
+                role: pending.role,
+                post_id: pending.post_id,
+              })
+              .select()
+              .single()
+            await supabase.from('pending_profile_signups').delete().eq('id', pending.id)
+            setProfile((newProfile as Profile) ?? null)
+            setLoading(false)
+            return
+          }
+        }
+
+        setProfile(null)
         setLoading(false)
       })
   }, [session])

@@ -118,6 +118,21 @@ create table posts (
 alter table profiles
   add constraint profiles_post_id_fkey foreign key (post_id) references posts(id) on delete set null;
 
+-- Bridges the gap between "someone signs up for an account via a public
+-- link" and "Supabase may require email confirmation before a session
+-- exists." Their intended profile (name, post, role) is staged here at
+-- signup time; once they have a real authenticated session (immediately, or
+-- after confirming their email and logging in), the app finds this record
+-- by email and finishes creating their profile automatically.
+create table pending_profile_signups (
+  id uuid primary key default uuid_generate_v4(),
+  email text not null,
+  full_name text not null,
+  post_id uuid references posts(id),
+  role user_role not null default 'member',
+  created_at timestamptz not null default now()
+);
+
 -- ----------------------------------------------------------------------------
 -- MODULE 1: POST APPLICATION PIPELINE
 -- ----------------------------------------------------------------------------
@@ -652,6 +667,7 @@ create table activity_feed (
 -- ============================================================================
 
 alter table profiles enable row level security;
+alter table pending_profile_signups enable row level security;
 alter table posts enable row level security;
 alter table post_applications enable row level security;
 alter table vetting_scorecards enable row level security;
@@ -719,6 +735,18 @@ create policy "profiles_select_own_or_national" on profiles
   for select using (id = auth.uid() or is_national_role());
 create policy "profiles_update_own" on profiles
   for update using (id = auth.uid());
+create policy "profiles_insert_own" on profiles
+  for insert with check (id = auth.uid());
+
+-- pending_profile_signups: anyone can stage a signup (public invite links);
+-- any authenticated user can read/clean up (the data here is low-sensitivity
+-- — just an intended name/post/role, not credentials).
+create policy "pending_signups_insert_public" on pending_profile_signups
+  for insert with check (true);
+create policy "pending_signups_select_auth" on pending_profile_signups
+  for select using (auth.uid() is not null);
+create policy "pending_signups_delete_auth" on pending_profile_signups
+  for delete using (auth.uid() is not null);
 
 -- posts: national roles full access; everyone can read (public post directory)
 create policy "posts_select_all" on posts for select using (true);
