@@ -67,17 +67,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .single()
 
           if (pending) {
+            // Real access is NOT granted here — the account is created with
+            // no post and the lowest-privilege role. National verifying
+            // this person's DD214 (a step they already do) is what actually
+            // activates real access, via a database trigger.
             const { data: newProfile } = await supabase
               .from('profiles')
               .insert({
                 id: session.user.id,
                 full_name: pending.full_name,
                 email,
-                role: pending.role,
-                post_id: pending.post_id,
+                role: 'guest_applicant',
+                post_id: null,
               })
               .select()
               .single()
+
+            // Link this account to their founding team roster row so
+            // National's existing verification workflow can find and
+            // activate it later. Runs as a security-definer function so it
+            // can only ever link the calling user's own matching row.
+            await supabase.rpc('link_founding_team_profile')
+
             await supabase.from('pending_profile_signups').delete().eq('id', pending.id)
             setProfile((newProfile as Profile) ?? null)
             setLoading(false)

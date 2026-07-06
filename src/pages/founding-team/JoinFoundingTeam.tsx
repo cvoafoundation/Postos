@@ -171,13 +171,15 @@ export default function JoinFoundingTeam() {
               </p>
               {accountStatus === 'immediate' && (
                 <p className="text-sm text-status-active">
-                  Your account is ready — you can sign in with the email and password you set.
+                  Your account is ready to sign in with the email and password you set. Full access to{' '}
+                  {postName}'s tools activates once National Staff verifies your DD214 — same review as
+                  everyone else on the founding team.
                 </p>
               )}
               {accountStatus === 'confirm_email' && (
                 <p className="text-sm text-muted">
-                  Check your email to confirm your account, then sign in — your access to {postName}'s tools
-                  will be ready automatically.
+                  Check your email to confirm your account, then sign in. Full access to {postName}'s tools
+                  activates once National Staff verifies your DD214.
                 </p>
               )}
               {error && <p className="text-status-attention text-sm mt-2">{error}</p>}
@@ -285,7 +287,7 @@ export default function JoinFoundingTeam() {
                   <div className="border-t border-hairline pt-3">
                     <label className="flex items-center gap-2 text-sm text-muted cursor-pointer mb-2">
                       <input type="checkbox" checked={wantsAccount} onChange={(e) => setWantsAccount(e.target.checked)} />
-                      <KeyRound size={13} /> Create an account so I can manage things for {postName ?? 'my post'}
+                      <KeyRound size={13} /> Create an account (access activates once National verifies your DD214)
                     </label>
                     {wantsAccount && (
                       <input

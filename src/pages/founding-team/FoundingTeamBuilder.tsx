@@ -171,6 +171,7 @@ export default function FoundingTeamBuilder() {
             <tr>
               <th className="table-head">Name</th>
               <th className="table-head">Position</th>
+              <th className="table-head">Account</th>
               <th className="table-head">Document</th>
               <th className="table-head">DD214</th>
               <th className="table-head">Combat Verified</th>
@@ -187,6 +188,15 @@ export default function FoundingTeamBuilder() {
                   {m.email && <div className="text-[11px] text-muted font-mono">{m.email}</div>}
                 </td>
                 <td className="table-cell capitalize">{m.position.replaceAll('_', ' ')}</td>
+                <td className="table-cell">
+                  {m.profile_id ? (
+                    <span className="text-[11px] text-status-active font-mono">
+                      {m.verification_status === 'verified' ? 'Active' : 'Pending your verification'}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-muted">No account created</span>
+                  )}
+                </td>
                 <td className="table-cell">
                   {m.dd214_storage_path ? (
                     <button

@@ -340,7 +340,28 @@ contact info" is the next priority, that's a new feature — not covered by this
 
 Run `self-serve-accounts-foundation.sql` in Supabase, then push the code.
 
+### Security fix: account activation is gated behind National verification
+
+Before this was ever deployed, a real gap got caught: creating an account via the Founding
+Team invite link would grant real `post_commander`/`post_officer`/`member` access — full
+sponsor/health/build-a-post access to that post — immediately, with zero verification by
+National. Anyone with the invite link could self-grant real access.
+
+**Fixed.** Creating an account now grants nothing on its own — the account is created with the
+lowest-privilege role and no post assigned. Real access only activates the moment National
+verifies that person through the DD214/combat service/membership checkboxes already built into
+Founding Team Builder — the exact same review step you already do for everyone on a founding
+team. There's no new step for National; verifying someone now does double duty as approving
+their account.
+
+The Founding Team Builder roster now shows an "Account" column so you can see at a glance
+whether a given person has actually created a login, and whether it's active or still pending
+your verification.
+
+Run `verified-account-activation.sql` in Supabase, then push the code.
+
 ## Stack
+
 
 
 

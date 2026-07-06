@@ -291,6 +291,7 @@ export interface FoundingTeamMember {
   proposed_site_location: string | null
   funding_commitment: string | null
   dd214_storage_path: string | null
+  profile_id: string | null
   created_at: string
 }
 

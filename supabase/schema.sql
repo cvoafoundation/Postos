@@ -214,6 +214,7 @@ create table founding_team_members (
   proposed_site_location text, -- optional, mainly populated by the founding commander
   funding_commitment text, -- optional, mainly populated by the founding commander
   dd214_storage_path text, -- this member's own ID/DD214 upload, in the shared 'dd214-uploads' bucket
+  profile_id uuid references profiles(id), -- linked once they create an account; access activates on verification
   created_at timestamptz not null default now()
 );
 
@@ -1026,6 +1027,61 @@ $$;
 create trigger trg_compute_founding_team_verification
   before update on founding_team_members
   for each row execute function compute_founding_team_verification();
+
+-- Safely links a newly-created account to its founding_team_members roster
+-- row. Runs as SECURITY DEFINER so it can bypass the normal update policy,
+-- but only ever touches the CALLING user's own row, matched by their own
+-- verified auth email, and only if it hasn't already been claimed — this
+-- can't be used to hijack someone else's roster entry.
+create or replace function link_founding_team_profile()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update founding_team_members
+  set profile_id = auth.uid()
+  where profile_id is null
+    and email = (select email from auth.users where id = auth.uid());
+end;
+$$;
+
+grant execute on function link_founding_team_profile() to authenticated;
+
+-- This is the actual security gate: an account created via the public
+-- invite link has NO real access (role stays 'guest_applicant', post_id
+-- stays null) until National verifies them through the existing DD214 /
+-- combat service / membership checkboxes. The moment verification_status
+-- flips to 'verified', this trigger promotes their linked account to real
+-- access automatically — no extra step for National beyond what they
+-- already do.
+create or replace function promote_founding_team_account()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  mapped_role user_role;
+begin
+  if new.verification_status = 'verified'
+     and (old.verification_status is distinct from 'verified')
+     and new.profile_id is not null then
+    mapped_role := case
+      when new.position = 'commander' then 'post_commander'
+      when new.position = 'member' then 'member'
+      else 'post_officer'
+    end;
+    update profiles set role = mapped_role, post_id = new.post_id where id = new.profile_id;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_promote_founding_team_account
+  after update on founding_team_members
+  for each row execute function promote_founding_team_account();
 
 -- 4. Sponsor tier auto-assignment — whichever tier's threshold the sponsorship
 --    value clears (highest one that fits) is assigned automatically. Nobody

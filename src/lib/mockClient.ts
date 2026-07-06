@@ -201,6 +201,13 @@ export const mockSupabase = {
   from(table: string) {
     return new QueryBuilder(table)
   },
+  async rpc(name: string, _args?: any) {
+    if (name === 'link_founding_team_profile') {
+      // Demo mode has no real auth users to link against — no-op success.
+      return { data: null, error: null }
+    }
+    return { data: null, error: { message: `Unknown RPC: ${name}` } }
+  },
   functions: {
     async invoke(name: string, opts: { body: any }) {
       if (name === 'generate-toolkit-document') {
