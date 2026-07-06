@@ -226,6 +226,28 @@ export const mockSupabase = {
         seedData.toolkit_generated_documents.push(doc)
         return { data: { document: doc }, error: null }
       }
+      if (name === 'generate-facility-plan') {
+        const module = (seedData.build_a_post_modules ?? []).find((m: any) => m.id === opts.body.module_id)
+        const content = `[Demo Mode] This is a placeholder — connect a real Supabase project with the generate-facility-plan Edge Function deployed to get an actual AI-generated business case for "${module?.name ?? 'this facility'}" here.`
+        const doc = {
+          id: uid(),
+          module_id: opts.body.module_id,
+          post_id: opts.body.post_id ?? null,
+          title: `${module?.name ?? 'Facility Plan'} (Demo)`,
+          content,
+          generated_by: opts.body.generated_by ?? null,
+          created_at: new Date().toISOString(),
+        }
+        if (!seedData.build_a_post_generated_plans) seedData.build_a_post_generated_plans = []
+        seedData.build_a_post_generated_plans.push(doc)
+        return { data: { document: doc }, error: null }
+      }
+      if (name === 'create-membership-checkout') {
+        return {
+          data: { url: null, error: 'Demo mode — connect a real Supabase project with Stripe configured to test real checkout.' },
+          error: null,
+        }
+      }
       return { data: null, error: { message: `Unknown function: ${name}` } }
     },
   },

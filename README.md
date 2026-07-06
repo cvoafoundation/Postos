@@ -360,7 +360,77 @@ your verification.
 
 Run `verified-account-activation.sql` in Supabase, then push the code.
 
+## Membership Roster + real payment collection (Stripe)
+
+A real member directory — separate from Recruiting Engine, which tracks someone's journey
+*toward* membership, not the record of *being* a member.
+
+**Matches your existing sheet layout.** CSV import expects columns in this order: [an unused
+leading flag column, kept for compatibility with your existing sheet], Name, Email, Phone,
+Membership Number, Address, Branch. Existing membership numbers in your sheet import as-is —
+nothing gets renumbered on import.
+
+**The numbering system is real and automatic**, using the same state-admission-order scheme
+already used elsewhere (e.g. Indiana, the 19th state, produces `19-000000001`). A Postgres
+trigger assigns this automatically on every new member — global sequential number, prefixed by
+the admission order of *that member's own state* (not the post's state), matching what your
+sheet already does. If you supply a number yourself (via CSV import or manual entry), it's kept
+exactly as given rather than overwritten.
+
+**Real payment collection via Stripe** — Annual ($49.99) and Lifetime ($499.99), exactly as you
+specified. A public "Join / Renew" link (copyable from the Membership Roster page, per post)
+lets anyone pay by card. The moment Stripe confirms the charge, a webhook automatically marks
+the payment paid and activates the membership (setting a one-year expiration for annual, no
+expiration for lifetime) — nobody has to manually reconcile a bank statement against a roster.
+
+**The one thing I genuinely cannot do for you:** connecting your actual bank account for
+payouts. That's identity and tax verification (KYC) that Stripe requires directly from the
+business owner — it can't be automated or done on your behalf by me or by code. Everything up
+to that point (checkout, charging cards, tracking payments, activating memberships) is fully
+built and working; the bank connection is a ~10-minute form you fill out once in Stripe's own
+dashboard.
+
+### Deploying this (in order)
+
+1. Run `membership-roster.sql` in the SQL Editor.
+2. Create a Stripe account at stripe.com if you don't have one (start in **test mode** —
+   there's a toggle in their dashboard — so you can try the whole flow without moving real
+   money first).
+3. Stripe Dashboard → Developers → API keys → copy the **Secret key**.
+4. Supabase → Edge Functions → Secrets, add:
+   - `STRIPE_SECRET_KEY` = the key from step 3
+   - `SITE_URL` = your deployed site URL (e.g. `https://postos-nine.vercel.app`)
+5. Deploy both functions:
+   ```
+   supabase functions deploy create-membership-checkout
+   supabase functions deploy stripe-webhook --no-verify-jwt
+   ```
+6. Stripe Dashboard → Developers → Webhooks → Add endpoint. URL:
+   `https://<your-project-ref>.supabase.co/functions/v1/stripe-webhook`, event:
+   `checkout.session.completed`. Copy the **Signing secret** it shows you.
+7. Add that signing secret to Supabase as `STRIPE_WEBHOOK_SECRET`, redeploy `stripe-webhook`.
+8. Test with a card number Stripe provides for test mode (`4242 4242 4242 4242`, any future
+   date/CVC) before flipping to live keys and completing Stripe's account verification.
+
+Push the updated `src` folder and the two new `supabase/functions` folders as usual.
+
+**Updates since this was first written:**
+- The `stripe-webhook` function now also emails `command@combatvetsofamerica.org` and
+  `maddymarked@gmail.com` the moment a membership payment clears — full name, address, and
+  membership number, so the card maker doesn't need to be told separately. Uses the same
+  `RESEND_API_KEY` secret pattern as the Toolkit's other email notification, if you've already
+  set that up.
+- Clicking any row in the Membership Roster now opens an edit view — update contact info,
+  change membership type/status, or click **"Renew +1 Year"** on an annual membership to push
+  its expiration out (from today, or from its current expiration if it hasn't lapsed yet).
+- **Bank account changes belong in Stripe's own dashboard**, not this app — Settings → Bank
+  accounts and scheduling. Building that into our own app would mean handling real bank account
+  numbers ourselves, which is a compliance burden Stripe already solves for you safely. Nothing
+  on our end needs to change when you switch banks.
+
 ## Stack
+
+
 
 
 

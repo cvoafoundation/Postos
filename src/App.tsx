@@ -28,6 +28,9 @@ import PostHealth from '@/pages/health/PostHealth'
 import PostHealthDetail from '@/pages/health/PostHealthDetail'
 import BuildAPost from '@/pages/build-a-post/BuildAPost'
 import BuildAPostDetail from '@/pages/build-a-post/BuildAPostDetail'
+import MembershipRoster from '@/pages/members/MembershipRoster'
+import JoinMembership from '@/pages/members/JoinMembership'
+import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
 
 export default function App() {
   return (
@@ -37,6 +40,8 @@ export default function App() {
       <Route path="/post-checklist/:postId" element={<PublicChecklist />} />
       <Route path="/join-post/:postId" element={<PublicRecruitSignup />} />
       <Route path="/become-a-sponsor/:postId" element={<BecomeASponsor />} />
+      <Route path="/join-membership/:postId" element={<JoinMembership />} />
+      <Route path="/membership-payment-result" element={<MembershipPaymentResult />} />
       <Route path="/transparency" element={<TransparencyPortal />} />
       {/* Everything else is gated behind auth */}
       <Route path="/*" element={<AuthenticatedApp />} />
@@ -116,6 +121,7 @@ function AuthenticatedApp() {
         <Route path="/health/:postId" element={<PostHealthDetail />} />
         <Route path="/build-a-post" element={<BuildAPost />} />
         <Route path="/build-a-post/:moduleId" element={<BuildAPostDetail />} />
+        <Route path="/members" element={<MembershipRoster />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>

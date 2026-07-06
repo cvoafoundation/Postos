@@ -283,6 +283,21 @@ export const seedData: Record<string, any[]> = {
     { id: 'bp-6', name: 'Fitness Center', description: 'Wellness and physical fitness space for members.', startup_cost_low: 10000, startup_cost_high: 40000, equipment_list: ['Cardio machines', 'Free weights', 'Flooring', 'Locker area'], sponsor_opportunities: 'Fitness equipment brands, local gyms co-branding.', grant_opportunities: 'Veteran wellness grants (check state-level VA offices).', revenue_potential: 'Membership add-on fee potential.', created_at: daysAgo(50) },
   ],
 
+  state_admission_order: [
+    { state_abbr: 'MT', admission_order: 41 },
+    { state_abbr: 'OK', admission_order: 46 },
+    { state_abbr: 'WA', admission_order: 42 },
+  ],
+  members: [
+    { id: 'mem-1', post_id: 'post-1', membership_number: '41-000000001', full_name: 'Derek Payne', email: 'derek.payne@example.com', phone: '406-555-0110', address: '412 Elm St, Bozeman, MT 59715', state: 'MT', military_branch: 'Army', membership_type: 'lifetime', membership_status: 'active', joined_at: daysAgo(200).slice(0, 10), expires_at: null, created_at: daysAgo(200), updated_at: daysAgo(200) },
+    { id: 'mem-2', post_id: 'post-1', membership_number: '41-000000002', full_name: 'Sophie Turner', email: 'sophie.t@example.com', phone: '406-555-0142', address: '88 Ridge Rd, Bozeman, MT 59715', state: 'MT', military_branch: 'Marine Corps', membership_type: 'annual', membership_status: 'active', joined_at: daysAgo(90).slice(0, 10), expires_at: daysAgo(-275).slice(0, 10), created_at: daysAgo(90), updated_at: daysAgo(90) },
+    { id: 'mem-3', post_id: 'post-1', membership_number: '41-000000003', full_name: 'Grace Liu', email: null, phone: null, address: null, state: 'MT', military_branch: null, membership_type: 'annual', membership_status: 'pending_payment', joined_at: null, expires_at: null, created_at: daysAgo(5), updated_at: daysAgo(5) },
+  ],
+  membership_payments: [
+    { id: 'mp-1', member_id: 'mem-1', post_id: 'post-1', membership_type: 'lifetime', amount: 499.99, stripe_checkout_session_id: 'cs_demo_1', stripe_payment_intent_id: 'pi_demo_1', status: 'paid', paid_at: daysAgo(200), created_at: daysAgo(200) },
+    { id: 'mp-2', member_id: 'mem-2', post_id: 'post-1', membership_type: 'annual', amount: 49.99, stripe_checkout_session_id: 'cs_demo_2', stripe_payment_intent_id: 'pi_demo_2', status: 'paid', paid_at: daysAgo(90), created_at: daysAgo(90) },
+  ],
+
   meeting_records: [
     { id: 'mr-1', post_id: 'post-1', title: 'January 2026 Monthly Meeting', meeting_type: 'Monthly Meeting', meeting_date: daysAgo(30).slice(0, 10), minutes_text: 'Called to order at 7pm. Discussed the upcoming golf scramble fundraiser and PACT Act benefits briefing scheduled for next month. Motion to approve $500 for event flyers passed 8-0.', attachment_storage_path: null, submitted_by: null, created_at: daysAgo(30) },
     { id: 'mr-2', post_id: 'post-2', title: 'February 2026 Officer Meeting', meeting_type: 'Officer Meeting', meeting_date: daysAgo(10).slice(0, 10), minutes_text: 'Reviewed Q1 budget. Quartermaster reported sponsorship revenue from Tulsa Diesel Co. Discussed bylaws amendment proposal for membership dues.', attachment_storage_path: null, submitted_by: null, created_at: daysAgo(10) },

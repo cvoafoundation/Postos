@@ -512,6 +512,57 @@ create table congress_calendar_events (
 );
 
 -- ----------------------------------------------------------------------------
+-- MEMBERSHIP ROSTER
+-- A real member directory — separate from Recruiting Engine, which tracks
+-- someone's journey *toward* becoming a member, not the ongoing record of
+-- *being* one. Membership numbers follow the "state admission order" scheme
+-- already used elsewhere (e.g. VC-19-000000001 for a member in Indiana,
+-- the 19th state to join the Union) — a global sequential number prefixed
+-- by the admission order of the member's own state, not the post's state.
+-- ----------------------------------------------------------------------------
+create type membership_type as enum ('annual', 'lifetime');
+create type membership_status as enum ('active', 'lapsed', 'pending_payment');
+create type membership_payment_status as enum ('pending', 'paid', 'failed', 'refunded');
+
+create table state_admission_order (
+  state_abbr text primary key,
+  admission_order integer not null
+);
+
+create sequence membership_number_seq start 1;
+
+create table members (
+  id uuid primary key default uuid_generate_v4(),
+  post_id uuid references posts(id) on delete set null,
+  membership_number text unique, -- auto-generated on insert, e.g. "19-000000001"
+  full_name text not null,
+  email text,
+  phone text,
+  address text,
+  state text, -- 2-letter, drives the membership number prefix
+  military_branch text,
+  membership_type membership_type not null default 'annual',
+  membership_status membership_status not null default 'pending_payment',
+  joined_at date,
+  expires_at date, -- null for lifetime members
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table membership_payments (
+  id uuid primary key default uuid_generate_v4(),
+  member_id uuid references members(id) on delete set null,
+  post_id uuid references posts(id),
+  membership_type membership_type not null,
+  amount numeric(10,2) not null,
+  stripe_checkout_session_id text,
+  stripe_payment_intent_id text,
+  status membership_payment_status not null default 'pending',
+  paid_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------------------
 -- MODULE 9: POST HEALTH SYSTEM
 -- A real composite score, computed from data already collected elsewhere in
 -- the app (officers, sponsors, meetings, membership, Congress) plus new
@@ -697,6 +748,9 @@ alter table committee_reviews enable row level security;
 alter table legislative_bills enable row level security;
 alter table congress_announcements enable row level security;
 alter table congress_calendar_events enable row level security;
+alter table state_admission_order enable row level security;
+alter table members enable row level security;
+alter table membership_payments enable row level security;
 alter table governance_signatures enable row level security;
 alter table annual_reviews enable row level security;
 alter table community_service_events enable row level security;
@@ -889,6 +943,22 @@ create policy "congress_announcements_write_national" on congress_announcements
 
 create policy "congress_calendar_read_all" on congress_calendar_events for select using (true);
 create policy "congress_calendar_write_national" on congress_calendar_events for all using (is_national_role());
+
+create policy "state_admission_order_read_all" on state_admission_order for select using (true);
+
+create policy "members_select_post_or_national" on members
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "members_insert_auth_or_public" on members
+  for insert with check (true); -- public join/renew form can create a pending member record
+create policy "members_update_post_or_national" on members
+  for update using (is_national_role() or post_id = current_post_id());
+create policy "members_delete_national" on members
+  for delete using (is_national_role());
+
+create policy "membership_payments_select_post_or_national" on membership_payments
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "membership_payments_insert_public" on membership_payments
+  for insert with check (true); -- the payment flow starts before the payer is authenticated
 
 create policy "governance_signatures_select_post_or_national" on governance_signatures
   for select using (is_national_role() or post_id = current_post_id());
@@ -1085,6 +1155,35 @@ create trigger trg_promote_founding_team_account
   after update on founding_team_members
   for each row execute function promote_founding_team_account();
 
+-- Auto-generates a membership number ("19-000000001") on insert, unless one
+-- was already supplied (e.g. importing existing numbers from a CSV so
+-- historical numbering isn't silently rewritten). Falls back to admission
+-- order 99 for a state that isn't in the lookup table (DC, territories, or
+-- simply unset) rather than failing the insert.
+create or replace function assign_membership_number()
+returns trigger
+language plpgsql
+as $$
+declare
+  state_order integer;
+begin
+  if new.membership_number is not null then
+    return new;
+  end if;
+
+  select admission_order into state_order
+  from state_admission_order
+  where state_abbr = upper(coalesce(new.state, ''));
+
+  new.membership_number := coalesce(state_order, 99)::text || '-' || lpad(nextval('membership_number_seq')::text, 9, '0');
+  return new;
+end;
+$$;
+
+create trigger trg_assign_membership_number
+  before insert on members
+  for each row execute function assign_membership_number();
+
 -- 4. Sponsor tier auto-assignment — whichever tier's threshold the sponsorship
 --    value clears (highest one that fits) is assigned automatically. Nobody
 --    has to remember "oh, that's a Gold sponsor now" after a value changes.
@@ -1210,6 +1309,21 @@ create policy "congress_documents_read_public" on storage.objects
   for select using (bucket_id = 'congress-documents');
 create policy "congress_documents_write_national" on storage.objects
   for insert with check (bucket_id = 'congress-documents' and is_national_role());
+
+-- ============================================================================
+-- SEED: state admission order (drives membership number prefixes)
+-- ============================================================================
+insert into state_admission_order (state_abbr, admission_order) values
+  ('DE', 1), ('PA', 2), ('NJ', 3), ('GA', 4), ('CT', 5), ('MA', 6), ('MD', 7),
+  ('SC', 8), ('NH', 9), ('VA', 10), ('NY', 11), ('NC', 12), ('RI', 13),
+  ('VT', 14), ('KY', 15), ('TN', 16), ('OH', 17), ('LA', 18), ('IN', 19),
+  ('MS', 20), ('IL', 21), ('AL', 22), ('ME', 23), ('MO', 24), ('AR', 25),
+  ('MI', 26), ('FL', 27), ('TX', 28), ('IA', 29), ('WI', 30), ('CA', 31),
+  ('MN', 32), ('OR', 33), ('KS', 34), ('WV', 35), ('NV', 36), ('NE', 37),
+  ('CO', 38), ('ND', 39), ('SD', 40), ('MT', 41), ('WA', 42), ('ID', 43),
+  ('WY', 44), ('UT', 45), ('OK', 46), ('NM', 47), ('AZ', 48), ('AK', 49),
+  ('HI', 50), ('DC', 51)
+on conflict (state_abbr) do nothing;
 
 -- ============================================================================
 -- SEED: default committees

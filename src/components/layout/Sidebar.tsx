@@ -12,6 +12,7 @@ import {
   Landmark,
   HeartPulse,
   Hammer,
+  IdCard,
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
@@ -29,6 +30,7 @@ const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
   { to: '/founding-team', label: 'Founding Team', icon: Users },
   { to: '/checklist', label: 'Launch Checklist', icon: ListChecks },
   { to: '/meetings', label: 'Meetings', icon: CalendarCheck },
+  { to: '/members', label: 'Membership Roster', icon: IdCard },
   { to: '/toolkit', label: 'Post Toolkit', icon: FolderDown },
   { to: '/recruiting', label: 'Recruiting Engine', icon: Radar },
   { to: '/sponsors', label: 'Sponsorship CRM', icon: HandCoins },

@@ -42,6 +42,46 @@ export const POST_STATUS_LABELS: Record<PostStatus, string> = {
 
 export type PostHealthStatus = 'green' | 'yellow' | 'red'
 
+export type MembershipType = 'annual' | 'lifetime'
+export type MembershipStatus = 'active' | 'lapsed' | 'pending_payment'
+export type MembershipPaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded'
+
+export interface Member {
+  id: string
+  post_id: string | null
+  membership_number: string | null
+  full_name: string
+  email: string | null
+  phone: string | null
+  address: string | null
+  state: string | null
+  military_branch: string | null
+  membership_type: MembershipType
+  membership_status: MembershipStatus
+  joined_at: string | null
+  expires_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MembershipPayment {
+  id: string
+  member_id: string | null
+  post_id: string | null
+  membership_type: MembershipType
+  amount: number
+  stripe_checkout_session_id: string | null
+  stripe_payment_intent_id: string | null
+  status: MembershipPaymentStatus
+  paid_at: string | null
+  created_at: string
+}
+
+export const MEMBERSHIP_PRICES: Record<MembershipType, number> = {
+  annual: 49.99,
+  lifetime: 499.99,
+}
+
 export interface PendingProfileSignup {
   id: string
   email: string
