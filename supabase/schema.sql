@@ -298,6 +298,166 @@ create index meeting_records_search_idx on meeting_records using gin(search_vect
 create index meeting_records_post_idx on meeting_records (post_id);
 
 -- ----------------------------------------------------------------------------
+-- URO MEETING OPERATING SYSTEM
+-- This is deliberately not "a minutes form" — it's a guided, step-by-step
+-- system that walks a secretary through a meeting in Unified Rules of Order
+-- order, builds a compliant official record as they go, and keeps a
+-- genuinely private secretary workspace alongside it. The privacy of that
+-- workspace is enforced at the database level below, not just hidden in
+-- the UI — not even National can query it.
+-- ----------------------------------------------------------------------------
+create type uro_meeting_type as enum ('regular', 'special', 'emergency', 'asynchronous');
+create type uro_meeting_status as enum ('in_progress', 'published');
+create type uro_attendance_status as enum ('present', 'absent', 'excused', 'guest');
+create type uro_previous_minutes_status as enum ('approved', 'approved_with_corrections', 'rejected');
+create type uro_agenda_category as enum ('old_business', 'new_business');
+create type uro_motion_type as enum (
+  'main', 'amendment', 'refer', 'postpone', 'call_to_vote', 'table', 'reconsider', 'emergency_override'
+);
+create type uro_voting_method as enum ('voice', 'show_of_hands', 'roll_call', 'ballot', 'digital');
+create type uro_vote_result as enum ('passed', 'failed', 'tabled', 'withdrawn');
+create type uro_compliance_level as enum ('fully_compliant', 'minor_issues', 'non_compliant');
+create type uro_action_item_status as enum ('open', 'done');
+create type uro_secretary_note_type as enum (
+  'personal_note', 'draft_observation', 'reminder', 'follow_up',
+  'discussion_highlight', 'action_item', 'question', 'prep_note'
+);
+
+create table uro_meetings (
+  id uuid primary key default uuid_generate_v4(),
+  post_id uuid not null references posts(id) on delete cascade,
+  title text not null,
+  meeting_type uro_meeting_type not null default 'regular',
+  meeting_date date not null,
+  start_time time,
+  end_time time,
+  location text,
+  virtual_link text,
+
+  -- Step 1: Call to Order
+  called_to_order_by text,
+  time_called_to_order time,
+  call_to_order_notes text,
+
+  -- Step 2: Attendance / Quorum
+  total_voting_members integer,
+  quorum_required integer, -- typically computed as a fraction of total_voting_members client-side
+  quorum_achieved boolean,
+
+  -- Step 3: Approval of Previous Minutes
+  previous_minutes_status uro_previous_minutes_status,
+  previous_minutes_corrections text,
+  previous_minutes_vote_result uro_vote_result,
+
+  -- Step 10: Adjournment
+  adjourned_by text,
+  time_adjourned time,
+  adjournment_vote_result uro_vote_result,
+
+  status uro_meeting_status not null default 'in_progress',
+  compliance_level uro_compliance_level,
+  compliance_flags text[], -- e.g. {"Motion voted on without quorum", "Missing seconder on Motion #2"}
+  official_minutes_text text, -- auto-compiled when published; this is what search indexes
+  search_vector tsvector generated always as (
+    to_tsvector('english', coalesce(title, '') || ' ' || coalesce(official_minutes_text, ''))
+  ) stored,
+
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index uro_meetings_search_idx on uro_meetings using gin(search_vector);
+create index uro_meetings_post_idx on uro_meetings (post_id);
+
+create table uro_attendance (
+  id uuid primary key default uuid_generate_v4(),
+  meeting_id uuid not null references uro_meetings(id) on delete cascade,
+  post_id uuid not null references posts(id),
+  member_name text not null,
+  status uro_attendance_status not null default 'present',
+  sort_order integer not null default 0
+);
+
+create table uro_officer_reports (
+  id uuid primary key default uuid_generate_v4(),
+  meeting_id uuid not null references uro_meetings(id) on delete cascade,
+  post_id uuid not null references posts(id),
+  officer_name text,
+  position text,
+  summary text,
+  action_requested text,
+  sort_order integer not null default 0
+);
+
+create table uro_agenda_items (
+  id uuid primary key default uuid_generate_v4(),
+  meeting_id uuid not null references uro_meetings(id) on delete cascade,
+  post_id uuid not null references posts(id),
+  category uro_agenda_category not null,
+  title text not null,
+  discussion_summary text,
+  action_taken text,
+  sort_order integer not null default 0
+);
+
+-- The centerpiece — every motion gets its own permanent, searchable record.
+create table uro_motions (
+  id uuid primary key default uuid_generate_v4(),
+  meeting_id uuid not null references uro_meetings(id) on delete cascade,
+  post_id uuid not null references posts(id),
+  agenda_item_id uuid references uro_agenda_items(id) on delete set null,
+  motion_type uro_motion_type not null default 'main',
+  motion_text text not null,
+  moved_by text,
+  seconded_by text,
+  debate_summary text,
+  amendments text,
+  voting_method uro_voting_method,
+  vote_result uro_vote_result,
+  votes_for integer,
+  votes_against integer,
+  votes_abstain integer,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table uro_comments (
+  id uuid primary key default uuid_generate_v4(),
+  meeting_id uuid not null references uro_meetings(id) on delete cascade,
+  post_id uuid not null references posts(id),
+  speaker text,
+  comment_summary text,
+  sort_order integer not null default 0
+);
+
+create table uro_action_items (
+  id uuid primary key default uuid_generate_v4(),
+  meeting_id uuid not null references uro_meetings(id) on delete cascade,
+  post_id uuid not null references posts(id),
+  motion_id uuid references uro_motions(id) on delete set null,
+  description text not null,
+  owner_name text,
+  due_date date,
+  status uro_action_item_status not null default 'open',
+  created_at timestamptz not null default now()
+);
+
+-- THE PRIVATE WORKSPACE. RLS below restricts this to author_id = auth.uid()
+-- only — no exception for National, no exception for anyone. It stays
+-- private even after the meeting is published, and nothing here ever
+-- becomes part of the official record unless the secretary manually
+-- copies it into one of the public sections above themselves.
+create table uro_secretary_notes (
+  id uuid primary key default uuid_generate_v4(),
+  meeting_id uuid not null references uro_meetings(id) on delete cascade,
+  author_id uuid not null references profiles(id),
+  note_type uro_secretary_note_type not null default 'personal_note',
+  content text not null,
+  created_at timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------------------
 -- MODULE 6: RECRUITING ENGINE
 -- ----------------------------------------------------------------------------
 create table recruits (
@@ -731,6 +891,14 @@ alter table toolkit_categories enable row level security;
 alter table toolkit_items enable row level security;
 alter table toolkit_generated_documents enable row level security;
 alter table meeting_records enable row level security;
+alter table uro_meetings enable row level security;
+alter table uro_attendance enable row level security;
+alter table uro_officer_reports enable row level security;
+alter table uro_agenda_items enable row level security;
+alter table uro_motions enable row level security;
+alter table uro_comments enable row level security;
+alter table uro_action_items enable row level security;
+alter table uro_secretary_notes enable row level security;
 alter table recruits enable row level security;
 alter table sponsors enable row level security;
 alter table sponsor_tiers enable row level security;
@@ -864,6 +1032,58 @@ create policy "meeting_records_insert_auth" on meeting_records
   for insert with check (auth.uid() is not null);
 create policy "meeting_records_delete_national" on meeting_records
   for delete using (is_national_role());
+
+-- uro_meetings: National sees PUBLISHED meetings (drafts-in-progress are
+-- the secretary's own working copy, not yet "up there for National to
+-- see" — that only happens the moment they publish). A post always sees
+-- its own meetings regardless of status, so a secretary can resume a draft.
+create policy "uro_meetings_select" on uro_meetings
+  for select using ((is_national_role() and status = 'published') or post_id = current_post_id());
+create policy "uro_meetings_insert" on uro_meetings
+  for insert with check (auth.uid() is not null);
+create policy "uro_meetings_update" on uro_meetings
+  for update using (is_national_role() or post_id = current_post_id());
+create policy "uro_meetings_delete" on uro_meetings
+  for delete using (is_national_role() or post_id = current_post_id());
+
+-- Child tables of a meeting follow the same visibility as the meeting
+-- itself, scoped by their own denormalized post_id for simple, fast RLS.
+create policy "uro_attendance_select" on uro_attendance
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "uro_attendance_write" on uro_attendance
+  for all using (auth.uid() is not null);
+
+create policy "uro_officer_reports_select" on uro_officer_reports
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "uro_officer_reports_write" on uro_officer_reports
+  for all using (auth.uid() is not null);
+
+create policy "uro_agenda_items_select" on uro_agenda_items
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "uro_agenda_items_write" on uro_agenda_items
+  for all using (auth.uid() is not null);
+
+create policy "uro_motions_select" on uro_motions
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "uro_motions_write" on uro_motions
+  for all using (auth.uid() is not null);
+
+create policy "uro_comments_select" on uro_comments
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "uro_comments_write" on uro_comments
+  for all using (auth.uid() is not null);
+
+create policy "uro_action_items_select" on uro_action_items
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "uro_action_items_write" on uro_action_items
+  for all using (auth.uid() is not null);
+
+-- THE PRIVATE WORKSPACE — deliberately does NOT use is_national_role() or
+-- current_post_id() at all. Only the author can ever see, write, or delete
+-- their own notes. This is the one table in the entire schema where
+-- National access is intentionally, permanently excluded.
+create policy "uro_secretary_notes_own_only" on uro_secretary_notes
+  for all using (author_id = auth.uid());
 
 create policy "recruits_select_post_or_national" on recruits
   for select using (is_national_role() or post_id = current_post_id());

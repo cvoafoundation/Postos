@@ -14,6 +14,10 @@ import BecomeASponsor from '@/pages/sponsors/BecomeASponsor'
 import LaunchChecklist from '@/pages/checklist/LaunchChecklist'
 import Toolkit from '@/pages/toolkit/Toolkit'
 import Meetings from '@/pages/meetings/Meetings'
+import UroMeetingWizard from '@/pages/meetings/uro/UroMeetingWizard'
+import UroMeetingView from '@/pages/meetings/uro/UroMeetingView'
+import UroComplianceDashboard from '@/pages/meetings/uro/UroComplianceDashboard'
+import UroMotionSearch from '@/pages/meetings/uro/UroMotionSearch'
 import RecruitingPipeline from '@/pages/recruiting/RecruitingPipeline'
 import SponsorsCRM from '@/pages/sponsors/SponsorsCRM'
 import VeteransCongress from '@/pages/congress/VeteransCongress'
@@ -88,6 +92,24 @@ function AuthenticatedApp() {
         <Route path="/checklist" element={<LaunchChecklist />} />
         <Route path="/toolkit" element={<Toolkit />} />
         <Route path="/meetings" element={<Meetings />} />
+        <Route path="/meetings/uro/:meetingId" element={<UroMeetingWizard />} />
+        <Route path="/meetings/uro/:meetingId/view" element={<UroMeetingView />} />
+        <Route
+          path="/meetings/uro-compliance"
+          element={
+            <RoleGuard roles={[]}>
+              <UroComplianceDashboard />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/meetings/uro-motions"
+          element={
+            <RoleGuard roles={[]}>
+              <UroMotionSearch />
+            </RoleGuard>
+          }
+        />
         <Route path="/recruiting" element={<RecruitingPipeline />} />
         <Route path="/sponsors" element={<SponsorsCRM />} />
         <Route path="/congress" element={<CongressRoute />} />

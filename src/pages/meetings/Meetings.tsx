@@ -5,8 +5,10 @@ import { StatusBadge, healthTone } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import type { MeetingRecord, Post } from '@/lib/types'
-import { Search, Plus, FileText, Upload, AlertTriangle, CalendarCheck } from 'lucide-react'
+import { Search, Plus, FileText, Upload, AlertTriangle, CalendarCheck, ClipboardList, BarChart3 } from 'lucide-react'
 import { format, differenceInDays, isSameMonth } from 'date-fns'
+import { useNavigate } from 'react-router-dom'
+import type { UroMeeting } from '@/lib/types'
 
 const OVERDUE_YELLOW_DAYS = 30
 const OVERDUE_RED_DAYS = 60
@@ -28,11 +30,14 @@ function complianceStatus(lastDate: string | null): 'green' | 'yellow' | 'red' {
 }
 
 export default function Meetings() {
+  const navigate = useNavigate()
   const { profile, isNational } = useAuth()
   const [posts, setPosts] = useState<Record<string, string>>({})
   const [activePosts, setActivePosts] = useState<Post[]>([])
   const [lastSubmission, setLastSubmission] = useState<Record<string, string>>({})
   const [myRecords, setMyRecords] = useState<MeetingRecord[]>([])
+  const [myUroMeetings, setMyUroMeetings] = useState<UroMeeting[]>([])
+  const [startingMeeting, setStartingMeeting] = useState(false)
   const [showSubmit, setShowSubmit] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<MeetingRecord[]>([])
@@ -69,6 +74,31 @@ export default function Meetings() {
       .eq('post_id', postId)
       .order('meeting_date', { ascending: false })
     setMyRecords((data ?? []) as MeetingRecord[])
+
+    const { data: uroData } = await supabase
+      .from('uro_meetings')
+      .select('*')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: false })
+    setMyUroMeetings((uroData ?? []) as UroMeeting[])
+  }
+
+  async function startGuidedMeeting() {
+    if (!profile?.post_id) return
+    setStartingMeeting(true)
+    const { data } = await supabase
+      .from('uro_meetings')
+      .insert({
+        post_id: profile.post_id,
+        title: `${format(new Date(), 'MMMM yyyy')} Meeting`,
+        meeting_type: 'regular',
+        meeting_date: new Date().toISOString().slice(0, 10),
+        created_by: profile.id,
+      })
+      .select()
+      .single()
+    setStartingMeeting(false)
+    if (data) navigate(`/meetings/uro/${data.id}`)
   }
 
   async function runSearch(e?: FormEvent) {
@@ -98,14 +128,52 @@ export default function Meetings() {
   return (
     <div>
       <PageHeader
-        eyebrow="Recurring Post Obligation"
+        eyebrow="Recurring Post Obligation — Unified Rules of Order"
         title="Meetings"
         action={
-          <button onClick={() => setShowSubmit(true)} className="btn-gold flex items-center gap-2">
-            <Plus size={16} /> Submit Minutes
-          </button>
+          <div className="flex gap-2">
+            {isNational && (
+              <>
+                <button onClick={() => navigate('/meetings/uro-compliance')} className="btn-ghost flex items-center gap-2 text-sm">
+                  <BarChart3 size={16} /> Compliance Dashboard
+                </button>
+                <button onClick={() => navigate('/meetings/uro-motions')} className="btn-ghost flex items-center gap-2 text-sm">
+                  <ClipboardList size={16} /> Motion Search
+                </button>
+              </>
+            )}
+            {profile?.post_id && (
+              <button onClick={startGuidedMeeting} disabled={startingMeeting} className="btn-gold flex items-center gap-2 disabled:opacity-50">
+                <Plus size={16} /> {startingMeeting ? 'Starting…' : 'Start Guided Meeting'}
+              </button>
+            )}
+          </div>
         }
       />
+
+      {profile?.post_id && myUroMeetings.length > 0 && (
+        <div className="panel p-4 mb-6">
+          <div className="eyebrow mb-3">Your Guided Meetings</div>
+          <div className="space-y-1.5">
+            {myUroMeetings.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => navigate(m.status === 'published' ? `/meetings/uro/${m.id}/view` : `/meetings/uro/${m.id}`)}
+                className="w-full flex items-center justify-between border border-hairline hover:border-gold rounded-sm p-2.5 text-left text-sm"
+              >
+                <span>{m.title}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted font-mono">{format(new Date(m.meeting_date), 'MMM d, yyyy')}</span>
+                  <StatusBadge
+                    label={m.status === 'published' ? m.compliance_level ?? 'published' : 'in progress'}
+                    tone={m.status !== 'published' ? 'developing' : m.compliance_level === 'fully_compliant' ? 'active' : m.compliance_level === 'minor_issues' ? 'developing' : 'attention'}
+                  />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {profile?.post_id && (
         <div className="panel p-5 mb-6 flex items-center justify-between gap-4">
@@ -177,6 +245,11 @@ export default function Meetings() {
           Search
         </button>
       </form>
+      <div className="mb-4 text-right">
+        <button onClick={() => setShowSubmit(true)} className="text-xs text-muted hover:text-gold underline">
+          Or paste freeform minutes instead (legacy, not URO-guided)
+        </button>
+      </div>
       <div className="mb-4 font-mono text-[11px] text-muted">
         {loading
           ? 'Searching…'

@@ -428,7 +428,55 @@ Push the updated `src` folder and the two new `supabase/functions` folders as us
   numbers ourselves, which is a compliance burden Stripe already solves for you safely. Nothing
   on our end needs to change when you switch banks.
 
+## URO Meeting Operating System — built to your Unified Rules of Order spec
+
+This is not a form. It's a guided, step-by-step system that walks a secretary through a meeting
+in URO order and builds a compliant official record as they go, with a genuinely private
+workspace alongside it.
+
+**The privacy guarantee is real, enforced at the database level:** the Secretary Workspace
+(`uro_secretary_notes`) has exactly one RLS policy — `author_id = auth.uid()` — and nothing
+else. Not National, not other post officers, nobody but the person who wrote a note can ever
+read it, even after the meeting is published. This is the one table in the entire schema where
+National access is deliberately, permanently excluded.
+
+**The 10-step wizard**, exactly as specified: Setup → Call to Order → Attendance (with live
+quorum calculation) → Approval of Previous Minutes → Officer Reports → Old Business → New
+Business → Motion Manager → Member Comments → Adjournment. Every field saves as you go, so
+nothing is lost if a secretary steps away mid-meeting — meetings sit in `in_progress` status
+until deliberately published.
+
+**The Motion Manager** is the centerpiece, as specified: every motion gets its own permanent
+record — type, text, mover/seconder, debate summary, amendments, voting method, and vote count.
+The system computes and displays the required threshold (majority / 2/3 / unanimous
+recommended) based on motion type, and suggests a pass/fail result from the vote count — but
+the secretary always makes the final call, the system never overrides them.
+
+**The Compliance Engine** flags real issues automatically at publish time: motions without
+quorum, missing seconders, missing vote results, missing attendance — and computes a
+Fully Compliant / Minor Issues / Non-Compliant score, all visible on the published record.
+
+**Automatic outputs**, generated on publish: the official formatted minutes (searchable, same
+as before), a Motion Register, and attendance/quorum data. Action Item tracking exists in the
+schema (`uro_action_items`) — wiring a dedicated report view for it is a natural next step if
+it becomes a priority.
+
+**National Dashboard Integration**, both National-only via `RoleGuard`:
+- **URO Compliance Dashboard** (`/meetings/uro-compliance`) — meetings submitted, posts missing
+  recent minutes, compliance percentage breakdown, and a feed of recent meetings by compliance
+  level.
+- **National Motion Search** (`/meetings/uro-motions`) — every motion, at any post, searchable
+  by text and filterable by vote result.
+
+**What's kept, deliberately:** the old freeform "paste your minutes" flow still exists as a
+secondary option (small link near the search bar) — some posts may already have their own
+format and shouldn't be forced to redo it. But the guided wizard is now the primary, prominent
+path.
+
+Run `uro-meeting-system.sql` in Supabase, then push the code.
+
 ## Stack
+
 
 
 

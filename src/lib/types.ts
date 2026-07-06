@@ -42,6 +42,133 @@ export const POST_STATUS_LABELS: Record<PostStatus, string> = {
 
 export type PostHealthStatus = 'green' | 'yellow' | 'red'
 
+export type UroMeetingType = 'regular' | 'special' | 'emergency' | 'asynchronous'
+export type UroMeetingStatus = 'in_progress' | 'published'
+export type UroAttendanceStatus = 'present' | 'absent' | 'excused' | 'guest'
+export type UroPreviousMinutesStatus = 'approved' | 'approved_with_corrections' | 'rejected'
+export type UroAgendaCategory = 'old_business' | 'new_business'
+export type UroMotionType =
+  | 'main' | 'amendment' | 'refer' | 'postpone' | 'call_to_vote' | 'table' | 'reconsider' | 'emergency_override'
+export type UroVotingMethod = 'voice' | 'show_of_hands' | 'roll_call' | 'ballot' | 'digital'
+export type UroVoteResult = 'passed' | 'failed' | 'tabled' | 'withdrawn'
+export type UroComplianceLevel = 'fully_compliant' | 'minor_issues' | 'non_compliant'
+export type UroActionItemStatus = 'open' | 'done'
+export type UroSecretaryNoteType =
+  | 'personal_note' | 'draft_observation' | 'reminder' | 'follow_up'
+  | 'discussion_highlight' | 'action_item' | 'question' | 'prep_note'
+
+export interface UroMeeting {
+  id: string
+  post_id: string
+  title: string
+  meeting_type: UroMeetingType
+  meeting_date: string
+  start_time: string | null
+  end_time: string | null
+  location: string | null
+  virtual_link: string | null
+  called_to_order_by: string | null
+  time_called_to_order: string | null
+  call_to_order_notes: string | null
+  total_voting_members: number | null
+  quorum_required: number | null
+  quorum_achieved: boolean | null
+  previous_minutes_status: UroPreviousMinutesStatus | null
+  previous_minutes_corrections: string | null
+  previous_minutes_vote_result: UroVoteResult | null
+  adjourned_by: string | null
+  time_adjourned: string | null
+  adjournment_vote_result: UroVoteResult | null
+  status: UroMeetingStatus
+  compliance_level: UroComplianceLevel | null
+  compliance_flags: string[] | null
+  official_minutes_text: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface UroAttendance {
+  id: string
+  meeting_id: string
+  post_id: string
+  member_name: string
+  status: UroAttendanceStatus
+  sort_order: number
+}
+
+export interface UroOfficerReport {
+  id: string
+  meeting_id: string
+  post_id: string
+  officer_name: string | null
+  position: string | null
+  summary: string | null
+  action_requested: string | null
+  sort_order: number
+}
+
+export interface UroAgendaItem {
+  id: string
+  meeting_id: string
+  post_id: string
+  category: UroAgendaCategory
+  title: string
+  discussion_summary: string | null
+  action_taken: string | null
+  sort_order: number
+}
+
+export interface UroMotion {
+  id: string
+  meeting_id: string
+  post_id: string
+  agenda_item_id: string | null
+  motion_type: UroMotionType
+  motion_text: string
+  moved_by: string | null
+  seconded_by: string | null
+  debate_summary: string | null
+  amendments: string | null
+  voting_method: UroVotingMethod | null
+  vote_result: UroVoteResult | null
+  votes_for: number | null
+  votes_against: number | null
+  votes_abstain: number | null
+  sort_order: number
+  created_at: string
+}
+
+export interface UroComment {
+  id: string
+  meeting_id: string
+  post_id: string
+  speaker: string | null
+  comment_summary: string | null
+  sort_order: number
+}
+
+export interface UroActionItem {
+  id: string
+  meeting_id: string
+  post_id: string
+  motion_id: string | null
+  description: string
+  owner_name: string | null
+  due_date: string | null
+  status: UroActionItemStatus
+  created_at: string
+}
+
+export interface UroSecretaryNote {
+  id: string
+  meeting_id: string
+  author_id: string
+  note_type: UroSecretaryNoteType
+  content: string
+  created_at: string
+}
+
 export type MembershipType = 'annual' | 'lifetime'
 export type MembershipStatus = 'active' | 'lapsed' | 'pending_payment'
 export type MembershipPaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded'

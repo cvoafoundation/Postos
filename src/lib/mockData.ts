@@ -298,6 +298,15 @@ export const seedData: Record<string, any[]> = {
     { id: 'mp-2', member_id: 'mem-2', post_id: 'post-1', membership_type: 'annual', amount: 49.99, stripe_checkout_session_id: 'cs_demo_2', stripe_payment_intent_id: 'pi_demo_2', status: 'paid', paid_at: daysAgo(90), created_at: daysAgo(90) },
   ],
 
+  uro_meetings: [],
+  uro_attendance: [],
+  uro_officer_reports: [],
+  uro_agenda_items: [],
+  uro_motions: [],
+  uro_comments: [],
+  uro_action_items: [],
+  uro_secretary_notes: [],
+
   meeting_records: [
     { id: 'mr-1', post_id: 'post-1', title: 'January 2026 Monthly Meeting', meeting_type: 'Monthly Meeting', meeting_date: daysAgo(30).slice(0, 10), minutes_text: 'Called to order at 7pm. Discussed the upcoming golf scramble fundraiser and PACT Act benefits briefing scheduled for next month. Motion to approve $500 for event flyers passed 8-0.', attachment_storage_path: null, submitted_by: null, created_at: daysAgo(30) },
     { id: 'mr-2', post_id: 'post-2', title: 'February 2026 Officer Meeting', meeting_type: 'Officer Meeting', meeting_date: daysAgo(10).slice(0, 10), minutes_text: 'Reviewed Q1 budget. Quartermaster reported sponsorship revenue from Tulsa Diesel Co. Discussed bylaws amendment proposal for membership dues.', attachment_storage_path: null, submitted_by: null, created_at: daysAgo(10) },
