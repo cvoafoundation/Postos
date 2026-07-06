@@ -1065,9 +1065,11 @@ as $$
 declare
   mapped_role user_role;
 begin
-  if new.verification_status = 'verified'
-     and (old.verification_status is distinct from 'verified')
-     and new.profile_id is not null then
+  -- Re-syncs on every update to a verified, linked member — not just the
+  -- moment verification first happens. This means changing someone's
+  -- position later (e.g. from Additional Member to Vice Commander) also
+  -- updates their actual account role, not just the roster label.
+  if new.verification_status = 'verified' and new.profile_id is not null then
     mapped_role := case
       when new.position = 'commander' then 'post_commander'
       when new.position = 'member' then 'member'

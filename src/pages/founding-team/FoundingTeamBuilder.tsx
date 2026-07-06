@@ -9,6 +9,15 @@ import { Copy, Check, Trash2, FileText } from 'lucide-react'
 
 const REQUIRED_POSITIONS = ['commander', 'vice_commander', 'adjutant', 'quartermaster', 'sergeant_at_arms']
 
+const ALL_POSITIONS: { value: string; label: string }[] = [
+  { value: 'commander', label: 'Commander' },
+  { value: 'vice_commander', label: 'Vice Commander' },
+  { value: 'adjutant', label: 'Adjutant' },
+  { value: 'quartermaster', label: 'Quartermaster' },
+  { value: 'sergeant_at_arms', label: 'Sergeant-at-Arms' },
+  { value: 'member', label: 'Additional Member' },
+]
+
 async function openDocument(path: string) {
   const { data, error } = await supabase.storage.from('dd214-uploads').createSignedUrl(path, 600)
   if (!error && data?.signedUrl) {
@@ -59,6 +68,13 @@ export default function FoundingTeamBuilder() {
     // Re-fetch rather than update local state optimistically — verification_status
     // is computed server-side by a trigger based on all three checkboxes, so the
     // only way to reflect it correctly is to read back what the database decided.
+    if (selectedPostId) loadMembers(selectedPostId)
+  }
+
+  async function changePosition(member: FoundingTeamMember, position: string) {
+    await supabase.from('founding_team_members').update({ position }).eq('id', member.id)
+    // If they're already verified and their account is active, the database
+    // trigger re-syncs their actual role automatically — no extra step here.
     if (selectedPostId) loadMembers(selectedPostId)
   }
 
@@ -187,7 +203,19 @@ export default function FoundingTeamBuilder() {
                   <div>{m.name}</div>
                   {m.email && <div className="text-[11px] text-muted font-mono">{m.email}</div>}
                 </td>
-                <td className="table-cell capitalize">{m.position.replaceAll('_', ' ')}</td>
+                <td className="table-cell">
+                  <select
+                    className="input-field text-xs py-1"
+                    value={m.position}
+                    onChange={(e) => changePosition(m, e.target.value)}
+                  >
+                    {ALL_POSITIONS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
                 <td className="table-cell">
                   {m.profile_id ? (
                     <span className="text-[11px] text-status-active font-mono">
