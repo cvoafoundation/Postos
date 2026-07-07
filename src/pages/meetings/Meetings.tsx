@@ -5,7 +5,7 @@ import { StatusBadge, healthTone } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import type { MeetingRecord, Post } from '@/lib/types'
-import { Search, Plus, FileText, Upload, AlertTriangle, CalendarCheck, ClipboardList, BarChart3 } from 'lucide-react'
+import { Search, Plus, FileText, Upload, AlertTriangle, CalendarCheck, ClipboardList, BarChart3, CheckSquare } from 'lucide-react'
 import { format, differenceInDays, isSameMonth } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
 import type { UroMeeting } from '@/lib/types'
@@ -153,6 +153,9 @@ export default function Meetings() {
         title="Meetings"
         action={
           <div className="flex gap-2">
+            <button onClick={() => navigate('/meetings/uro-actions')} className="btn-ghost flex items-center gap-2 text-sm">
+              <CheckSquare size={16} /> Action Items
+            </button>
             {isNational && (
               <>
                 <button onClick={() => navigate('/meetings/uro-compliance')} className="btn-ghost flex items-center gap-2 text-sm">

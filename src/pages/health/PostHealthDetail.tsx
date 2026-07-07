@@ -14,7 +14,7 @@ import type {
   Post,
 } from '@/lib/types'
 import { format } from 'date-fns'
-import { Plus, Scale, Landmark, HeartHandshake, FileCheck } from 'lucide-react'
+import { Plus, Scale, Landmark, HeartHandshake, FileCheck, Trash2 } from 'lucide-react'
 
 function toneFor(status: DimensionStatus) {
   if (status === 'green') return 'active' as const
@@ -26,7 +26,7 @@ function toneFor(status: DimensionStatus) {
 export default function PostHealthDetail() {
   const { postId } = useParams<{ postId: string }>()
   const navigate = useNavigate()
-  const { profile } = useAuth()
+  const { profile, isNational } = useAuth()
 
   const [post, setPost] = useState<Post | null>(null)
   const [result, setResult] = useState<PostHealthResult | null>(null)
@@ -125,6 +125,20 @@ export default function PostHealthDetail() {
     load()
   }
 
+  async function deletePost() {
+    if (!postId || !post) return
+    const confirmed = window.confirm(
+      `Permanently delete "${post.name}"? This is an ACTIVE post — this removes it and everything tied to it: members, sponsors, meetings, finances, everything. This cannot be undone.`
+    )
+    if (!confirmed) return
+    const { error } = await supabase.from('posts').delete().eq('id', postId)
+    if (error) {
+      window.alert(`Couldn't delete: ${error.message}`)
+      return
+    }
+    navigate('/health')
+  }
+
   if (loading || !post || !result) return <p className="text-sm text-muted">Loading…</p>
 
   const income = transactions.filter((t) => t.transaction_type === 'income').reduce((s, t) => s + Number(t.amount), 0)
@@ -136,7 +150,14 @@ export default function PostHealthDetail() {
         ← Back to Post Health
       </button>
 
-      <PageHeader eyebrow={`${post.city ?? ''} ${post.state}`} title={post.name} />
+      <div className="flex items-center justify-between">
+        <PageHeader eyebrow={`${post.city ?? ''} ${post.state}`} title={post.name} />
+        {isNational && (
+          <button onClick={deletePost} className="text-xs text-muted hover:text-status-attention flex items-center gap-1.5 mb-6">
+            <Trash2 size={13} /> Delete Post
+          </button>
+        )}
+      </div>
 
       <div className="panel p-6 mb-6 flex items-center gap-6">
         <div className="text-center">

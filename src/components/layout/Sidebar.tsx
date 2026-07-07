@@ -34,6 +34,7 @@ const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
   { to: '/meetings', label: 'Meetings', icon: CalendarCheck },
   { to: '/members', label: 'Membership Roster', icon: IdCard },
   { to: '/toolkit', label: 'Post Toolkit', icon: FolderDown },
+  { to: '/shared-files', label: 'Shared Files', icon: HardDrive },
   { to: '/recruiting', label: 'Recruiting Engine', icon: Radar },
   { to: '/sponsors', label: 'Sponsorship CRM', icon: HandCoins },
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },

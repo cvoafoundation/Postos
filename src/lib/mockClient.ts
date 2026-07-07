@@ -24,6 +24,7 @@ function matches(row: Row, filters: { type: string; col: string; value: any }[])
   return filters.every((f) => {
     if (f.type === 'eq') return row[f.col] === f.value
     if (f.type === 'is') return row[f.col] === f.value
+    if (f.type === 'not_is') return row[f.col] !== f.value
     if (f.type === 'in') return (f.value as any[]).includes(row[f.col])
     if (f.type === 'ilike') {
       const pattern = String(f.value).replace(/%/g, '').toLowerCase()
@@ -72,6 +73,11 @@ class QueryBuilder {
 
   is(col: string, value: any) {
     this.filters.push({ type: 'is', col, value })
+    return this
+  }
+
+  not(col: string, operator: string, value: any) {
+    this.filters.push({ type: 'not_' + operator, col, value })
     return this
   }
 

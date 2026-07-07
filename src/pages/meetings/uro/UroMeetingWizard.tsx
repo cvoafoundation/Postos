@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import type {
+  UroActionItem,
   UroAgendaItem,
   UroAttendance,
   UroComment,
@@ -51,6 +52,7 @@ export default function UroMeetingWizard() {
   const [agendaItems, setAgendaItems] = useState<UroAgendaItem[]>([])
   const [motions, setMotions] = useState<UroMotion[]>([])
   const [comments, setComments] = useState<UroComment[]>([])
+  const [actionItems, setActionItems] = useState<UroActionItem[]>([])
   const [secretaryNotes, setSecretaryNotes] = useState<UroSecretaryNote[]>([])
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -61,7 +63,7 @@ export default function UroMeetingWizard() {
   async function load() {
     if (!meetingId) return
     setLoading(true)
-    const [meetingRes, attendanceRes, reportsRes, agendaRes, motionsRes, commentsRes, notesRes] = await Promise.all([
+    const [meetingRes, attendanceRes, reportsRes, agendaRes, motionsRes, commentsRes, notesRes, actionItemsRes] = await Promise.all([
       supabase.from('uro_meetings').select('*').eq('id', meetingId).single(),
       supabase.from('uro_attendance').select('*').eq('meeting_id', meetingId).order('sort_order'),
       supabase.from('uro_officer_reports').select('*').eq('meeting_id', meetingId).order('sort_order'),
@@ -69,6 +71,7 @@ export default function UroMeetingWizard() {
       supabase.from('uro_motions').select('*').eq('meeting_id', meetingId).order('sort_order'),
       supabase.from('uro_comments').select('*').eq('meeting_id', meetingId).order('sort_order'),
       supabase.from('uro_secretary_notes').select('*').eq('meeting_id', meetingId).order('created_at', { ascending: false }),
+      supabase.from('uro_action_items').select('*').eq('meeting_id', meetingId).order('created_at'),
     ])
     setMeeting(meetingRes.data as UroMeeting)
     setAttendance((attendanceRes.data ?? []) as UroAttendance[])
@@ -77,6 +80,7 @@ export default function UroMeetingWizard() {
     setMotions((motionsRes.data ?? []) as UroMotion[])
     setComments((commentsRes.data ?? []) as UroComment[])
     setSecretaryNotes((notesRes.data ?? []) as UroSecretaryNote[])
+    setActionItems((actionItemsRes.data ?? []) as UroActionItem[])
     setLoading(false)
   }
 
@@ -217,7 +221,18 @@ export default function UroMeetingWizard() {
           {step === 8 && (
             <CommentsStep meetingId={meeting.id} postId={meeting.post_id} comments={comments} setComments={setComments} disabled={isPublished} />
           )}
-          {step === 9 && <AdjournmentStep meeting={meeting} onUpdate={updateMeeting} disabled={isPublished} />}
+          {step === 9 && (
+            <AdjournmentStep
+              meeting={meeting}
+              onUpdate={updateMeeting}
+              disabled={isPublished}
+              meetingId={meeting.id}
+              postId={meeting.post_id}
+              motions={motions}
+              actionItems={actionItems}
+              setActionItems={setActionItems}
+            />
+          )}
         </div>
 
         <div className="flex items-center justify-between">
@@ -774,22 +789,116 @@ function CommentsStep({
   )
 }
 
-function AdjournmentStep({ meeting, onUpdate, disabled }: { meeting: UroMeeting; onUpdate: (p: Partial<UroMeeting>) => void; disabled: boolean }) {
+function AdjournmentStep({
+  meeting,
+  onUpdate,
+  disabled,
+  meetingId,
+  postId,
+  motions,
+  actionItems,
+  setActionItems,
+}: {
+  meeting: UroMeeting
+  onUpdate: (p: Partial<UroMeeting>) => void
+  disabled: boolean
+  meetingId: string
+  postId: string
+  motions: UroMotion[]
+  actionItems: UroActionItem[]
+  setActionItems: (a: UroActionItem[]) => void
+}) {
+  async function addActionItem() {
+    const { data } = await supabase
+      .from('uro_action_items')
+      .insert({ meeting_id: meetingId, post_id: postId, description: '' })
+      .select()
+      .single()
+    if (data) setActionItems([...actionItems, data as UroActionItem])
+  }
+
+  async function updateActionItem(id: string, patch: Partial<UroActionItem>) {
+    setActionItems(actionItems.map((a) => (a.id === id ? { ...a, ...patch } : a)))
+    await supabase.from('uro_action_items').update(patch).eq('id', id)
+  }
+
+  async function removeActionItem(id: string) {
+    setActionItems(actionItems.filter((a) => a.id !== id))
+    await supabase.from('uro_action_items').delete().eq('id', id)
+  }
+
   return (
-    <fieldset disabled={disabled} className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <input className="input-field" placeholder="Adjourned by" value={meeting.adjourned_by ?? ''} onChange={(e) => onUpdate({ adjourned_by: e.target.value })} />
-        <input type="time" className="input-field" value={meeting.time_adjourned ?? ''} onChange={(e) => onUpdate({ time_adjourned: e.target.value })} />
+    <div className="space-y-6">
+      <fieldset disabled={disabled} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <input className="input-field" placeholder="Adjourned by" value={meeting.adjourned_by ?? ''} onChange={(e) => onUpdate({ adjourned_by: e.target.value })} />
+          <input type="time" className="input-field" value={meeting.time_adjourned ?? ''} onChange={(e) => onUpdate({ time_adjourned: e.target.value })} />
+        </div>
+        <select className="input-field" value={meeting.adjournment_vote_result ?? ''} onChange={(e) => onUpdate({ adjournment_vote_result: (e.target.value || null) as UroMeeting['adjournment_vote_result'] })}>
+          <option value="">Vote result…</option>
+          <option value="passed">Passed</option>
+          <option value="failed">Failed</option>
+        </select>
+      </fieldset>
+
+      <div className="border-t border-hairline pt-4">
+        <div className="eyebrow mb-3">Action Items — Who Owns What</div>
+        <div className="space-y-2">
+          {actionItems.map((item) => (
+            <fieldset key={item.id} disabled={disabled} className="border border-hairline rounded-sm p-3 space-y-2">
+              <div className="flex gap-2">
+                <input
+                  className="input-field flex-1"
+                  placeholder="What needs to happen?"
+                  value={item.description}
+                  onChange={(e) => updateActionItem(item.id, { description: e.target.value })}
+                />
+                {!disabled && (
+                  <button onClick={() => removeActionItem(item.id)} className="text-muted hover:text-status-attention shrink-0">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  className="input-field"
+                  placeholder="Owner"
+                  value={item.owner_name ?? ''}
+                  onChange={(e) => updateActionItem(item.id, { owner_name: e.target.value })}
+                />
+                <input
+                  type="date"
+                  className="input-field"
+                  value={item.due_date ?? ''}
+                  onChange={(e) => updateActionItem(item.id, { due_date: e.target.value })}
+                />
+                <select
+                  className="input-field"
+                  value={item.motion_id ?? ''}
+                  onChange={(e) => updateActionItem(item.id, { motion_id: e.target.value || null })}
+                >
+                  <option value="">Not tied to a motion</option>
+                  {motions.map((m, i) => (
+                    <option key={m.id} value={m.id}>
+                      Motion #{i + 1}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </fieldset>
+          ))}
+        </div>
+        {!disabled && (
+          <button onClick={addActionItem} className="btn-ghost w-full mt-2 flex items-center justify-center gap-2 text-sm">
+            <Plus size={14} /> Add Action Item
+          </button>
+        )}
       </div>
-      <select className="input-field" value={meeting.adjournment_vote_result ?? ''} onChange={(e) => onUpdate({ adjournment_vote_result: (e.target.value || null) as UroMeeting['adjournment_vote_result'] })}>
-        <option value="">Vote result…</option>
-        <option value="passed">Passed</option>
-        <option value="failed">Failed</option>
-      </select>
+
       <p className="text-xs text-muted">
         Ready to finish? Click "Publish Meeting" below to generate the official minutes and make this visible
         to National.
       </p>
-    </fieldset>
+    </div>
   )
 }

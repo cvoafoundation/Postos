@@ -502,7 +502,54 @@ folder's contents before deleting.
 
 Run `ncc-drive.sql` in Supabase, then push the code.
 
+## The "1-7" batch — seven flagged gaps closed
+
+**1. Action Item Report** — the Adjournment step of the URO wizard now has a real "Action
+Items — Who Owns What" section: description, owner, due date, optionally tied to a specific
+motion. A new **Action Items** page (linked from Meetings) shows open items with an overdue
+flag — scoped to your own post automatically, or every post's items if you're National.
+
+**2. Congress delegate voting is now enforced at the database level.** Previously any
+authenticated account could cast any vote type. Now `delegate_vote` and
+`constitutional_amendment` votes require either National or an actual delegate record for that
+post — `informal_poll` and `national_referendum` stay open to any member, matching their
+intended purpose as broader-participation vote types.
+
+**3. DD214 re-verification tracking.** A `verified_at` timestamp is now set the moment
+verification happens. Founding Team Builder flags anyone verified more than a year ago with a
+small note — nothing is auto-revoked, it's a prompt to double-check, not an automatic lockout.
+
+**4. Sponsor category backfill.** Opening any existing sponsor's detail view now shows an
+editable Business Category dropdown — staff can set it retroactively the next time they review
+that sponsor, closing the gap for everyone added before Build A Post's matching feature shipped.
+
+**5. Delete Post now works for active posts too**, not just posts still in formation — a
+"Delete Post" link sits next to the header on Post Health's detail page, National-only, with
+the same confirmation-before-destroying pattern used everywhere else.
+
+**6. Toolkit content fixes.** The "Robert's Rules Quick Guide" — which no longer matched how
+this app actually runs meetings — is now a real "Unified Rules of Order (URO) Quick Guide"
+reflecting your actual system. The four Officer role guides (Adjutant, Quartermaster,
+Sergeant-at-Arms, Vice Commander) now have real, generically-safe content instead of empty
+placeholders. Everything requiring your actual bylaws/policy still ships blank, deliberately.
+
+**7. NCC Drive — move, trash, and sharing.**
+- **Move**: every file and folder now has a Move button opening a folder picker.
+- **Trash, not permanent delete**: deleting now moves something to Trash instead of destroying
+  it immediately. Items sit there for 30 days with Restore / Delete Forever options — the purge
+  happens lazily (checked whenever someone opens the Trash), no cron job required.
+- **Sharing**: any folder can be marked "Shared" — its direct contents become read-only visible
+  to every post account, on a new **Shared Files** page. Known limitation: sharing is
+  per-folder, not automatically recursive — a shared folder's own subfolders need to be marked
+  shared individually too if you want posts to see into them.
+- **Multi-file upload made obvious**: a proper drag-and-drop zone now sits at the top of the
+  file list, and the upload button explicitly says "Upload Files" (plural) and accepts multiple
+  at once.
+
+Run `batch-1-7-schema.sql`, then push the code.
+
 ## Stack
+
 
 
 

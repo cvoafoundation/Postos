@@ -18,6 +18,7 @@ import UroMeetingWizard from '@/pages/meetings/uro/UroMeetingWizard'
 import UroMeetingView from '@/pages/meetings/uro/UroMeetingView'
 import UroComplianceDashboard from '@/pages/meetings/uro/UroComplianceDashboard'
 import UroMotionSearch from '@/pages/meetings/uro/UroMotionSearch'
+import UroActionItemReport from '@/pages/meetings/uro/UroActionItemReport'
 import RecruitingPipeline from '@/pages/recruiting/RecruitingPipeline'
 import SponsorsCRM from '@/pages/sponsors/SponsorsCRM'
 import VeteransCongress from '@/pages/congress/VeteransCongress'
@@ -36,6 +37,7 @@ import MembershipRoster from '@/pages/members/MembershipRoster'
 import JoinMembership from '@/pages/members/JoinMembership'
 import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
 import NCCDrive from '@/pages/drive/NCCDrive'
+import SharedDriveView from '@/pages/drive/SharedDriveView'
 
 export default function App() {
   return (
@@ -111,6 +113,7 @@ function AuthenticatedApp() {
             </RoleGuard>
           }
         />
+        <Route path="/meetings/uro-actions" element={<UroActionItemReport />} />
         <Route path="/recruiting" element={<RecruitingPipeline />} />
         <Route path="/sponsors" element={<SponsorsCRM />} />
         <Route path="/congress" element={<CongressRoute />} />
@@ -153,6 +156,7 @@ function AuthenticatedApp() {
             </RoleGuard>
           }
         />
+        <Route path="/shared-files" element={<SharedDriveView />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>

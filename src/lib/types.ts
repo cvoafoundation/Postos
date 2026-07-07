@@ -459,6 +459,7 @@ export interface FoundingTeamMember {
   funding_commitment: string | null
   dd214_storage_path: string | null
   profile_id: string | null
+  verified_at: string | null
   created_at: string
 }
 
@@ -671,6 +672,8 @@ export interface DriveFolder {
   parent_folder_id: string | null
   name: string
   color: string | null
+  shared_with_posts: boolean
+  deleted_at: string | null
   created_by: string | null
   created_at: string
 }
@@ -682,6 +685,7 @@ export interface DriveFile {
   storage_path: string
   file_size: number | null
   mime_type: string | null
+  deleted_at: string | null
   uploaded_by: string | null
   created_at: string
 }

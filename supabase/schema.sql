@@ -215,6 +215,7 @@ create table founding_team_members (
   funding_commitment text, -- optional, mainly populated by the founding commander
   dd214_storage_path text, -- this member's own ID/DD214 upload, in the shared 'dd214-uploads' bucket
   profile_id uuid references profiles(id), -- linked once they create an account; access activates on verification
+  verified_at timestamptz, -- set when verification_status first becomes 'verified'; lets us flag stale verifications later
   created_at timestamptz not null default now()
 );
 
@@ -807,6 +808,8 @@ create table drive_folders (
   parent_folder_id uuid references drive_folders(id) on delete cascade,
   name text not null,
   color text, -- hex color for visual organization, Google-Drive-style
+  shared_with_posts boolean not null default false, -- makes this folder (and its direct contents) read-only visible to every post account
+  deleted_at timestamptz, -- soft delete; trashed items purge automatically after 30 days
   created_by uuid references profiles(id),
   created_at timestamptz not null default now()
 );
@@ -818,6 +821,7 @@ create table drive_files (
   storage_path text not null, -- in the private 'ncc-drive' bucket
   file_size bigint,
   mime_type text,
+  deleted_at timestamptz, -- soft delete; trashed items purge automatically after 30 days
   uploaded_by uuid references profiles(id),
   created_at timestamptz not null default now()
 );
@@ -1175,7 +1179,18 @@ create policy "resolution_comments_write_auth" on resolution_comments
 
 create policy "resolution_votes_read_all" on resolution_votes for select using (true);
 create policy "resolution_votes_write_auth" on resolution_votes
-  for insert with check (auth.uid() is not null);
+  for insert with check (
+    auth.uid() is not null
+    and (
+      vote_type in ('informal_poll', 'national_referendum')
+      or is_national_role()
+      or exists (
+        select 1 from congress_delegates
+        where congress_delegates.post_id = resolution_votes.voter_post_id
+          and congress_delegates.profile_id = auth.uid()
+      )
+    )
+  );
 
 create policy "committees_read_all" on committees for select using (true);
 create policy "committees_write_national" on committees for all using (is_national_role());
@@ -1199,8 +1214,16 @@ create policy "congress_calendar_write_national" on congress_calendar_events for
 
 create policy "state_admission_order_read_all" on state_admission_order for select using (true);
 
-create policy "drive_folders_national_only" on drive_folders for all using (is_national_role());
-create policy "drive_files_national_only" on drive_files for all using (is_national_role());
+create policy "drive_folders_national_all" on drive_folders for all using (is_national_role());
+create policy "drive_folders_shared_read" on drive_folders
+  for select using (shared_with_posts = true and auth.uid() is not null);
+
+create policy "drive_files_national_all" on drive_files for all using (is_national_role());
+create policy "drive_files_shared_read" on drive_files
+  for select using (
+    auth.uid() is not null
+    and folder_id in (select id from drive_folders where shared_with_posts = true)
+  );
 
 create policy "members_select_post_or_national" on members
   for select using (is_national_role() or post_id = current_post_id());
@@ -1341,6 +1364,9 @@ as $$
 begin
   if new.dd214_reviewed and new.combat_service_verified and new.membership_approved then
     new.verification_status := 'verified';
+    if old.verification_status is distinct from 'verified' then
+      new.verified_at := now();
+    end if;
   elsif old.verification_status = 'verified' then
     -- unchecking any box after being verified drops it back to pending —
     -- rejection remains a deliberate separate action, not a side effect.
@@ -1726,18 +1752,27 @@ create policy "governance_documents_write_auth" on storage.objects
   for insert with check (bucket_id = 'governance-documents' and auth.uid() is not null);
 
 -- ============================================================================
--- STORAGE: NCC Drive — private, National-only in both directions. This is
--- deliberately more restrictive than every other bucket in the schema,
--- which use "any authenticated user" — this one is the National Command
--- Council's own internal storage, not something any post account should
--- ever be able to browse into.
+-- STORAGE: NCC Drive — full access is National-only. A second, narrower
+-- policy allows any authenticated user to read (not write) files that live
+-- inside a folder National has explicitly marked shared_with_posts — this
+-- is the only way a post account can ever see into this bucket.
 -- ============================================================================
 insert into storage.buckets (id, name, public)
 values ('ncc-drive', 'ncc-drive', false)
 on conflict (id) do nothing;
 
-create policy "ncc_drive_national_only" on storage.objects
+create policy "ncc_drive_national_all" on storage.objects
   for all using (bucket_id = 'ncc-drive' and is_national_role());
+
+create policy "ncc_drive_shared_read" on storage.objects
+  for select using (
+    bucket_id = 'ncc-drive'
+    and auth.uid() is not null
+    and name in (
+      select storage_path from drive_files
+      where folder_id in (select id from drive_folders where shared_with_posts = true)
+    )
+  );
 
 -- ============================================================================
 -- SEED: Post Toolkit — full category and item structure.
@@ -1799,23 +1834,52 @@ begin
     (cat_meeting, 'Meeting Minutes Templates', array['Standard format','Auto-generated PDF'],
      'Generate a meeting minutes template for {{post_name}} with sections for: date/time/location, attendees, approval of prior minutes, officer reports, motions made (with mover/seconder/vote result), new business, and adjournment time.', 2);
   insert into toolkit_items (category_id, title, sub_items, read_content, sort_order) values
-    (cat_meeting, 'Robert''s Rules Quick Guide', array['Motions','Seconds','Voting','Quorum'],
-$txt$ROBERT'S RULES OF ORDER — QUICK REFERENCE FOR POST MEETINGS
+    (cat_meeting, 'Unified Rules of Order (URO) Quick Guide', array['Motions','Seconds','Voting','Quorum','Motion Types'],
+$txt$UNIFIED RULES OF ORDER — QUICK REFERENCE FOR POST MEETINGS
+
+CVOA runs meetings under our own Unified Rules of Order, not Robert's Rules — a streamlined
+process built for how our posts actually operate. The Meetings module's guided wizard walks a
+secretary through every one of these steps automatically; this page is the plain-language
+reference for what's happening at each one.
+
+CALL TO ORDER
+Whoever is presiding states the meeting is called to order and notes the time. This is the
+official start of the record.
+
+ATTENDANCE & QUORUM
+Present/absent/excused members and guests are recorded, and quorum is checked automatically
+against your post's total voting membership. No binding vote can happen without quorum — the
+system will show this clearly before any motion is decided.
 
 MOTIONS
-A motion is a formal proposal for the group to take action. To make a motion, a member says "I move that..." followed by the specific proposal. Only one motion may be on the floor at a time.
+A motion is a formal proposal for the group to act. To make one, a member says "I move that..."
+followed by the specific proposal. Only one motion is on the floor at a time.
+
+MOTION TYPES
+- Main Motion — a new proposal
+- Amendment — a change to a motion already on the floor
+- Refer — send the matter to a committee
+- Postpone — delay a decision to a specific later time
+- Call to Vote — end debate and vote now
+- Table — set the matter aside indefinitely
+- Reconsider — revisit a motion already decided
+- Emergency Override — for genuine emergencies only; recommended to require unanimous consent
 
 SECONDS
-After a motion is made, another member must "second" it before it can be discussed — this simply shows at least one other person thinks it's worth discussing. If no one seconds, the motion dies quietly with no vote needed.
-
-DISCUSSION
-Once seconded, the chair opens the floor for discussion. Members should be recognized by the chair before speaking, and discussion should stay focused on the motion at hand.
+After a main motion, amendment, or reconsideration, another member must "second" it before
+it's discussed — this just shows at least one other person thinks it's worth discussing. If no
+one seconds, it dies quietly with no vote needed.
 
 VOTING
-After discussion, the chair restates the motion and calls for a vote. Common methods: voice vote ("all in favor say aye... opposed say nay"), show of hands, or roll call for more formal/contested votes. The chair announces the result.
+Common methods: voice vote, show of hands, roll call, ballot, or digital. Most motions need a
+simple majority; amendments and emergency overrides carry a higher bar (2/3, or unanimous
+consent recommended for emergencies) — the wizard shows the correct threshold automatically
+based on motion type.
 
-QUORUM
-Quorum is the minimum number of voting members who must be present for the post to conduct official business. Check your post's bylaws for the specific number — no binding votes should happen without it.$txt$,
+WHY THIS MATTERS
+Every motion becomes a permanent, searchable record — nationally, across every post — the
+moment a meeting is published. This is what makes URO more than paperwork: it's an actual
+institutional memory of what your post has decided and why.$txt$,
      3);
   insert into toolkit_items (category_id, title, sub_items, read_content, sort_order) values
     (cat_meeting, 'Meeting Scripts', array['Opening','Pledge','Closing'],
@@ -1903,6 +1967,96 @@ Check your post's specific membership policy — this varies and should be answe
     (cat_officer, 'Quartermaster', array['Budget','Accounting','Reporting'], 2),
     (cat_officer, 'Sergeant-at-Arms', array['Meeting conduct','Ceremonies'], 3),
     (cat_officer, 'Vice Commander', array['Succession planning'], 4);
+
+  update toolkit_items set read_content = $txt$THE ADJUTANT — ROLE GUIDE
+
+The Adjutant is the post's administrative backbone — the person who makes sure the paper trail
+exists and is accurate, so the post can prove what it did and when.
+
+CORE RESPONSIBILITIES
+- Meeting minutes: taking them, keeping them, making sure they get submitted (the Meetings
+  module's guided wizard is built specifically to make this job easier)
+- Membership records: maintaining an accurate roster, tracking who's current vs. lapsed
+- Correspondence: official post communications, both incoming and outgoing
+- Custodian of records: the post's official documents live with you, not scattered across
+  people's inboxes
+
+WHAT GOOD LOOKS LIKE
+Minutes submitted within a few days of every meeting, not weeks later from memory. A roster
+that's actually current, not "close enough." Records that a new Adjutant taking over could pick
+up and understand without you needing to explain everything by hand.
+
+Check your post's specific bylaws for any additional duties assigned to this role — this guide
+covers the responsibilities common to the position, not a substitute for your governing
+documents.$txt$
+  where title = 'Adjutant';
+
+  update toolkit_items set read_content = $txt$THE QUARTERMASTER — ROLE GUIDE
+
+The Quartermaster is the post's financial steward — the person accountable for where the
+money actually goes.
+
+CORE RESPONSIBILITIES
+- Budget: building and tracking the post's budget against actual income and expenses (the
+  Post Health module's financial ledger exists specifically to support this)
+- Accounting: keeping clean, honest records of every transaction — not just the big ones
+- Reporting: giving the post (and National, when asked) an honest picture of financial health,
+  not just good news
+- Property/inventory: depending on your post's setup, this role often also tracks physical
+  assets and equipment
+
+WHAT GOOD LOOKS LIKE
+Nobody — including you — should ever be surprised by the post's financial position. Every
+dollar in and out should be traceable to something specific. If a member asks "can we afford
+this," you should be able to answer with real numbers, not a guess.
+
+Check your post's specific bylaws for any additional financial controls or reporting
+requirements — this guide covers responsibilities common to the position, not a substitute for
+your governing documents.$txt$
+  where title = 'Quartermaster';
+
+  update toolkit_items set read_content = $txt$THE SERGEANT-AT-ARMS — ROLE GUIDE
+
+The Sergeant-at-Arms keeps meetings orderly and ceremonies dignified — the person responsible
+for the post's conduct, not just its content.
+
+CORE RESPONSIBILITIES
+- Meeting conduct: maintaining order during meetings, managing the floor during motions and
+  debate alongside whoever is presiding
+- Ceremonies: leading or coordinating formal ceremonial duties (colors, honors, remembrance)
+- Security/access: at some posts, this role also covers physical security of the meeting space
+  or facility during events
+
+WHAT GOOD LOOKS LIKE
+Meetings that stay on track without anyone feeling silenced or steamrolled. Ceremonies that are
+handled with the seriousness they deserve. A calm, steady presence when things get heated —
+this role is as much about tone as it is about procedure.
+
+Check your post's specific bylaws for any additional duties assigned to this role — this guide
+covers responsibilities common to the position, not a substitute for your governing documents.$txt$
+  where title = 'Sergeant-at-Arms';
+
+  update toolkit_items set read_content = $txt$THE VICE COMMANDER — ROLE GUIDE
+
+The Vice Commander is the Commander's second — and, just as importantly, the person who keeps
+the post running if the Commander is unavailable.
+
+CORE RESPONSIBILITIES
+- Succession readiness: genuinely being able to step into the Commander's role at any time,
+  not just in title
+- Supporting the Commander: taking on delegated projects and initiatives so the Commander isn't
+  a single point of failure for everything
+- Committee oversight: at many posts, the Vice Commander chairs or oversees standing committees
+
+WHAT GOOD LOOKS LIKE
+If the Commander had to step away tomorrow, the post wouldn't skip a beat — because the Vice
+Commander already knows what's going on, not just what's on paper. This role is insurance
+against the exact scenario that hurts posts the most: everything depending on one person.
+
+Check your post's specific bylaws for the actual succession process and any additional duties
+— this guide covers responsibilities common to the position, not a substitute for your
+governing documents.$txt$
+  where title = 'Vice Commander';
 
   -- Compliance Toolkit
   insert into toolkit_items (category_id, title, sort_order) values

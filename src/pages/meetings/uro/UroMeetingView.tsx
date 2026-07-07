@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import type { UroAttendance, UroMeeting, UroMotion } from '@/lib/types'
-import { AlertTriangle } from 'lucide-react'
+import type { UroActionItem, UroAttendance, UroMeeting, UroMotion } from '@/lib/types'
+import { AlertTriangle, CheckSquare, Square } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function UroMeetingView() {
@@ -12,6 +12,7 @@ export default function UroMeetingView() {
   const [meeting, setMeeting] = useState<UroMeeting | null>(null)
   const [attendance, setAttendance] = useState<UroAttendance[]>([])
   const [motions, setMotions] = useState<UroMotion[]>([])
+  const [actionItems, setActionItems] = useState<UroActionItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -20,10 +21,12 @@ export default function UroMeetingView() {
       supabase.from('uro_meetings').select('*').eq('id', meetingId).single(),
       supabase.from('uro_attendance').select('*').eq('meeting_id', meetingId).order('sort_order'),
       supabase.from('uro_motions').select('*').eq('meeting_id', meetingId).order('sort_order'),
-    ]).then(([m, a, mo]) => {
+      supabase.from('uro_action_items').select('*').eq('meeting_id', meetingId).order('created_at'),
+    ]).then(([m, a, mo, ai]) => {
       setMeeting(m.data as UroMeeting)
       setAttendance((a.data ?? []) as UroAttendance[])
       setMotions((mo.data ?? []) as UroMotion[])
+      setActionItems((ai.data ?? []) as UroActionItem[])
       setLoading(false)
     })
   }, [meetingId])
@@ -80,6 +83,33 @@ export default function UroMeetingView() {
                   tone={m.vote_result === 'passed' ? 'active' : m.vote_result === 'failed' ? 'attention' : 'developing'}
                 />
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {actionItems.length > 0 && (
+        <div className="panel p-5 mt-6">
+          <div className="eyebrow mb-3">Action Items</div>
+          <div className="space-y-1.5">
+            {actionItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={async () => {
+                  const next = item.status === 'done' ? 'open' : 'done'
+                  setActionItems((prev) => prev.map((a) => (a.id === item.id ? { ...a, status: next } : a)))
+                  await supabase.from('uro_action_items').update({ status: next }).eq('id', item.id)
+                }}
+                className="w-full flex items-center justify-between border border-hairline rounded-sm p-2.5 text-left text-sm hover:border-gold"
+              >
+                <div className="flex items-center gap-2">
+                  {item.status === 'done' ? <CheckSquare size={15} className="text-status-active" /> : <Square size={15} className="text-muted" />}
+                  <span className={item.status === 'done' ? 'text-muted line-through' : ''}>{item.description}</span>
+                </div>
+                <span className="text-xs text-muted font-mono">
+                  {item.owner_name ?? 'Unassigned'} {item.due_date ? `· due ${item.due_date}` : ''}
+                </span>
+              </button>
             ))}
           </div>
         </div>

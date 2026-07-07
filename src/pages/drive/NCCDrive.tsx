@@ -1,11 +1,28 @@
 import { useEffect, useState, type ChangeEvent, type DragEvent } from 'react'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import type { DriveFile, DriveFolder } from '@/lib/types'
-import { Folder, FileText, Upload, FolderPlus, Download, Trash2, Pencil, Search, ChevronRight, Loader2, Palette } from 'lucide-react'
-import { format } from 'date-fns'
+import {
+  Folder,
+  FileText,
+  Upload,
+  FolderPlus,
+  Download,
+  Trash2,
+  Pencil,
+  Search,
+  ChevronRight,
+  Loader2,
+  Palette,
+  FolderInput,
+  RotateCcw,
+  X,
+  Users,
+} from 'lucide-react'
+import { format, differenceInDays } from 'date-fns'
 
 const FOLDER_COLORS = [
   { name: 'Default', hex: null },
@@ -18,12 +35,16 @@ const FOLDER_COLORS = [
   { name: 'Pink', hex: '#B5567B' },
 ]
 
+const TRASH_RETENTION_DAYS = 30
+
 function formatSize(bytes: number | null): string {
   if (!bytes) return '—'
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
+
+type MoveTarget = { type: 'file' | 'folder'; id: string; name: string }
 
 export default function NCCDrive() {
   const { profile } = useAuth()
@@ -38,20 +59,48 @@ export default function NCCDrive() {
   const [query, setQuery] = useState('')
   const [searchResults, setSearchResults] = useState<DriveFile[] | null>(null)
   const [colorPickerFor, setColorPickerFor] = useState<string | null>(null)
+  const [showTrash, setShowTrash] = useState(false)
+  const [trashedFolders, setTrashedFolders] = useState<DriveFolder[]>([])
+  const [trashedFiles, setTrashedFiles] = useState<DriveFile[]>([])
+  const [moveTarget, setMoveTarget] = useState<MoveTarget | null>(null)
+  const [allFolders, setAllFolders] = useState<DriveFolder[]>([])
 
   async function load(folderId: string | null) {
     setLoading(true)
     const [foldersRes, filesRes] = await Promise.all([
       folderId
-        ? supabase.from('drive_folders').select('*').eq('parent_folder_id', folderId).order('name')
-        : supabase.from('drive_folders').select('*').is('parent_folder_id', null).order('name'),
+        ? supabase.from('drive_folders').select('*').eq('parent_folder_id', folderId).is('deleted_at', null).order('name')
+        : supabase.from('drive_folders').select('*').is('parent_folder_id', null).is('deleted_at', null).order('name'),
       folderId
-        ? supabase.from('drive_files').select('*').eq('folder_id', folderId).order('name')
-        : supabase.from('drive_files').select('*').is('folder_id', null).order('name'),
+        ? supabase.from('drive_files').select('*').eq('folder_id', folderId).is('deleted_at', null).order('name')
+        : supabase.from('drive_files').select('*').is('folder_id', null).is('deleted_at', null).order('name'),
     ])
     setFolders((foldersRes.data ?? []) as DriveFolder[])
     setFiles((filesRes.data ?? []) as DriveFile[])
     setLoading(false)
+  }
+
+  async function loadTrash() {
+    // Lazily purge anything past retention — no cron needed, this check
+    // runs whenever someone actually opens the trash.
+    const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 86400000).toISOString()
+    const [foldersRes, filesRes] = await Promise.all([
+      supabase.from('drive_folders').select('*').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
+      supabase.from('drive_files').select('*').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
+    ])
+    const folders = (foldersRes.data ?? []) as DriveFolder[]
+    const filesData = (filesRes.data ?? []) as DriveFile[]
+
+    const expiredFolders = folders.filter((f) => f.deleted_at && f.deleted_at < cutoff)
+    const expiredFiles = filesData.filter((f) => f.deleted_at && f.deleted_at < cutoff)
+    for (const f of expiredFolders) await supabase.from('drive_folders').delete().eq('id', f.id)
+    for (const f of expiredFiles) {
+      await supabase.storage.from('ncc-drive').remove([f.storage_path])
+      await supabase.from('drive_files').delete().eq('id', f.id)
+    }
+
+    setTrashedFolders(folders.filter((f) => !expiredFolders.includes(f)))
+    setTrashedFiles(filesData.filter((f) => !expiredFiles.includes(f)))
   }
 
   async function buildBreadcrumb(folderId: string | null) {
@@ -71,10 +120,12 @@ export default function NCCDrive() {
   }
 
   useEffect(() => {
-    load(currentFolderId)
-    buildBreadcrumb(currentFolderId)
+    if (!showTrash) {
+      load(currentFolderId)
+      buildBreadcrumb(currentFolderId)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFolderId])
+  }, [currentFolderId, showTrash])
 
   async function createFolder() {
     const name = window.prompt('Folder name?')
@@ -150,16 +201,64 @@ export default function NCCDrive() {
     await supabase.from('drive_folders').update({ color }).eq('id', folder.id)
   }
 
+  async function toggleShared(folder: DriveFolder) {
+    const shared_with_posts = !folder.shared_with_posts
+    setFolders((prev) => prev.map((f) => (f.id === folder.id ? { ...f, shared_with_posts } : f)))
+    await supabase.from('drive_folders').update({ shared_with_posts }).eq('id', folder.id)
+  }
+
+  // Soft delete — moves to Trash instead of destroying immediately.
   async function deleteFile(file: DriveFile) {
-    if (!window.confirm(`Delete "${file.name}"? This cannot be undone.`)) return
-    await supabase.storage.from('ncc-drive').remove([file.storage_path])
-    await supabase.from('drive_files').delete().eq('id', file.id)
+    if (!window.confirm(`Move "${file.name}" to Trash? Items in Trash are permanently deleted after ${TRASH_RETENTION_DAYS} days.`)) return
+    await supabase.from('drive_files').update({ deleted_at: new Date().toISOString() }).eq('id', file.id)
     load(currentFolderId)
   }
 
   async function deleteFolder(folder: DriveFolder) {
-    if (!window.confirm(`Delete "${folder.name}" and everything inside it? This cannot be undone.`)) return
-    await supabase.from('drive_folders').delete().eq('id', folder.id)
+    if (!window.confirm(`Move "${folder.name}" to Trash? Items in Trash are permanently deleted after ${TRASH_RETENTION_DAYS} days.`)) return
+    await supabase.from('drive_folders').update({ deleted_at: new Date().toISOString() }).eq('id', folder.id)
+    load(currentFolderId)
+  }
+
+  async function restoreFile(file: DriveFile) {
+    await supabase.from('drive_files').update({ deleted_at: null }).eq('id', file.id)
+    loadTrash()
+  }
+
+  async function restoreFolder(folder: DriveFolder) {
+    await supabase.from('drive_folders').update({ deleted_at: null }).eq('id', folder.id)
+    loadTrash()
+  }
+
+  async function deleteForever(type: 'file' | 'folder', item: DriveFile | DriveFolder) {
+    if (!window.confirm(`Permanently delete "${item.name}"? This cannot be undone.`)) return
+    if (type === 'file') {
+      await supabase.storage.from('ncc-drive').remove([(item as DriveFile).storage_path])
+      await supabase.from('drive_files').delete().eq('id', item.id)
+    } else {
+      await supabase.from('drive_folders').delete().eq('id', item.id)
+    }
+    loadTrash()
+  }
+
+  async function openMovePicker(target: MoveTarget) {
+    const { data } = await supabase.from('drive_folders').select('*').is('deleted_at', null).order('name')
+    setAllFolders((data ?? []) as DriveFolder[])
+    setMoveTarget(target)
+  }
+
+  async function moveTo(destinationFolderId: string | null) {
+    if (!moveTarget) return
+    if (moveTarget.type === 'file') {
+      await supabase.from('drive_files').update({ folder_id: destinationFolderId }).eq('id', moveTarget.id)
+    } else {
+      if (destinationFolderId === moveTarget.id) {
+        window.alert("Can't move a folder into itself.")
+        return
+      }
+      await supabase.from('drive_folders').update({ parent_folder_id: destinationFolderId }).eq('id', moveTarget.id)
+    }
+    setMoveTarget(null)
     load(currentFolderId)
   }
 
@@ -168,7 +267,7 @@ export default function NCCDrive() {
       setSearchResults(null)
       return
     }
-    const { data } = await supabase.from('drive_files').select('*').ilike('name', `%${query}%`).order('name')
+    const { data } = await supabase.from('drive_files').select('*').ilike('name', `%${query}%`).is('deleted_at', null).order('name')
     setSearchResults((data ?? []) as DriveFile[])
   }
 
@@ -179,146 +278,285 @@ export default function NCCDrive() {
         title="NCC Drive"
         action={
           <div className="flex gap-2">
-            <button onClick={createFolder} className="btn-ghost flex items-center gap-2">
-              <FolderPlus size={16} /> New Folder
+            <button
+              onClick={() => {
+                setShowTrash((v) => !v)
+                if (!showTrash) loadTrash()
+              }}
+              className="btn-ghost flex items-center gap-2"
+            >
+              <Trash2 size={16} /> {showTrash ? 'Back to Drive' : 'Trash'}
             </button>
-            <label className="btn-gold flex items-center gap-2 cursor-pointer">
-              {uploading ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
-              {uploading ? 'Uploading…' : 'Upload File'}
-              <input type="file" multiple className="hidden" onChange={handleFileInput} disabled={uploading} />
-            </label>
+            {!showTrash && (
+              <>
+                <button onClick={createFolder} className="btn-ghost flex items-center gap-2">
+                  <FolderPlus size={16} /> New Folder
+                </button>
+                <label className="btn-gold flex items-center gap-2 cursor-pointer">
+                  {uploading ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
+                  {uploading ? 'Uploading…' : 'Upload Files'}
+                  <input type="file" multiple className="hidden" onChange={handleFileInput} disabled={uploading} />
+                </label>
+              </>
+            )}
           </div>
         }
       />
 
       <p className="text-sm text-muted mb-6 max-w-2xl">
         The National Command Council's own internal storage — not tied to any post. Only National accounts can
-        see or touch anything in here.
+        manage this; a folder marked "Shared" becomes read-only visible to every post account.
       </p>
 
-      <div className="flex gap-2 mb-6">
-        <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            placeholder="Search every file in the drive by name…"
-            className="input-field pl-9"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-          />
-        </div>
-        <button onClick={runSearch} className="btn-gold px-6">
-          Search
-        </button>
-        {searchResults && (
-          <button onClick={() => { setQuery(''); setSearchResults(null) }} className="btn-ghost px-4">
-            Clear
-          </button>
-        )}
-      </div>
-
-      {uploadMessage && (
-        <div className="panel p-3 mb-4 text-sm text-status-active border-status-active/40">{uploadMessage}</div>
-      )}
-
-      <div
-        onDragOver={(e) => {
-          e.preventDefault()
-          setDragOver(true)
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-        className={`rounded-sm transition-colors ${dragOver ? 'ring-2 ring-gold ring-offset-2 ring-offset-base' : ''}`}
-      >
-        {searchResults ? (
+      {showTrash ? (
         <div>
-          <div className="eyebrow mb-3">{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</div>
-          {searchResults.length === 0 ? (
-            <EmptyState title="No files found" />
+          <p className="text-xs text-muted mb-4">Items here are permanently deleted after {TRASH_RETENTION_DAYS} days.</p>
+          {trashedFolders.length === 0 && trashedFiles.length === 0 ? (
+            <EmptyState title="Trash is empty" />
           ) : (
             <div className="space-y-1.5">
-              {searchResults.map((f) => (
-                <FileRow key={f.id} file={f} onDownload={() => downloadFile(f)} onRename={() => renameFile(f)} onDelete={() => deleteFile(f)} />
+              {trashedFolders.map((folder) => (
+                <div key={folder.id} className="panel p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Folder size={18} className="text-muted" />
+                    <span className="text-sm">{folder.name}</span>
+                    <span className="text-[11px] text-muted font-mono">
+                      {folder.deleted_at && `${TRASH_RETENTION_DAYS - differenceInDays(new Date(), new Date(folder.deleted_at))}d left`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-muted">
+                    <button onClick={() => restoreFolder(folder)} className="hover:text-gold" title="Restore">
+                      <RotateCcw size={14} />
+                    </button>
+                    <button onClick={() => deleteForever('folder', folder)} className="hover:text-status-attention" title="Delete forever">
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {trashedFiles.map((file) => (
+                <div key={file.id} className="panel p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <FileText size={18} className="text-muted" />
+                    <span className="text-sm">{file.name}</span>
+                    <span className="text-[11px] text-muted font-mono">
+                      {file.deleted_at && `${TRASH_RETENTION_DAYS - differenceInDays(new Date(), new Date(file.deleted_at))}d left`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-muted">
+                    <button onClick={() => restoreFile(file)} className="hover:text-gold" title="Restore">
+                      <RotateCcw size={14} />
+                    </button>
+                    <button onClick={() => deleteForever('file', file)} className="hover:text-status-attention" title="Delete forever">
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           )}
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-1 mb-4 text-sm">
-            <button onClick={() => setCurrentFolderId(null)} className="text-muted hover:text-gold">
-              NCC Drive
+          <div className="flex gap-2 mb-6">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                placeholder="Search every file in the drive by name…"
+                className="input-field pl-9"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+              />
+            </div>
+            <button onClick={runSearch} className="btn-gold px-6">
+              Search
             </button>
-            {breadcrumb.map((f) => (
-              <span key={f.id} className="flex items-center gap-1">
-                <ChevronRight size={13} className="text-muted" />
-                <button onClick={() => setCurrentFolderId(f.id)} className="text-muted hover:text-gold">
-                  {f.name}
-                </button>
-              </span>
-            ))}
+            {searchResults && (
+              <button onClick={() => { setQuery(''); setSearchResults(null) }} className="btn-ghost px-4">
+                Clear
+              </button>
+            )}
           </div>
 
-          {loading ? (
-            <p className="text-sm text-muted">Loading…</p>
-          ) : folders.length === 0 && files.length === 0 ? (
-            <EmptyState title="This folder is empty" hint="Create a folder or upload a file to get started." />
-          ) : (
-            <div className="space-y-1.5">
-              {folders.map((folder) => (
-                <div
-                  key={folder.id}
-                  className="panel p-3 flex items-center justify-between hover:border-gold transition-colors cursor-pointer relative"
-                  onClick={() => setCurrentFolderId(folder.id)}
-                >
-                  <div className="flex items-center gap-3">
-                    <Folder size={18} style={{ color: folder.color ?? '#C9A227' }} fill={folder.color ?? '#C9A227'} fillOpacity={0.15} />
-                    <span className="text-sm">{folder.name}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-muted" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => setColorPickerFor(colorPickerFor === folder.id ? null : folder.id)} className="hover:text-gold">
-                      <Palette size={14} />
-                    </button>
-                    <button onClick={() => renameFolder(folder)} className="hover:text-gold">
-                      <Pencil size={14} />
-                    </button>
-                    <button onClick={() => deleteFolder(folder)} className="hover:text-status-attention">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                  {colorPickerFor === folder.id && (
-                    <div
-                      className="absolute right-3 top-full mt-1 panel p-2 flex gap-1.5 z-10"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {FOLDER_COLORS.map((c) => (
-                        <button
-                          key={c.name}
-                          title={c.name}
-                          onClick={() => setFolderColor(folder, c.hex)}
-                          className="w-6 h-6 rounded-full border border-hairline hover:scale-110 transition-transform flex items-center justify-center"
-                          style={{ background: c.hex ?? '#26272B' }}
-                        >
-                          {!c.hex && <Folder size={12} className="text-gold" />}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {files.map((f) => (
-                <FileRow key={f.id} file={f} onDownload={() => downloadFile(f)} onRename={() => renameFile(f)} onDelete={() => deleteFile(f)} />
-              ))}
-            </div>
+          {uploadMessage && (
+            <div className="panel p-3 mb-4 text-sm text-status-active border-status-active/40">{uploadMessage}</div>
           )}
+
+          <div
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragOver(true)
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            className={`rounded-sm transition-colors ${dragOver ? 'ring-2 ring-gold ring-offset-2 ring-offset-base' : ''}`}
+          >
+            {!searchResults && !dragOver && (
+              <label className="flex items-center justify-center gap-2 border border-dashed border-hairline hover:border-gold rounded-sm py-4 mb-4 cursor-pointer text-sm text-muted transition-colors">
+                <Upload size={16} /> Drag files here, or click to upload multiple at once
+                <input type="file" multiple className="hidden" onChange={handleFileInput} disabled={uploading} />
+              </label>
+            )}
+            {dragOver && (
+              <div className="flex items-center justify-center gap-2 border-2 border-dashed border-gold rounded-sm py-8 mb-4 text-sm text-gold">
+                <Upload size={18} /> Drop to upload
+              </div>
+            )}
+
+            {searchResults ? (
+              <div>
+                <div className="eyebrow mb-3">{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</div>
+                {searchResults.length === 0 ? (
+                  <EmptyState title="No files found" />
+                ) : (
+                  <div className="space-y-1.5">
+                    {searchResults.map((f) => (
+                      <FileRow
+                        key={f.id}
+                        file={f}
+                        onDownload={() => downloadFile(f)}
+                        onRename={() => renameFile(f)}
+                        onDelete={() => deleteFile(f)}
+                        onMove={() => openMovePicker({ type: 'file', id: f.id, name: f.name })}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-1 mb-4 text-sm">
+                  <button onClick={() => setCurrentFolderId(null)} className="text-muted hover:text-gold">
+                    NCC Drive
+                  </button>
+                  {breadcrumb.map((f) => (
+                    <span key={f.id} className="flex items-center gap-1">
+                      <ChevronRight size={13} className="text-muted" />
+                      <button onClick={() => setCurrentFolderId(f.id)} className="text-muted hover:text-gold">
+                        {f.name}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {loading ? (
+                  <p className="text-sm text-muted">Loading…</p>
+                ) : folders.length === 0 && files.length === 0 ? (
+                  <EmptyState title="This folder is empty" hint="Create a folder or upload a file to get started." />
+                ) : (
+                  <div className="space-y-1.5">
+                    {folders.map((folder) => (
+                      <div
+                        key={folder.id}
+                        className="panel p-3 flex items-center justify-between hover:border-gold transition-colors cursor-pointer relative"
+                        onClick={() => setCurrentFolderId(folder.id)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Folder size={18} style={{ color: folder.color ?? '#C9A227' }} fill={folder.color ?? '#C9A227'} fillOpacity={0.15} />
+                          <span className="text-sm">{folder.name}</span>
+                          {folder.shared_with_posts && (
+                            <span title="Shared with all posts (read-only)">
+                              <Users size={13} className="text-gold" />
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-muted" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => toggleShared(folder)}
+                            className={folder.shared_with_posts ? 'text-gold' : 'hover:text-gold'}
+                            title={folder.shared_with_posts ? 'Shared with every post — click to unshare' : 'Share with every post (read-only)'}
+                          >
+                            <Users size={14} />
+                          </button>
+                          <button onClick={() => setColorPickerFor(colorPickerFor === folder.id ? null : folder.id)} className="hover:text-gold" title="Color">
+                            <Palette size={14} />
+                          </button>
+                          <button onClick={() => openMovePicker({ type: 'folder', id: folder.id, name: folder.name })} className="hover:text-gold" title="Move">
+                            <FolderInput size={14} />
+                          </button>
+                          <button onClick={() => renameFolder(folder)} className="hover:text-gold" title="Rename">
+                            <Pencil size={14} />
+                          </button>
+                          <button onClick={() => deleteFolder(folder)} className="hover:text-status-attention" title="Move to Trash">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        {colorPickerFor === folder.id && (
+                          <div className="absolute right-3 top-full mt-1 panel p-2 flex gap-1.5 z-10" onClick={(e) => e.stopPropagation()}>
+                            {FOLDER_COLORS.map((c) => (
+                              <button
+                                key={c.name}
+                                title={c.name}
+                                onClick={() => setFolderColor(folder, c.hex)}
+                                className="w-6 h-6 rounded-full border border-hairline hover:scale-110 transition-transform flex items-center justify-center"
+                                style={{ background: c.hex ?? '#26272B' }}
+                              >
+                                {!c.hex && <Folder size={12} className="text-gold" />}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {files.map((f) => (
+                      <FileRow
+                        key={f.id}
+                        file={f}
+                        onDownload={() => downloadFile(f)}
+                        onRename={() => renameFile(f)}
+                        onDelete={() => deleteFile(f)}
+                        onMove={() => openMovePicker({ type: 'file', id: f.id, name: f.name })}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </>
       )}
-      </div>
+
+      {moveTarget && (
+        <Modal title={`Move "${moveTarget.name}"`} onClose={() => setMoveTarget(null)}>
+          <div className="space-y-2">
+            <button
+              onClick={() => moveTo(null)}
+              className="w-full text-left panel p-2.5 hover:border-gold transition-colors text-sm flex items-center gap-2"
+            >
+              <Folder size={15} className="text-gold" /> NCC Drive (root)
+            </button>
+            {allFolders
+              .filter((f) => f.id !== moveTarget.id)
+              .map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => moveTo(f.id)}
+                  className="w-full text-left panel p-2.5 hover:border-gold transition-colors text-sm flex items-center gap-2"
+                >
+                  <Folder size={15} style={{ color: f.color ?? '#C9A227' }} /> {f.name}
+                </button>
+              ))}
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
 
-function FileRow({ file, onDownload, onRename, onDelete }: { file: DriveFile; onDownload: () => void; onRename: () => void; onDelete: () => void }) {
+function FileRow({
+  file,
+  onDownload,
+  onRename,
+  onDelete,
+  onMove,
+}: {
+  file: DriveFile
+  onDownload: () => void
+  onRename: () => void
+  onDelete: () => void
+  onMove: () => void
+}) {
   return (
     <div
       onClick={onDownload}
@@ -338,10 +576,13 @@ function FileRow({ file, onDownload, onRename, onDelete }: { file: DriveFile; on
         <button onClick={onDownload} className="hover:text-gold" title="Download">
           <Download size={14} />
         </button>
+        <button onClick={onMove} className="hover:text-gold" title="Move">
+          <FolderInput size={14} />
+        </button>
         <button onClick={onRename} className="hover:text-gold" title="Rename">
           <Pencil size={14} />
         </button>
-        <button onClick={onDelete} className="hover:text-status-attention" title="Delete">
+        <button onClick={onDelete} className="hover:text-status-attention" title="Move to Trash">
           <Trash2 size={14} />
         </button>
       </div>

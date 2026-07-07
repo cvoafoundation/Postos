@@ -29,6 +29,30 @@ export function SponsorDetailModal({
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [category, setCategory] = useState(sponsor.category ?? '')
+
+  const SPONSOR_CATEGORIES = [
+    'Restaurant/Food Service',
+    'Beverage/Alcohol Distribution',
+    'Grocery/Retail',
+    'Education/Training',
+    'Technology',
+    'Staffing/Recruiting',
+    'Professional Services',
+    'Healthcare',
+    'Medical Equipment/Supplies',
+    'Construction/Hardware',
+    'Real Estate',
+    'Fitness/Sporting Goods',
+    'Health & Wellness',
+    'Other',
+  ]
+
+  async function saveCategory(value: string) {
+    setCategory(value)
+    await supabase.from('sponsors').update({ category: value || null }).eq('id', sponsor.id)
+    onUpdated()
+  }
 
   useEffect(() => {
     if (sponsor.tier_id) {
@@ -141,6 +165,18 @@ export function SponsorDetailModal({
             <div>{sponsor.email ?? '—'}</div>
             <div>{sponsor.phone ?? ''}</div>
           </div>
+        </div>
+
+        <div>
+          <div className="eyebrow mb-1">Business Category</div>
+          <select className="input-field" value={category} onChange={(e) => saveCategory(e.target.value)}>
+            <option value="">Not set — powers Build A Post sponsor matching</option>
+            {SPONSOR_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
 
         {sponsor.notes && (

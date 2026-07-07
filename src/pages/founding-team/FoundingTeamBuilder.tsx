@@ -6,6 +6,11 @@ import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import type { FoundingTeamMember, Post } from '@/lib/types'
 import { Copy, Check, Trash2, FileText } from 'lucide-react'
+import { formatDistanceToNow, differenceInDays } from 'date-fns'
+
+function isStaleVerification(verifiedAt: string): boolean {
+  return differenceInDays(new Date(), new Date(verifiedAt)) > 365
+}
 
 const REQUIRED_POSITIONS = ['commander', 'vice_commander', 'adjutant', 'quartermaster', 'sergeant_at_arms']
 
@@ -269,6 +274,11 @@ export default function FoundingTeamBuilder() {
                         : 'developing'
                     }
                   />
+                  {m.verification_status === 'verified' && m.verified_at && isStaleVerification(m.verified_at) && (
+                    <div className="text-[10px] text-status-attention font-mono mt-1">
+                      Verified {formatDistanceToNow(new Date(m.verified_at))} ago — may need re-check
+                    </div>
+                  )}
                 </td>
                 <td className="table-cell">
                   <button onClick={() => removeMember(m)} className="text-muted hover:text-status-attention">
