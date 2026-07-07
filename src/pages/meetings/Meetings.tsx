@@ -33,6 +33,8 @@ export default function Meetings() {
   const navigate = useNavigate()
   const { profile, isNational } = useAuth()
   const [posts, setPosts] = useState<Record<string, string>>({})
+  const [allPosts, setAllPosts] = useState<Post[]>([])
+  const [selectedPostForMeeting, setSelectedPostForMeeting] = useState<string | null>(null)
   const [activePosts, setActivePosts] = useState<Post[]>([])
   const [lastSubmission, setLastSubmission] = useState<Record<string, string>>({})
   const [myRecords, setMyRecords] = useState<MeetingRecord[]>([])
@@ -49,10 +51,22 @@ export default function Meetings() {
       for (const p of data ?? []) map[p.id] = p.name
       setPosts(map)
     })
-    if (isNational) loadCompliance()
+    if (isNational) {
+      loadCompliance()
+      supabase.from('posts').select('*').then(({ data }: any) => {
+        const list = (data ?? []) as Post[]
+        setAllPosts(list)
+        if (list.length > 0 && !selectedPostForMeeting) setSelectedPostForMeeting(list[0].id)
+      })
+    }
     if (profile?.post_id) loadMyRecords(profile.post_id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNational, profile?.post_id])
+
+  useEffect(() => {
+    if (isNational && selectedPostForMeeting) loadMyRecords(selectedPostForMeeting)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPostForMeeting, isNational])
 
   async function loadCompliance() {
     const [postsRes, recordsRes] = await Promise.all([
@@ -84,16 +98,17 @@ export default function Meetings() {
   }
 
   async function startGuidedMeeting() {
-    if (!profile?.post_id) return
+    const targetPostId = isNational ? selectedPostForMeeting : profile?.post_id
+    if (!targetPostId) return
     setStartingMeeting(true)
     const { data } = await supabase
       .from('uro_meetings')
       .insert({
-        post_id: profile.post_id,
+        post_id: targetPostId,
         title: `${format(new Date(), 'MMMM yyyy')} Meeting`,
         meeting_type: 'regular',
         meeting_date: new Date().toISOString().slice(0, 10),
-        created_by: profile.id,
+        created_by: profile?.id,
       })
       .select()
       .single()
@@ -140,9 +155,22 @@ export default function Meetings() {
                 <button onClick={() => navigate('/meetings/uro-motions')} className="btn-ghost flex items-center gap-2 text-sm">
                   <ClipboardList size={16} /> Motion Search
                 </button>
+                {allPosts.length > 0 && (
+                  <select
+                    className="input-field w-48"
+                    value={selectedPostForMeeting ?? ''}
+                    onChange={(e) => setSelectedPostForMeeting(e.target.value)}
+                  >
+                    {allPosts.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </>
             )}
-            {profile?.post_id && (
+            {(profile?.post_id || (isNational && selectedPostForMeeting)) && (
               <button onClick={startGuidedMeeting} disabled={startingMeeting} className="btn-gold flex items-center gap-2 disabled:opacity-50">
                 <Plus size={16} /> {startingMeeting ? 'Starting…' : 'Start Guided Meeting'}
               </button>
@@ -151,9 +179,9 @@ export default function Meetings() {
         }
       />
 
-      {profile?.post_id && myUroMeetings.length > 0 && (
+      {(profile?.post_id || (isNational && selectedPostForMeeting)) && myUroMeetings.length > 0 && (
         <div className="panel p-4 mb-6">
-          <div className="eyebrow mb-3">Your Guided Meetings</div>
+          <div className="eyebrow mb-3">{isNational ? `Guided Meetings — ${allPosts.find((p) => p.id === selectedPostForMeeting)?.name ?? ''}` : 'Your Guided Meetings'}</div>
           <div className="space-y-1.5">
             {myUroMeetings.map((m) => (
               <button
