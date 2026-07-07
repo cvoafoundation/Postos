@@ -218,6 +218,9 @@ export const mockSupabase = {
       // Demo mode has no real auth users to link against — no-op success.
       return { data: null, error: null }
     }
+    if (name === 'link_member_profile') {
+      return { data: null, error: null }
+    }
     return { data: null, error: { message: `Unknown RPC: ${name}` } }
   },
   functions: {

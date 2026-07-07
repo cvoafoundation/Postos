@@ -83,11 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               .select()
               .single()
 
-            // Link this account to their founding team roster row so
-            // National's existing verification workflow can find and
-            // activate it later. Runs as a security-definer function so it
-            // can only ever link the calling user's own matching row.
+            // Link this account to their founding team roster row (if any)
+            // and their member roster row (if any) so the relevant
+            // verification/payment-triggered promotion can find and
+            // activate it later. Both are safe no-ops if there's no match.
             await supabase.rpc('link_founding_team_profile')
+            await supabase.rpc('link_member_profile')
 
             await supabase.from('pending_profile_signups').delete().eq('id', pending.id)
             setProfile((newProfile as Profile) ?? null)

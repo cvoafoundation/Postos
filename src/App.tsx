@@ -36,6 +36,7 @@ import BuildAPostDetail from '@/pages/build-a-post/BuildAPostDetail'
 import MembershipRoster from '@/pages/members/MembershipRoster'
 import JoinMembership from '@/pages/members/JoinMembership'
 import JoinCVOA from '@/pages/members/JoinCVOA'
+import MemberHome from '@/pages/members/MemberHome'
 import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
 import NCCDrive from '@/pages/drive/NCCDrive'
 import SharedDriveView from '@/pages/drive/SharedDriveView'
@@ -76,7 +77,7 @@ function AuthenticatedApp() {
   return (
     <AppShell>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<HomeRoute />} />
         <Route
           path="/applications"
           element={
@@ -168,4 +169,9 @@ function AuthenticatedApp() {
 function CongressRoute() {
   const { isNational } = useAuth()
   return isNational ? <VeteransCongress /> : <CongressMemberView />
+}
+
+function HomeRoute() {
+  const { profile } = useAuth()
+  return profile?.role === 'member' ? <MemberHome /> : <Dashboard />
 }

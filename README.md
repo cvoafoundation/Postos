@@ -572,7 +572,42 @@ No new SQL for this — reuses everything already in place. Push the code, and m
 Stripe/Resend Edge Function secrets from the earlier Membership Roster setup are already
 deployed (they don't need to change).
 
+## Member accounts + the funnel
+
+**Real accounts for paying members**, following the exact same pattern as founding team
+accounts, with the equivalent "verification" being different: a founding team account
+activates on National's manual DD214 review; a member account activates the moment their
+**payment actually clears**, via the same webhook that already marks the roster active — no
+new manual step, no new Stripe work. An account created but never paid for stays completely
+powerless (lowest-privilege role, no post) until that happens, exactly like the founding team
+gate.
+
+Both `/join` and `/join-membership/:postId` now offer this as an optional checkbox, same UX as
+the Founding Team flow.
+
+**The funnel** — a member's home screen (`/` for anyone with the `member` role) is not a
+generic dashboard. It shows their real membership card (number, type, renewal date) and three
+genuine next steps, each wired into a module that already exists rather than a new one:
+
+- **Start a Post** — a real form that inserts directly into the same Application Pipeline
+  National already reviews everything else through. Honest scope note: this skips the DD214
+  upload gate the anonymous public form requires — a paying, account-holding member is a
+  meaningfully different trust level than an anonymous visitor, so I made that call
+  deliberately rather than re-litigating identity verification they've already been through.
+- **Veterans Congress** — links straight to the existing vote-only view.
+- **Volunteer Locally** — browses real active posts and a "Request to Join" button that drops
+  a real lead into that post's Recruiting Engine pipeline (same `recruits` table, same board
+  the post's own recruiters already work from) — a real person there follows up, not a black
+  hole.
+
+**Sidebar is scoped down accordingly** — a plain member sees Meetings, Post Toolkit, Shared
+Files, and Veterans Congress. Not Founding Team, Launch Checklist, Recruiting Engine,
+Sponsorship CRM, Post Health, or Build A Post — those stay post-officer tools.
+
+Run `member-accounts.sql`, then push the code.
+
 ## Stack
+
 
 
 

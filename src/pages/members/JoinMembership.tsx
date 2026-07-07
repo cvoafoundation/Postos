@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { MEMBERSHIP_PRICES, type MembershipType } from '@/lib/types'
-import { Loader2 } from 'lucide-react'
+import { Loader2, KeyRound } from 'lucide-react'
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
@@ -24,7 +24,9 @@ export default function JoinMembership() {
     state: '',
     military_branch: '',
     membership_type: 'annual' as MembershipType,
+    password: '',
   })
+  const [wantsAccount, setWantsAccount] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -75,6 +77,19 @@ export default function JoinMembership() {
       setSubmitting(false)
       setError(memberError?.message ?? 'Something went wrong creating your record.')
       return
+    }
+
+    if (wantsAccount && form.password) {
+      await supabase.from('pending_profile_signups').insert({
+        email: form.email,
+        full_name: form.full_name,
+        post_id: postId,
+        role: 'member',
+      })
+      const { error: signUpError } = await supabase.auth.signUp({ email: form.email, password: form.password })
+      if (signUpError) {
+        console.error('Account creation failed:', signUpError.message)
+      }
     }
 
     const { data, error: checkoutError } = await supabase.functions.invoke('create-membership-checkout', {
@@ -162,6 +177,24 @@ export default function JoinMembership() {
                       <div className="font-mono text-gold text-lg">${MEMBERSHIP_PRICES.lifetime}</div>
                     </label>
                   </div>
+                </div>
+
+                <div className="border-t border-hairline pt-3">
+                  <label className="flex items-center gap-2 text-sm text-muted cursor-pointer mb-2">
+                    <input type="checkbox" checked={wantsAccount} onChange={(e) => setWantsAccount(e.target.checked)} />
+                    <KeyRound size={13} /> Create an account (access activates once payment clears)
+                  </label>
+                  {wantsAccount && (
+                    <input
+                      required={wantsAccount}
+                      type="password"
+                      placeholder="Set a password"
+                      className="input-field"
+                      minLength={6}
+                      value={form.password}
+                      onChange={(e) => update('password', e.target.value)}
+                    />
+                  )}
                 </div>
 
                 {error && <p className="text-status-attention text-sm">{error}</p>}

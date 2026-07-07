@@ -706,6 +706,7 @@ create table members (
   membership_status membership_status not null default 'pending_payment',
   joined_at date,
   expires_at date, -- null for lifetime members
+  profile_id uuid references profiles(id), -- linked once they create an account; real access activates on payment, mirroring how founding team accounts activate on verification
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -1436,6 +1437,49 @@ $$;
 create trigger trg_promote_founding_team_account
   after update on founding_team_members
   for each row execute function promote_founding_team_account();
+
+-- Same pattern as founding team accounts, but the "verification" event
+-- here is a payment actually clearing, not a manual review. Real access
+-- (role='member') only activates once membership_status becomes 'active' —
+-- an account created but never paid for stays powerless. Never downgrades
+-- an existing officer/commander account that happens to share an email.
+create or replace function link_member_profile()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update members
+  set profile_id = auth.uid()
+  where profile_id is null
+    and email = (select email from auth.users where id = auth.uid());
+end;
+$$;
+
+grant execute on function link_member_profile() to authenticated;
+
+create or replace function promote_member_account()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.membership_status = 'active'
+     and (old.membership_status is distinct from 'active')
+     and new.profile_id is not null then
+    update profiles
+    set role = 'member', post_id = coalesce(profiles.post_id, new.post_id)
+    where id = new.profile_id and role = 'guest_applicant';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_promote_member_account
+  after update on members
+  for each row execute function promote_member_account();
 
 -- Auto-generates a membership number ("19-000000001") on insert, unless one
 -- was already supplied (e.g. importing existing numbers from a CSV so

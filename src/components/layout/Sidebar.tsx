@@ -26,8 +26,7 @@ const NATIONAL_ONLY_ITEMS: { to: string; label: string; icon: typeof GitBranch; 
   { to: '/drive', label: 'NCC Drive', icon: HardDrive },
 ]
 
-// Shared by everyone — for post-scoped accounts, "Post Health" gets pointed
-// at their own post directly rather than the National list view.
+// Shared by post officers/commanders — the full toolset for running a post.
 const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
   { to: '/founding-team', label: 'Founding Team', icon: Users },
   { to: '/checklist', label: 'Launch Checklist', icon: ListChecks },
@@ -42,13 +41,22 @@ const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
   { to: '/build-a-post', label: 'Build A Post', icon: Hammer },
 ]
 
+// A plain paying member isn't running a post — a much smaller, relevant set.
+const MEMBER_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
+  { to: '/meetings', label: 'Meetings', icon: CalendarCheck },
+  { to: '/toolkit', label: 'Post Toolkit', icon: FolderDown },
+  { to: '/shared-files', label: 'Shared Files', icon: HardDrive },
+  { to: '/congress', label: 'Veterans Congress', icon: Landmark },
+]
+
 export function Sidebar() {
   const { profile, isNational, signOut } = useAuth()
+  const isPlainMember = profile?.role === 'member'
 
   const navItems = [
-    { to: '/', label: 'Global Dashboard', icon: LayoutGrid, end: true },
+    { to: '/', label: isPlainMember ? 'Home' : 'Global Dashboard', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
-    ...SHARED_ITEMS.map((item) =>
+    ...(isPlainMember ? MEMBER_ITEMS : SHARED_ITEMS).map((item) =>
       item.to === '/health' && !isNational && profile?.post_id
         ? { ...item, to: `/health/${profile.post_id}` }
         : item
