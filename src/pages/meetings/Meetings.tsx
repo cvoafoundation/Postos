@@ -40,6 +40,7 @@ export default function Meetings() {
   const [myRecords, setMyRecords] = useState<MeetingRecord[]>([])
   const [myUroMeetings, setMyUroMeetings] = useState<UroMeeting[]>([])
   const [startingMeeting, setStartingMeeting] = useState(false)
+  const [meetingError, setMeetingError] = useState<string | null>(null)
   const [showSubmit, setShowSubmit] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<MeetingRecord[]>([])
@@ -101,7 +102,8 @@ export default function Meetings() {
     const targetPostId = isNational ? selectedPostForMeeting : profile?.post_id
     if (!targetPostId) return
     setStartingMeeting(true)
-    const { data } = await supabase
+    setMeetingError(null)
+    const { data, error } = await supabase
       .from('uro_meetings')
       .insert({
         post_id: targetPostId,
@@ -113,6 +115,10 @@ export default function Meetings() {
       .select()
       .single()
     setStartingMeeting(false)
+    if (error) {
+      setMeetingError(error.message)
+      return
+    }
     if (data) navigate(`/meetings/uro/${data.id}`)
   }
 
@@ -178,6 +184,17 @@ export default function Meetings() {
           </div>
         }
       />
+
+      {meetingError && (
+        <div className="panel p-3 mb-6 border-status-attention/40 text-sm text-status-attention">
+          Couldn't start meeting: {meetingError}
+          {meetingError.toLowerCase().includes('does not exist') && (
+            <span className="block text-xs text-muted mt-1">
+              This usually means <code>uro-meeting-system.sql</code> hasn't been run in Supabase yet.
+            </span>
+          )}
+        </div>
+      )}
 
       {(profile?.post_id || (isNational && selectedPostForMeeting)) && myUroMeetings.length > 0 && (
         <div className="panel p-4 mb-6">

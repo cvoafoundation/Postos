@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { POST_STATUS_LABELS, POST_STATUS_ORDER, type Post, type PostStatus } from '@/lib/types'
 import { PostChecklistView } from '@/components/checklist/PostChecklistView'
-import { Copy, Check, ArrowRight } from 'lucide-react'
+import { Copy, Check, ArrowRight, Trash2 } from 'lucide-react'
 
 export default function LaunchChecklist() {
   const { profile, isNational } = useAuth()
@@ -15,6 +15,7 @@ export default function LaunchChecklist() {
   const [copied, setCopied] = useState(false)
   const [checklistPct, setChecklistPct] = useState<number | null>(null)
   const [advancing, setAdvancing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   async function loadPosts() {
     if (isNational) {
@@ -61,6 +62,23 @@ export default function LaunchChecklist() {
       // this post moves off this page's list once active — reset selection
       setSelectedPostId(null)
     }
+    loadPosts()
+  }
+
+  async function deletePost() {
+    if (!selectedPostId || !selectedPost) return
+    const confirmed = window.confirm(
+      `Permanently delete "${selectedPost.name}"? This removes the post and everything tied to it — founding team, checklist, recruits, sponsors, meetings, everything. This cannot be undone.`
+    )
+    if (!confirmed) return
+    setDeleting(true)
+    const { error } = await supabase.from('posts').delete().eq('id', selectedPostId)
+    setDeleting(false)
+    if (error) {
+      window.alert(`Couldn't delete: ${error.message}`)
+      return
+    }
+    setSelectedPostId(null)
     loadPosts()
   }
 
@@ -117,11 +135,20 @@ export default function LaunchChecklist() {
               </div>
             )}
           </div>
-          {nextStatus && (
-            <button onClick={() => advanceStatus(nextStatus)} disabled={advancing} className="btn-gold flex items-center gap-2 shrink-0 disabled:opacity-50">
-              {advancing ? 'Advancing…' : `Advance to ${POST_STATUS_LABELS[nextStatus]}`} <ArrowRight size={14} />
+          <div className="flex items-center gap-4 shrink-0">
+            {nextStatus && (
+              <button onClick={() => advanceStatus(nextStatus)} disabled={advancing} className="btn-gold flex items-center gap-2 disabled:opacity-50">
+                {advancing ? 'Advancing…' : `Advance to ${POST_STATUS_LABELS[nextStatus]}`} <ArrowRight size={14} />
+              </button>
+            )}
+            <button
+              onClick={deletePost}
+              disabled={deleting}
+              className="text-xs text-muted hover:text-status-attention flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Trash2 size={13} /> {deleting ? 'Deleting…' : 'Delete Post'}
             </button>
-          )}
+          </div>
         </div>
       )}
 

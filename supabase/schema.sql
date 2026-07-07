@@ -976,6 +976,7 @@ create policy "posts_select_all" on posts for select using (true);
 create policy "posts_write_national" on posts for insert with check (is_national_role());
 create policy "posts_update_national_or_own" on posts
   for update using (is_national_role() or id = current_post_id());
+create policy "posts_delete_national" on posts for delete using (is_national_role());
 
 -- Generic pattern applied to the remaining module tables:
 -- national roles: full read/write. Post-scoped roles: read/write rows tied to their post_id.
