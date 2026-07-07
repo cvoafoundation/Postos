@@ -806,6 +806,7 @@ create table drive_folders (
   id uuid primary key default uuid_generate_v4(),
   parent_folder_id uuid references drive_folders(id) on delete cascade,
   name text not null,
+  color text, -- hex color for visual organization, Google-Drive-style
   created_by uuid references profiles(id),
   created_at timestamptz not null default now()
 );

@@ -670,6 +670,7 @@ export interface DriveFolder {
   id: string
   parent_folder_id: string | null
   name: string
+  color: string | null
   created_by: string | null
   created_at: string
 }

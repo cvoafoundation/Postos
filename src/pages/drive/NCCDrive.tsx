@@ -1,11 +1,22 @@
-import { useEffect, useState, type ChangeEvent } from 'react'
+import { useEffect, useState, type ChangeEvent, type DragEvent } from 'react'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import type { DriveFile, DriveFolder } from '@/lib/types'
-import { Folder, FileText, Upload, FolderPlus, Download, Trash2, Pencil, Search, ChevronRight, Loader2 } from 'lucide-react'
+import { Folder, FileText, Upload, FolderPlus, Download, Trash2, Pencil, Search, ChevronRight, Loader2, Palette } from 'lucide-react'
 import { format } from 'date-fns'
+
+const FOLDER_COLORS = [
+  { name: 'Default', hex: null },
+  { name: 'Red', hex: '#A3423D' },
+  { name: 'Orange', hex: '#C77D33' },
+  { name: 'Yellow', hex: '#C9A227' },
+  { name: 'Green', hex: '#4A7C59' },
+  { name: 'Blue', hex: '#3B6EA5' },
+  { name: 'Purple', hex: '#7B5EA7' },
+  { name: 'Pink', hex: '#B5567B' },
+]
 
 function formatSize(bytes: number | null): string {
   if (!bytes) return '—'
@@ -22,8 +33,11 @@ export default function NCCDrive() {
   const [files, setFiles] = useState<DriveFile[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const [query, setQuery] = useState('')
   const [searchResults, setSearchResults] = useState<DriveFile[] | null>(null)
+  const [colorPickerFor, setColorPickerFor] = useState<string | null>(null)
 
   async function load(folderId: string | null) {
     setLoading(true)
@@ -69,27 +83,46 @@ export default function NCCDrive() {
     load(currentFolderId)
   }
 
-  async function uploadFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function uploadFiles(fileList: FileList | File[]) {
+    const filesToUpload = Array.from(fileList)
+    if (filesToUpload.length === 0) return
     setUploading(true)
-    const path = `${currentFolderId ?? 'root'}/${crypto.randomUUID()}-${file.name}`
-    const { data, error } = await supabase.storage.from('ncc-drive').upload(path, file)
-    if (!error && data) {
-      await supabase.from('drive_files').insert({
-        folder_id: currentFolderId,
-        name: file.name,
-        storage_path: data.path,
-        file_size: file.size,
-        mime_type: file.type || null,
-        uploaded_by: profile?.id,
-      })
-      load(currentFolderId)
-    } else if (error) {
-      window.alert(`Upload failed: ${error.message}`)
+    setUploadMessage(null)
+    let succeeded = 0
+    for (const file of filesToUpload) {
+      const path = `${currentFolderId ?? 'root'}/${crypto.randomUUID()}-${file.name}`
+      const { data, error } = await supabase.storage.from('ncc-drive').upload(path, file)
+      if (!error && data) {
+        await supabase.from('drive_files').insert({
+          folder_id: currentFolderId,
+          name: file.name,
+          storage_path: data.path,
+          file_size: file.size,
+          mime_type: file.type || null,
+          uploaded_by: profile?.id,
+        })
+        succeeded++
+      } else if (error) {
+        window.alert(`Upload failed for "${file.name}": ${error.message}`)
+      }
     }
     setUploading(false)
+    if (succeeded > 0) {
+      setUploadMessage(`Uploaded ${succeeded} file${succeeded !== 1 ? 's' : ''}.`)
+      setTimeout(() => setUploadMessage(null), 4000)
+    }
+    load(currentFolderId)
+  }
+
+  async function handleFileInput(e: ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) await uploadFiles(e.target.files)
     e.target.value = ''
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    if (e.dataTransfer.files.length > 0) uploadFiles(e.dataTransfer.files)
   }
 
   async function downloadFile(file: DriveFile) {
@@ -109,6 +142,12 @@ export default function NCCDrive() {
     if (!name?.trim()) return
     await supabase.from('drive_folders').update({ name: name.trim() }).eq('id', folder.id)
     load(currentFolderId)
+  }
+
+  async function setFolderColor(folder: DriveFolder, color: string | null) {
+    setColorPickerFor(null)
+    setFolders((prev) => prev.map((f) => (f.id === folder.id ? { ...f, color } : f)))
+    await supabase.from('drive_folders').update({ color }).eq('id', folder.id)
   }
 
   async function deleteFile(file: DriveFile) {
@@ -146,7 +185,7 @@ export default function NCCDrive() {
             <label className="btn-gold flex items-center gap-2 cursor-pointer">
               {uploading ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
               {uploading ? 'Uploading…' : 'Upload File'}
-              <input type="file" className="hidden" onChange={uploadFile} disabled={uploading} />
+              <input type="file" multiple className="hidden" onChange={handleFileInput} disabled={uploading} />
             </label>
           </div>
         }
@@ -178,7 +217,20 @@ export default function NCCDrive() {
         )}
       </div>
 
-      {searchResults ? (
+      {uploadMessage && (
+        <div className="panel p-3 mb-4 text-sm text-status-active border-status-active/40">{uploadMessage}</div>
+      )}
+
+      <div
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragOver(true)
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className={`rounded-sm transition-colors ${dragOver ? 'ring-2 ring-gold ring-offset-2 ring-offset-base' : ''}`}
+      >
+        {searchResults ? (
         <div>
           <div className="eyebrow mb-3">{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</div>
           {searchResults.length === 0 ? (
@@ -216,14 +268,17 @@ export default function NCCDrive() {
               {folders.map((folder) => (
                 <div
                   key={folder.id}
-                  className="panel p-3 flex items-center justify-between hover:border-gold transition-colors cursor-pointer"
+                  className="panel p-3 flex items-center justify-between hover:border-gold transition-colors cursor-pointer relative"
                   onClick={() => setCurrentFolderId(folder.id)}
                 >
                   <div className="flex items-center gap-3">
-                    <Folder size={18} className="text-gold" />
+                    <Folder size={18} style={{ color: folder.color ?? '#C9A227' }} fill={folder.color ?? '#C9A227'} fillOpacity={0.15} />
                     <span className="text-sm">{folder.name}</span>
                   </div>
                   <div className="flex items-center gap-3 text-muted" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => setColorPickerFor(colorPickerFor === folder.id ? null : folder.id)} className="hover:text-gold">
+                      <Palette size={14} />
+                    </button>
                     <button onClick={() => renameFolder(folder)} className="hover:text-gold">
                       <Pencil size={14} />
                     </button>
@@ -231,6 +286,24 @@ export default function NCCDrive() {
                       <Trash2 size={14} />
                     </button>
                   </div>
+                  {colorPickerFor === folder.id && (
+                    <div
+                      className="absolute right-3 top-full mt-1 panel p-2 flex gap-1.5 z-10"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {FOLDER_COLORS.map((c) => (
+                        <button
+                          key={c.name}
+                          title={c.name}
+                          onClick={() => setFolderColor(folder, c.hex)}
+                          className="w-6 h-6 rounded-full border border-hairline hover:scale-110 transition-transform flex items-center justify-center"
+                          style={{ background: c.hex ?? '#26272B' }}
+                        >
+                          {!c.hex && <Folder size={12} className="text-gold" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               {files.map((f) => (
@@ -240,13 +313,18 @@ export default function NCCDrive() {
           )}
         </>
       )}
+      </div>
     </div>
   )
 }
 
 function FileRow({ file, onDownload, onRename, onDelete }: { file: DriveFile; onDownload: () => void; onRename: () => void; onDelete: () => void }) {
   return (
-    <div className="panel p-3 flex items-center justify-between">
+    <div
+      onClick={onDownload}
+      className="panel p-3 flex items-center justify-between cursor-pointer hover:border-gold transition-colors"
+      title="Click to open"
+    >
       <div className="flex items-center gap-3 min-w-0">
         <FileText size={18} className="text-muted shrink-0" />
         <div className="min-w-0">
@@ -256,14 +334,14 @@ function FileRow({ file, onDownload, onRename, onDelete }: { file: DriveFile; on
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-3 text-muted shrink-0">
-        <button onClick={onDownload} className="hover:text-gold">
+      <div className="flex items-center gap-3 text-muted shrink-0" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onDownload} className="hover:text-gold" title="Download">
           <Download size={14} />
         </button>
-        <button onClick={onRename} className="hover:text-gold">
+        <button onClick={onRename} className="hover:text-gold" title="Rename">
           <Pencil size={14} />
         </button>
-        <button onClick={onDelete} className="hover:text-status-attention">
+        <button onClick={onDelete} className="hover:text-status-attention" title="Delete">
           <Trash2 size={14} />
         </button>
       </div>
