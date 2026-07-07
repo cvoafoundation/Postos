@@ -257,6 +257,9 @@ export const mockSupabase = {
         seedData.build_a_post_generated_plans.push(doc)
         return { data: { document: doc }, error: null }
       }
+      if (name === 'invite-user') {
+        return { data: { error: 'Demo mode — connect a real Supabase project to send real invites.' }, error: null }
+      }
       if (name === 'create-membership-checkout') {
         return {
           data: { url: null, error: 'Demo mode — connect a real Supabase project with Stripe configured to test real checkout.' },

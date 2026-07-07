@@ -639,7 +639,35 @@ account's access level going forward.
 
 Run `access-and-dd214-fix.sql`, then push the code.
 
+## Invite User — the real fix for adding NCC/National accounts
+
+**Root cause of the earlier confusion:** creating a user directly in Supabase's Auth dashboard
+only creates the login — it does not create the `profiles` row this app actually reads roles
+and permissions from. That's why the manually-created account was invisible in User Management
+and couldn't see anything after logging in — it existed, but had no role, no post, nothing.
+
+**Fixed properly** — User Management now has an "Invite User" button. Enter their name, email,
+role, and post (if any), and it does both steps correctly in one action: creates the real
+account and its profile together, using Supabase's own invite email. They get a link, click it,
+set their own password, and are logged in with the role you assigned already active — no gap,
+no manual database step, ever again.
+
+**Yes — once someone has a National role (Commander or Staff), they see exactly what you see.**
+Access in this app is based entirely on role, not on which specific account it is. There's
+nothing special about your account beyond its role; grant that same role to someone else and
+their experience is identical.
+
+**To fix the account you already created manually**, run `fix-cory-profile.sql` once — this
+creates the missing profile for that specific account using the UID from your Auth dashboard,
+so they don't have to be re-invited from scratch. Going forward, always use "Invite User"
+instead of the Supabase dashboard directly.
+
+Run `fix-cory-profile.sql`, deploy the new `invite-user` Edge Function, and push the code. Also
+double check in Supabase → Authentication → URL Configuration that "Site URL" is set to your
+actual deployed site — that's where invite links send people.
+
 ## Stack
+
 
 
 
