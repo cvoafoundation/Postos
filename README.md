@@ -475,7 +475,35 @@ path.
 
 Run `uro-meeting-system.sql` in Supabase, then push the code.
 
+## Post Health now uses real Membership Roster data
+
+The "Membership" and "Membership Retention" (formerly "Member Engagement") scores no longer
+proxy off Recruiting Engine pipeline stage — they now read directly from the real
+Membership Roster. This is a genuine accuracy upgrade, not just a data-source swap:
+"Membership Retention" used to be a guess based on how recently a record was touched; now it's
+real — the actual percentage of the roster that's lapsed vs. active, straight from the same
+data your members pay dues against.
+
+No new SQL for this — it's a pure application-code change.
+
+## NCC Drive — internal file storage for National
+
+A real internal file system, National-only, not tied to any post — folders, upload, download,
+rename, delete, and search by filename across the entire drive regardless of folder. This is
+deliberately more locked-down than every other storage bucket in the app: the `ncc-drive`
+bucket's policy requires `is_national_role()`, not just "any authenticated user" — a post-level
+account can't browse into it even if they tried.
+
+**Known limitation, stated plainly:** deleting a folder removes it and its database records
+(cascading), but doesn't currently clean up the underlying files in storage — they become
+orphaned (invisible in the UI, but still taking up storage space). This is a minor cleanup
+task, not a functional bug, and worth fixing later with a small Edge Function that walks a
+folder's contents before deleting.
+
+Run `ncc-drive.sql` in Supabase, then push the code.
+
 ## Stack
+
 
 
 

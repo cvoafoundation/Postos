@@ -4,6 +4,7 @@ import type {
   FinancialTransaction,
   FoundingTeamMember,
   GovernanceSignature,
+  Member,
   Post,
   Recruit,
   Sponsor,
@@ -25,7 +26,6 @@ export interface PostHealthResult {
 }
 
 const REQUIRED_POSITIONS = ['commander', 'vice_commander', 'adjutant', 'quartermaster', 'sergeant_at_arms']
-const MEMBER_STAGES = ['member', 'leader', 'officer', 'commander']
 
 function daysAgo(dateStr: string): number {
   return (Date.now() - new Date(dateStr).getTime()) / 86400000
@@ -37,6 +37,7 @@ export interface PostHealthInputs {
   sponsors: Sponsor[]
   meetingDates: string[]
   recruits: Recruit[]
+  members: Member[]
   hasDelegate: boolean
   delegateVotesCast: number
   governanceSignatures: GovernanceSignature[]
@@ -52,6 +53,7 @@ export function computePostHealth(inputs: PostHealthInputs): PostHealthResult {
     sponsors,
     meetingDates,
     recruits,
+    members,
     hasDelegate,
     delegateVotesCast,
     governanceSignatures,
@@ -101,17 +103,18 @@ export function computePostHealth(inputs: PostHealthInputs): PostHealthResult {
     detail: lastMeeting ? `Last minutes submitted ${Math.round(daysAgo(lastMeeting))} days ago` : 'No minutes ever submitted',
   })
 
-  // 4. Membership — softened for young posts, since a 6-month post shouldn't
-  // be judged on the same curve as a 5-year post
-  const members = recruits.filter((r) => MEMBER_STAGES.includes(r.stage))
-  const newMembers90d = members.filter((r) => daysAgo(r.created_at) <= 90).length
-  let membershipStatus: DimensionStatus = members.length >= 25 ? 'green' : members.length >= 10 ? 'yellow' : 'red'
+  // 4. Membership — now sourced from the real Membership Roster instead of
+  // a Recruiting Engine proxy. Softened for young posts, since a 6-month
+  // post shouldn't be judged on the same curve as a 5-year post.
+  const activeMembers = members.filter((m) => m.membership_status === 'active')
+  const newMembers90d = activeMembers.filter((m) => m.joined_at && daysAgo(m.joined_at) <= 90).length
+  let membershipStatus: DimensionStatus = activeMembers.length >= 25 ? 'green' : activeMembers.length >= 10 ? 'yellow' : 'red'
   if (isNewPost && membershipStatus === 'red') membershipStatus = 'yellow'
   dimensions.push({
     key: 'membership',
     label: 'Membership',
     status: membershipStatus,
-    detail: `${members.length} members${newMembers90d > 0 ? ` (+${newMembers90d} in last 90 days)` : ''}`,
+    detail: `${activeMembers.length} active members${newMembers90d > 0 ? ` (+${newMembers90d} in last 90 days)` : ''}`,
   })
 
   // 5. Congress participation
@@ -192,19 +195,21 @@ export function computePostHealth(inputs: PostHealthInputs): PostHealthResult {
     })
   }
 
-  // 10. Member engagement (retention proxy — a member whose record hasn't
-  // been touched in 90+ days may have quietly disengaged; this is a proxy,
-  // not true attendance or churn history)
-  if (members.length === 0) {
-    dimensions.push({ key: 'engagement', label: 'Member Engagement', status: 'neutral', detail: 'No members yet' })
+  // 10. Membership Retention — this used to be a proxy (record staleness)
+  // because there was no real membership data. Now that the Membership
+  // Roster exists, this is a real signal: what fraction of the roster has
+  // actually lapsed, not a guess based on when a record was last touched.
+  const rosterTotal = members.filter((m) => m.membership_status !== 'pending_payment').length
+  const lapsed = members.filter((m) => m.membership_status === 'lapsed').length
+  if (rosterTotal === 0) {
+    dimensions.push({ key: 'engagement', label: 'Membership Retention', status: 'neutral', detail: 'No members on the roster yet' })
   } else {
-    const stale = members.filter((m) => daysAgo(m.updated_at) > 90).length
-    const pct = stale / members.length
+    const pct = lapsed / rosterTotal
     dimensions.push({
       key: 'engagement',
-      label: 'Member Engagement',
+      label: 'Membership Retention',
       status: pct <= 0.1 ? 'green' : pct <= 0.3 ? 'yellow' : 'red',
-      detail: `${stale}/${members.length} members with no activity in 90+ days`,
+      detail: `${lapsed}/${rosterTotal} members lapsed`,
     })
   }
 

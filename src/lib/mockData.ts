@@ -298,6 +298,9 @@ export const seedData: Record<string, any[]> = {
     { id: 'mp-2', member_id: 'mem-2', post_id: 'post-1', membership_type: 'annual', amount: 49.99, stripe_checkout_session_id: 'cs_demo_2', stripe_payment_intent_id: 'pi_demo_2', status: 'paid', paid_at: daysAgo(90), created_at: daysAgo(90) },
   ],
 
+  drive_folders: [],
+  drive_files: [],
+
   uro_meetings: [],
   uro_attendance: [],
   uro_officer_reports: [],

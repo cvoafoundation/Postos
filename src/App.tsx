@@ -35,6 +35,7 @@ import BuildAPostDetail from '@/pages/build-a-post/BuildAPostDetail'
 import MembershipRoster from '@/pages/members/MembershipRoster'
 import JoinMembership from '@/pages/members/JoinMembership'
 import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
+import NCCDrive from '@/pages/drive/NCCDrive'
 
 export default function App() {
   return (
@@ -144,6 +145,14 @@ function AuthenticatedApp() {
         <Route path="/build-a-post" element={<BuildAPost />} />
         <Route path="/build-a-post/:moduleId" element={<BuildAPostDetail />} />
         <Route path="/members" element={<MembershipRoster />} />
+        <Route
+          path="/drive"
+          element={
+            <RoleGuard roles={[]}>
+              <NCCDrive />
+            </RoleGuard>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>

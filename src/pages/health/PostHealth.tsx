@@ -25,12 +25,13 @@ export default function PostHealth() {
       const results = await Promise.all(
         posts.map(async (post) => {
           const currentYear = new Date().getFullYear()
-          const [foundingRes, sponsorsRes, meetingsRes, recruitsRes, delegateRes, votesRes, sigsRes, reviewRes, serviceRes, txRes] =
+          const [foundingRes, sponsorsRes, meetingsRes, recruitsRes, membersRes, delegateRes, votesRes, sigsRes, reviewRes, serviceRes, txRes] =
             await Promise.all([
               supabase.from('founding_team_members').select('*').eq('post_id', post.id),
               supabase.from('sponsors').select('*').eq('post_id', post.id),
               supabase.from('meeting_records').select('meeting_date').eq('post_id', post.id),
               supabase.from('recruits').select('*').eq('post_id', post.id),
+              supabase.from('members').select('*').eq('post_id', post.id),
               supabase.from('congress_delegates').select('*').eq('post_id', post.id),
               supabase.from('resolution_votes').select('id, voter_post_id').eq('voter_post_id', post.id),
               supabase.from('governance_signatures').select('*').eq('post_id', post.id),
@@ -45,6 +46,7 @@ export default function PostHealth() {
             sponsors: (sponsorsRes.data ?? []) as any[],
             meetingDates: ((meetingsRes.data ?? []) as any[]).map((m) => m.meeting_date),
             recruits: (recruitsRes.data ?? []) as any[],
+            members: (membersRes.data ?? []) as any[],
             hasDelegate: ((delegateRes.data ?? []) as any[]).length > 0,
             delegateVotesCast: ((votesRes.data ?? []) as any[]).length,
             governanceSignatures: (sigsRes.data ?? []) as any[],

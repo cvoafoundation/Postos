@@ -797,6 +797,31 @@ create table financial_transactions (
 );
 
 -- ----------------------------------------------------------------------------
+-- NCC DRIVE — an internal, National-only file repository. Not scoped to
+-- any post; this is the National Command Council's own shared storage for
+-- documents, templates, and records that belong to the organization
+-- itself, not any single post.
+-- ----------------------------------------------------------------------------
+create table drive_folders (
+  id uuid primary key default uuid_generate_v4(),
+  parent_folder_id uuid references drive_folders(id) on delete cascade,
+  name text not null,
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+create table drive_files (
+  id uuid primary key default uuid_generate_v4(),
+  folder_id uuid references drive_folders(id) on delete cascade, -- null = root level
+  name text not null,
+  storage_path text not null, -- in the private 'ncc-drive' bucket
+  file_size bigint,
+  mime_type text,
+  uploaded_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------------------
 -- MODULE 10: BUILD A POST (franchise planning tool)
 -- Reference content on 8 facility layouts, plus real per-post tracking: a
 -- post can commit to building one, get a checklist, log actual spend
@@ -917,6 +942,8 @@ alter table legislative_bills enable row level security;
 alter table congress_announcements enable row level security;
 alter table congress_calendar_events enable row level security;
 alter table state_admission_order enable row level security;
+alter table drive_folders enable row level security;
+alter table drive_files enable row level security;
 alter table members enable row level security;
 alter table membership_payments enable row level security;
 alter table governance_signatures enable row level security;
@@ -1039,7 +1066,11 @@ create policy "meeting_records_delete_national" on meeting_records
 -- see" — that only happens the moment they publish). A post always sees
 -- its own meetings regardless of status, so a secretary can resume a draft.
 create policy "uro_meetings_select" on uro_meetings
-  for select using ((is_national_role() and status = 'published') or post_id = current_post_id());
+  for select using (
+    (is_national_role() and status = 'published')
+    or post_id = current_post_id()
+    or created_by = auth.uid()
+  );
 create policy "uro_meetings_insert" on uro_meetings
   for insert with check (auth.uid() is not null);
 create policy "uro_meetings_update" on uro_meetings
@@ -1166,6 +1197,9 @@ create policy "congress_calendar_read_all" on congress_calendar_events for selec
 create policy "congress_calendar_write_national" on congress_calendar_events for all using (is_national_role());
 
 create policy "state_admission_order_read_all" on state_admission_order for select using (true);
+
+create policy "drive_folders_national_only" on drive_folders for all using (is_national_role());
+create policy "drive_files_national_only" on drive_files for all using (is_national_role());
 
 create policy "members_select_post_or_national" on members
   for select using (is_national_role() or post_id = current_post_id());
@@ -1689,6 +1723,20 @@ create policy "governance_documents_read_auth" on storage.objects
   for select using (bucket_id = 'governance-documents' and auth.uid() is not null);
 create policy "governance_documents_write_auth" on storage.objects
   for insert with check (bucket_id = 'governance-documents' and auth.uid() is not null);
+
+-- ============================================================================
+-- STORAGE: NCC Drive — private, National-only in both directions. This is
+-- deliberately more restrictive than every other bucket in the schema,
+-- which use "any authenticated user" — this one is the National Command
+-- Council's own internal storage, not something any post account should
+-- ever be able to browse into.
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('ncc-drive', 'ncc-drive', false)
+on conflict (id) do nothing;
+
+create policy "ncc_drive_national_only" on storage.objects
+  for all using (bucket_id = 'ncc-drive' and is_national_role());
 
 -- ============================================================================
 -- SEED: Post Toolkit — full category and item structure.

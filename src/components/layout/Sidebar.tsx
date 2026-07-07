@@ -13,6 +13,7 @@ import {
   HeartPulse,
   Hammer,
   IdCard,
+  HardDrive,
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
@@ -22,6 +23,7 @@ import clsx from 'clsx'
 const NATIONAL_ONLY_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
   { to: '/applications', label: 'Application Pipeline', icon: GitBranch },
   { to: '/vetting', label: 'Vetting System', icon: ClipboardCheck },
+  { to: '/drive', label: 'NCC Drive', icon: HardDrive },
 ]
 
 // Shared by everyone — for post-scoped accounts, "Post Health" gets pointed

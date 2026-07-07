@@ -666,6 +666,25 @@ export interface CongressCalendarEvent {
   created_at: string
 }
 
+export interface DriveFolder {
+  id: string
+  parent_folder_id: string | null
+  name: string
+  created_by: string | null
+  created_at: string
+}
+
+export interface DriveFile {
+  id: string
+  folder_id: string | null
+  name: string
+  storage_path: string
+  file_size: number | null
+  mime_type: string | null
+  uploaded_by: string | null
+  created_at: string
+}
+
 export type FacilityProjectStatus = 'planning' | 'in_progress' | 'complete'
 
 export interface BuildAPostModule {
