@@ -35,6 +35,7 @@ import BuildAPost from '@/pages/build-a-post/BuildAPost'
 import BuildAPostDetail from '@/pages/build-a-post/BuildAPostDetail'
 import MembershipRoster from '@/pages/members/MembershipRoster'
 import JoinMembership from '@/pages/members/JoinMembership'
+import JoinCVOA from '@/pages/members/JoinCVOA'
 import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
 import NCCDrive from '@/pages/drive/NCCDrive'
 import SharedDriveView from '@/pages/drive/SharedDriveView'
@@ -48,6 +49,7 @@ export default function App() {
       <Route path="/join-post/:postId" element={<PublicRecruitSignup />} />
       <Route path="/become-a-sponsor/:postId" element={<BecomeASponsor />} />
       <Route path="/join-membership/:postId" element={<JoinMembership />} />
+      <Route path="/join" element={<JoinCVOA />} />
       <Route path="/membership-payment-result" element={<MembershipPaymentResult />} />
       <Route path="/transparency" element={<TransparencyPortal />} />
       {/* Everything else is gated behind auth */}

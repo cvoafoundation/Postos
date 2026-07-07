@@ -548,7 +548,32 @@ placeholders. Everything requiring your actual bylaws/policy still ships blank, 
 
 Run `batch-1-7-schema.sql`, then push the code.
 
+## "Join CVOA" — one stable link for your main website
+
+The existing `/join-membership/:postId` link only works if someone already knows their
+specific post — fine for a post's own recruiting materials, but not what you need for a single
+"Join CVOA" button on your main website that has to work for anyone, anywhere.
+
+**New: `/join`** — no post required. Someone fills out their info, optionally picks their local
+post from a dropdown (or leaves it as "No local post yet / not sure" if they don't have one or
+aren't sure), picks Annual or Lifetime, and pays. The membership number still works exactly
+right — it's generated from **their own state**, the same system as before, regardless of
+whether they picked a post.
+
+This is the link to paste under "Join CVOA" on your actual website:
+`https://<your-deployed-site>/join`
+
+Same automatic backend as before: the moment Stripe confirms payment, the webhook activates the
+membership and the roster updates — no CSV, no manual step, nothing for you to do. The
+`/join-membership/:postId` link still exists too, for when a specific post wants to hand out
+their own direct signup link.
+
+No new SQL for this — reuses everything already in place. Push the code, and make sure the
+Stripe/Resend Edge Function secrets from the earlier Membership Roster setup are already
+deployed (they don't need to change).
+
 ## Stack
+
 
 
 

@@ -35,7 +35,7 @@ const PRICES: Record<string, number> = {
 
 interface RequestBody {
   member_id: string
-  post_id: string
+  post_id: string | null
   membership_type: 'annual' | 'lifetime'
 }
 
@@ -82,7 +82,7 @@ serve(async (req) => {
     ],
     metadata: {
       member_id: body.member_id,
-      post_id: body.post_id,
+      post_id: body.post_id ?? '', // Stripe metadata values must be strings; empty = no post (national at-large member)
       membership_type: body.membership_type,
     },
     success_url: `${SITE_URL}/membership-payment-result?status=success`,
@@ -91,7 +91,7 @@ serve(async (req) => {
 
   await supabase.from('membership_payments').insert({
     member_id: body.member_id,
-    post_id: body.post_id,
+    post_id: body.post_id ?? null,
     membership_type: body.membership_type,
     amount: amountCents / 100,
     stripe_checkout_session_id: session.id,
