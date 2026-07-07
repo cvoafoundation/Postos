@@ -606,7 +606,41 @@ Sponsorship CRM, Post Health, or Build A Post — those stay post-officer tools.
 
 Run `member-accounts.sql`, then push the code.
 
+## Four real fixes from the "hold on, you're confused" round
+
+**1. `/join` now has a real 3-way funnel.** First question: "Join an existing post," "Start a
+new post," or "Just become a member for now." Choosing an existing post shows a required
+dropdown of active posts. Starting a new post routes straight into the same Application
+Pipeline National already reviews everything else through — no payment required for that path,
+since starting a post and paying dues are two different things. `/join-membership/:postId`
+still exists separately for a specific post's own recruiting materials — that one still says
+"join this post" by design, since it's meant to be shared by that post specifically.
+
+**2. DD214 upload is now required on every membership signup path** — `/join` and
+`/join-membership/:postId` both gate the rest of the form behind it, same pattern as the
+Founding Team flow. Stored in the same private `dd214-uploads` bucket. Staff can view it
+directly from the Membership Roster (new "DD214" column, "View" button). Deliberately
+non-blocking for activation, though — the upload is required to submit, but membership still
+activates automatically the moment payment clears, same as before. If you'd rather require
+manual DD214 review *before* activation (closer to how founding team accounts work), tell me
+and I'll add that gate — it's a real design choice, not an oversight.
+
+**3. New "Posts Management" page** (sidebar, National-only) — every post, any status, in one
+table, with an inline "advance to next status" button and a delete button per row. This is now
+the one obvious place to manage a post's lifecycle, instead of split awkwardly between Launch
+Checklist (forming posts only) and Post Health (active posts only).
+
+**4. New "User Management" page** (sidebar, National-only) — the actual root cause of the new
+NCC account not seeing what you see: **National had no permission to update anyone else's
+profile, not even to grant National access.** That's fixed at the database level, and this page
+is where you use it — every account, its role, and its post assignment, all editable directly.
+This is how you promote someone to National Staff, fix a wrong post assignment, or correct any
+account's access level going forward.
+
+Run `access-and-dd214-fix.sql`, then push the code.
+
 ## Stack
+
 
 
 

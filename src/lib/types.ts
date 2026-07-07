@@ -187,6 +187,8 @@ export interface Member {
   membership_status: MembershipStatus
   joined_at: string | null
   expires_at: string | null
+  dd214_storage_path: string | null
+  profile_id: string | null
   created_at: string
   updated_at: string
 }

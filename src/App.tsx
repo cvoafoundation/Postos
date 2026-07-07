@@ -40,6 +40,8 @@ import MemberHome from '@/pages/members/MemberHome'
 import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
 import NCCDrive from '@/pages/drive/NCCDrive'
 import SharedDriveView from '@/pages/drive/SharedDriveView'
+import PostsManagement from '@/pages/admin/PostsManagement'
+import UserManagement from '@/pages/admin/UserManagement'
 
 export default function App() {
   return (
@@ -160,6 +162,22 @@ function AuthenticatedApp() {
           }
         />
         <Route path="/shared-files" element={<SharedDriveView />} />
+        <Route
+          path="/posts"
+          element={
+            <RoleGuard roles={[]}>
+              <PostsManagement />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <RoleGuard roles={[]}>
+              <UserManagement />
+            </RoleGuard>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>

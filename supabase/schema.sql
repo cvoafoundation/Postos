@@ -706,6 +706,7 @@ create table members (
   membership_status membership_status not null default 'pending_payment',
   joined_at date,
   expires_at date, -- null for lifetime members
+  dd214_storage_path text, -- required at signup, in the shared 'dd214-uploads' bucket
   profile_id uuid references profiles(id), -- linked once they create an account; real access activates on payment, mirroring how founding team accounts activate on verification
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -991,6 +992,8 @@ create policy "profiles_select_own_or_national" on profiles
   for select using (id = auth.uid() or is_national_role());
 create policy "profiles_update_own" on profiles
   for update using (id = auth.uid());
+create policy "profiles_update_national" on profiles
+  for update using (is_national_role());
 create policy "profiles_insert_own" on profiles
   for insert with check (id = auth.uid());
 

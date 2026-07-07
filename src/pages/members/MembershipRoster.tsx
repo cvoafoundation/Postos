@@ -189,6 +189,7 @@ export default function MembershipRoster() {
               <th className="table-head">Member #</th>
               <th className="table-head">Name</th>
               <th className="table-head">Contact</th>
+              <th className="table-head">DD214</th>
               <th className="table-head">Address</th>
               <th className="table-head">Branch</th>
               <th className="table-head">Type</th>
@@ -204,6 +205,21 @@ export default function MembershipRoster() {
                 <td className="table-cell text-xs text-muted">
                   <div>{m.email}</div>
                   <div>{m.phone}</div>
+                </td>
+                <td className="table-cell" onClick={(e) => e.stopPropagation()}>
+                  {m.dd214_storage_path ? (
+                    <button
+                      onClick={async () => {
+                        const { data } = await supabase.storage.from('dd214-uploads').createSignedUrl(m.dd214_storage_path!, 300)
+                        if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+                      }}
+                      className="text-gold hover:text-gold-bright text-xs"
+                    >
+                      View
+                    </button>
+                  ) : (
+                    <span className="text-status-attention text-xs">None</span>
+                  )}
                 </td>
                 <td className="table-cell text-xs text-muted">{m.address}</td>
                 <td className="table-cell text-muted">{m.military_branch}</td>

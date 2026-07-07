@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MEMBERSHIP_PRICES, type MembershipType, type Post } from '@/lib/types'
-import { Loader2, KeyRound } from 'lucide-react'
+import { Loader2, KeyRound, Upload, FileCheck, CheckCircle2 } from 'lucide-react'
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
@@ -9,8 +9,135 @@ const US_STATES = [
   'TN','TX','UT','VT','VA','WA','WV','WI','WY',
 ]
 
+type Path = 'choose' | 'join_existing' | 'new_post' | 'member_only'
+
 export default function JoinCVOA() {
+  const [path, setPath] = useState<Path>('choose')
   const [posts, setPosts] = useState<Post[]>([])
+
+  useEffect(() => {
+    supabase
+      .from('posts')
+      .select('*')
+      .eq('status', 'active_post')
+      .order('name')
+      .then(({ data }: any) => setPosts((data ?? []) as Post[]))
+  }, [])
+
+  return (
+    <div className="min-h-screen bg-base px-4 py-16 flex items-start justify-center">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="font-display text-3xl tracking-wide text-gold">CVOA</div>
+          <div className="eyebrow mt-1">Join Combat Veterans of America</div>
+        </div>
+
+        <div className="panel p-6">
+          {path === 'choose' && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted mb-4">What are you looking to do?</p>
+              <button onClick={() => setPath('join_existing')} className="w-full text-left panel p-4 hover:border-gold transition-colors">
+                <div className="text-sm font-medium text-ink">Join an existing post</div>
+                <div className="text-xs text-muted mt-1">There's already a CVOA post near me</div>
+              </button>
+              <button onClick={() => setPath('new_post')} className="w-full text-left panel p-4 hover:border-gold transition-colors">
+                <div className="text-sm font-medium text-ink">Start a new post</div>
+                <div className="text-xs text-muted mt-1">There isn't one in my area yet — I want to start one</div>
+              </button>
+              <button onClick={() => setPath('member_only')} className="w-full text-left panel p-4 hover:border-gold transition-colors">
+                <div className="text-sm font-medium text-ink">Just become a member for now</div>
+                <div className="text-xs text-muted mt-1">Not sure yet, or no local post — join as a national member</div>
+              </button>
+            </div>
+          )}
+
+          {path === 'new_post' && <StartPostForm onBack={() => setPath('choose')} />}
+
+          {(path === 'join_existing' || path === 'member_only') && (
+            <MembershipForm mode={path} posts={posts} onBack={() => setPath('choose')} />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StartPostForm({ onBack }: { onBack: () => void }) {
+  const [form, setForm] = useState({ name: '', email: '', phone: '', city: '', state: '', motivation: '' })
+  const [saving, setSaving] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    const { error } = await supabase.from('post_applications').insert({
+      name: form.name,
+      email: form.email,
+      phone: form.phone || null,
+      city: form.city || null,
+      state: form.state,
+      motivation: form.motivation || null,
+    })
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setSubmitted(true)
+  }
+
+  if (submitted) {
+    return (
+      <div className="text-center py-6">
+        <CheckCircle2 className="mx-auto mb-3 text-status-active" size={36} />
+        <div className="font-display text-xl mb-2">Application Submitted</div>
+        <p className="text-sm text-muted">National will follow up with next steps for starting your post.</p>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <button type="button" onClick={onBack} className="text-xs text-muted hover:text-gold mb-2">
+        ← Back
+      </button>
+      <p className="text-sm text-muted mb-2">Tell us about yourself and where you want to start a post.</p>
+      <input required placeholder="Full name" className="input-field" value={form.name} onChange={(e) => update('name', e.target.value)} />
+      <input required type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
+      <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
+      <div className="grid grid-cols-2 gap-3">
+        <input placeholder="City" className="input-field" value={form.city} onChange={(e) => update('city', e.target.value)} />
+        <select required className="input-field" value={form.state} onChange={(e) => update('state', e.target.value)}>
+          <option value="">State</option>
+          {US_STATES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
+      <textarea
+        placeholder="Why do you want to start a post here?"
+        className="input-field"
+        rows={3}
+        value={form.motivation}
+        onChange={(e) => update('motivation', e.target.value)}
+      />
+      {error && <p className="text-status-attention text-sm">{error}</p>}
+      <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
+        {saving ? 'Submitting…' : 'Submit Application'}
+      </button>
+    </form>
+  )
+}
+
+function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'member_only'; posts: Post[]; onBack: () => void }) {
   const [form, setForm] = useState({
     full_name: '',
     email: '',
@@ -26,17 +153,34 @@ export default function JoinCVOA() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    supabase
-      .from('posts')
-      .select('*')
-      .eq('status', 'active_post')
-      .order('name')
-      .then(({ data }: any) => setPosts((data ?? []) as Post[]))
-  }, [])
+  const [docFile, setDocFile] = useState<File | null>(null)
+  const [docPath, setDocPath] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadError(null)
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('File is too large — please keep it under 10MB.')
+      return
+    }
+    setDocFile(file)
+    setUploading(true)
+    const path = `member-signups/${crypto.randomUUID()}-${file.name}`
+    const { data, error } = await supabase.storage.from('dd214-uploads').upload(path, file)
+    setUploading(false)
+    if (error) {
+      setUploadError(error.message)
+      setDocFile(null)
+      return
+    }
+    setDocPath(data?.path ?? path)
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -47,7 +191,7 @@ export default function JoinCVOA() {
     const { data: member, error: memberError } = await supabase
       .from('members')
       .insert({
-        post_id: form.post_id || null,
+        post_id: mode === 'join_existing' ? form.post_id || null : null,
         full_name: form.full_name,
         email: form.email || null,
         phone: form.phone || null,
@@ -56,6 +200,7 @@ export default function JoinCVOA() {
         military_branch: form.military_branch || null,
         membership_type: form.membership_type,
         membership_status: 'pending_payment',
+        dd214_storage_path: docPath,
       })
       .select()
       .single()
@@ -70,19 +215,19 @@ export default function JoinCVOA() {
       await supabase.from('pending_profile_signups').insert({
         email: form.email,
         full_name: form.full_name,
-        post_id: form.post_id || null,
+        post_id: mode === 'join_existing' ? form.post_id || null : null,
         role: 'member',
       })
       const { error: signUpError } = await supabase.auth.signUp({ email: form.email, password: form.password })
-      if (signUpError) {
-        // Membership record and payment can still proceed even if account
-        // creation hits a snag — don't block on it.
-        console.error('Account creation failed:', signUpError.message)
-      }
+      if (signUpError) console.error('Account creation failed:', signUpError.message)
     }
 
     const { data, error: checkoutError } = await supabase.functions.invoke('create-membership-checkout', {
-      body: { member_id: member.id, post_id: form.post_id || null, membership_type: form.membership_type },
+      body: {
+        member_id: member.id,
+        post_id: mode === 'join_existing' ? form.post_id || null : null,
+        membership_type: form.membership_type,
+      },
     })
 
     setSubmitting(false)
@@ -94,103 +239,136 @@ export default function JoinCVOA() {
     window.location.href = data.url
   }
 
+  const canFillOutRest = !!docPath
+
   return (
-    <div className="min-h-screen bg-base px-4 py-16 flex items-start justify-center">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="font-display text-3xl tracking-wide text-gold">CVOA</div>
-          <div className="eyebrow mt-1">Join Combat Veterans of America</div>
-        </div>
+    <div>
+      <button type="button" onClick={onBack} className="text-xs text-muted hover:text-gold mb-3">
+        ← Back
+      </button>
 
-        <div className="panel p-6">
-          <p className="text-sm text-muted mb-4">
-            Become a member of CVOA. Payment is processed securely — you'll be redirected to complete checkout,
-            and your membership activates automatically the moment it clears.
-          </p>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <input required placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
-            <div className="grid grid-cols-2 gap-3">
-              <input required type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
-              <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
-            </div>
-            <input placeholder="Address" className="input-field" value={form.address} onChange={(e) => update('address', e.target.value)} />
-            <div className="grid grid-cols-2 gap-3">
-              <select required className="input-field" value={form.state} onChange={(e) => update('state', e.target.value)}>
-                <option value="">State</option>
-                {US_STATES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-              <input placeholder="Military branch" className="input-field" value={form.military_branch} onChange={(e) => update('military_branch', e.target.value)} />
-            </div>
+      <div className="mb-4">
+        <label className="eyebrow block mb-2">Step 1 — Upload Your DD214</label>
+        <p className="text-xs text-muted mb-3">Required to verify eligibility. Stored privately — only visible to National Staff.</p>
 
-            <select className="input-field" value={form.post_id} onChange={(e) => update('post_id', e.target.value)}>
-              <option value="">No local post yet / not sure — join as a national member</option>
-              {posts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — {p.city ? `${p.city}, ` : ''}{p.state}
+        {!docPath ? (
+          <label
+            className={`flex flex-col items-center justify-center gap-2 border border-dashed rounded-sm p-6 cursor-pointer transition-colors ${
+              uploadError ? 'border-status-attention' : 'border-hairline hover:border-gold'
+            }`}
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="animate-spin text-gold" size={22} />
+                <span className="text-sm text-muted">Uploading {docFile?.name}…</span>
+              </>
+            ) : (
+              <>
+                <Upload className="text-muted" size={22} />
+                <span className="text-sm text-muted">Click to upload PDF, JPG, or PNG (max 10MB)</span>
+              </>
+            )}
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFileChange} disabled={uploading} />
+          </label>
+        ) : (
+          <div className="flex items-center gap-3 border border-status-active/40 bg-status-active/10 rounded-sm p-3">
+            <FileCheck className="text-status-active shrink-0" size={20} />
+            <div className="text-sm text-ink truncate">{docFile?.name}</div>
+            <button
+              type="button"
+              onClick={() => {
+                setDocPath(null)
+                setDocFile(null)
+              }}
+              className="ml-auto text-xs text-muted hover:text-gold shrink-0"
+            >
+              Replace
+            </button>
+          </div>
+        )}
+        {uploadError && <p className="text-status-attention text-sm mt-2">{uploadError}</p>}
+      </div>
+
+      <fieldset disabled={!canFillOutRest} className={!canFillOutRest ? 'opacity-40 pointer-events-none' : ''}>
+        <div className="mb-2 eyebrow">Step 2 — Your Information</div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input required placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <input required type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
+            <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
+          </div>
+          <input placeholder="Address" className="input-field" value={form.address} onChange={(e) => update('address', e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <select required className="input-field" value={form.state} onChange={(e) => update('state', e.target.value)}>
+              <option value="">State</option>
+              {US_STATES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
                 </option>
               ))}
             </select>
+            <input placeholder="Military branch" className="input-field" value={form.military_branch} onChange={(e) => update('military_branch', e.target.value)} />
+          </div>
 
-            <div className="border-t border-hairline pt-3">
-              <label className="eyebrow block mb-2">Membership Type</label>
-              <div className="grid grid-cols-2 gap-3">
-                <label
-                  className={`border rounded-sm p-3 cursor-pointer ${
-                    form.membership_type === 'annual' ? 'border-gold bg-gold/10' : 'border-hairline'
-                  }`}
-                >
-                  <input type="radio" className="hidden" checked={form.membership_type === 'annual'} onChange={() => update('membership_type', 'annual')} />
-                  <div className="text-sm font-medium">Annual</div>
-                  <div className="font-mono text-gold text-lg">${MEMBERSHIP_PRICES.annual}</div>
-                </label>
-                <label
-                  className={`border rounded-sm p-3 cursor-pointer ${
-                    form.membership_type === 'lifetime' ? 'border-gold bg-gold/10' : 'border-hairline'
-                  }`}
-                >
-                  <input type="radio" className="hidden" checked={form.membership_type === 'lifetime'} onChange={() => update('membership_type', 'lifetime')} />
-                  <div className="text-sm font-medium">Lifetime</div>
-                  <div className="font-mono text-gold text-lg">${MEMBERSHIP_PRICES.lifetime}</div>
-                </label>
-              </div>
-            </div>
+          {mode === 'join_existing' && (
+            <select required className="input-field" value={form.post_id} onChange={(e) => update('post_id', e.target.value)}>
+              <option value="">Select your post…</option>
+              {posts.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} — {p.city ? `${p.city}, ` : ''}
+                  {p.state}
+                </option>
+              ))}
+            </select>
+          )}
 
-            <div className="border-t border-hairline pt-3">
-              <label className="flex items-center gap-2 text-sm text-muted cursor-pointer mb-2">
-                <input type="checkbox" checked={wantsAccount} onChange={(e) => setWantsAccount(e.target.checked)} />
-                <KeyRound size={13} /> Create an account (access activates once payment clears)
+          <div className="border-t border-hairline pt-3">
+            <label className="eyebrow block mb-2">Membership Type</label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className={`border rounded-sm p-3 cursor-pointer ${form.membership_type === 'annual' ? 'border-gold bg-gold/10' : 'border-hairline'}`}>
+                <input type="radio" className="hidden" checked={form.membership_type === 'annual'} onChange={() => update('membership_type', 'annual')} />
+                <div className="text-sm font-medium">Annual</div>
+                <div className="font-mono text-gold text-lg">${MEMBERSHIP_PRICES.annual}</div>
               </label>
-              {wantsAccount && (
-                <input
-                  required={wantsAccount}
-                  type="password"
-                  placeholder="Set a password"
-                  className="input-field"
-                  minLength={6}
-                  value={form.password}
-                  onChange={(e) => update('password', e.target.value)}
-                />
-              )}
+              <label className={`border rounded-sm p-3 cursor-pointer ${form.membership_type === 'lifetime' ? 'border-gold bg-gold/10' : 'border-hairline'}`}>
+                <input type="radio" className="hidden" checked={form.membership_type === 'lifetime'} onChange={() => update('membership_type', 'lifetime')} />
+                <div className="text-sm font-medium">Lifetime</div>
+                <div className="font-mono text-gold text-lg">${MEMBERSHIP_PRICES.lifetime}</div>
+              </label>
             </div>
+          </div>
 
-            {error && <p className="text-status-attention text-sm">{error}</p>}
+          <div className="border-t border-hairline pt-3">
+            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer mb-2">
+              <input type="checkbox" checked={wantsAccount} onChange={(e) => setWantsAccount(e.target.checked)} />
+              <KeyRound size={13} /> Create an account (access activates once payment clears)
+            </label>
+            {wantsAccount && (
+              <input
+                required={wantsAccount}
+                type="password"
+                placeholder="Set a password"
+                className="input-field"
+                minLength={6}
+                value={form.password}
+                onChange={(e) => update('password', e.target.value)}
+              />
+            )}
+          </div>
 
-            <button type="submit" disabled={submitting} className="btn-gold w-full flex items-center justify-center gap-2 disabled:opacity-50">
-              {submitting ? (
-                <>
-                  <Loader2 className="animate-spin" size={16} /> Preparing checkout…
-                </>
-              ) : (
-                `Continue to Payment — $${MEMBERSHIP_PRICES[form.membership_type]}`
-              )}
-            </button>
-          </form>
-        </div>
-      </div>
+          {error && <p className="text-status-attention text-sm">{error}</p>}
+
+          <button type="submit" disabled={submitting || !canFillOutRest} className="btn-gold w-full flex items-center justify-center gap-2 disabled:opacity-50">
+            {submitting ? (
+              <>
+                <Loader2 className="animate-spin" size={16} /> Preparing checkout…
+              </>
+            ) : (
+              `Continue to Payment — $${MEMBERSHIP_PRICES[form.membership_type]}`
+            )}
+          </button>
+        </form>
+      </fieldset>
     </div>
   )
 }

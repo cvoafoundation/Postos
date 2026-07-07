@@ -14,6 +14,8 @@ import {
   Hammer,
   IdCard,
   HardDrive,
+  UserCog,
+  Building2,
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
@@ -23,6 +25,8 @@ import clsx from 'clsx'
 const NATIONAL_ONLY_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
   { to: '/applications', label: 'Application Pipeline', icon: GitBranch },
   { to: '/vetting', label: 'Vetting System', icon: ClipboardCheck },
+  { to: '/posts', label: 'Posts Management', icon: Building2 },
+  { to: '/users', label: 'User Management', icon: UserCog },
   { to: '/drive', label: 'NCC Drive', icon: HardDrive },
 ]
 
