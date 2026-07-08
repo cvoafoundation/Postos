@@ -707,6 +707,8 @@ create table members (
   joined_at date,
   expires_at date, -- null for lifetime members
   dd214_storage_path text, -- required at signup, in the shared 'dd214-uploads' bucket
+  auto_renew boolean not null default false, -- annual only — lifetime members never auto-renew, they've already paid for good
+  stripe_subscription_id text, -- set when auto_renew is on; used to cancel it later
   profile_id uuid references profiles(id), -- linked once they create an account; real access activates on payment, mirroring how founding team accounts activate on verification
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

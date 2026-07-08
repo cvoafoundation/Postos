@@ -37,6 +37,7 @@ interface RequestBody {
   member_id: string
   post_id: string | null
   membership_type: 'annual' | 'lifetime'
+  auto_renew?: boolean
 }
 
 serve(async (req) => {
@@ -62,32 +63,58 @@ serve(async (req) => {
     })
   }
 
+  // Lifetime never auto-renews — one payment, done forever. Auto-renew only
+  // makes sense (and is only honored) for annual.
+  const isAutoRenew = body.membership_type === 'annual' && !!body.auto_renew
+
   const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
-  const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    payment_method_types: ['card'],
-    line_items: [
-      {
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: body.membership_type === 'lifetime' ? 'CVOA Lifetime Membership' : 'CVOA Annual Membership',
+  const commonMetadata = {
+    member_id: body.member_id,
+    post_id: body.post_id ?? '', // Stripe metadata values must be strings; empty = no post (national at-large member)
+    membership_type: body.membership_type,
+  }
+
+  const session = isAutoRenew
+    ? await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: { name: 'CVOA Annual Membership (Auto-Renew)' },
+              unit_amount: amountCents,
+              recurring: { interval: 'year' },
+            },
+            quantity: 1,
           },
-          unit_amount: amountCents,
-        },
-        quantity: 1,
-      },
-    ],
-    metadata: {
-      member_id: body.member_id,
-      post_id: body.post_id ?? '', // Stripe metadata values must be strings; empty = no post (national at-large member)
-      membership_type: body.membership_type,
-    },
-    success_url: `${SITE_URL}/membership-payment-result?status=success`,
-    cancel_url: `${SITE_URL}/membership-payment-result?status=cancelled`,
-  })
+        ],
+        metadata: commonMetadata,
+        subscription_data: { metadata: commonMetadata },
+        success_url: `${SITE_URL}/membership-payment-result?status=success`,
+        cancel_url: `${SITE_URL}/membership-payment-result?status=cancelled`,
+      })
+    : await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: body.membership_type === 'lifetime' ? 'CVOA Lifetime Membership' : 'CVOA Annual Membership',
+              },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: commonMetadata,
+        success_url: `${SITE_URL}/membership-payment-result?status=success`,
+        cancel_url: `${SITE_URL}/membership-payment-result?status=cancelled`,
+      })
 
   await supabase.from('membership_payments').insert({
     member_id: body.member_id,
@@ -97,6 +124,10 @@ serve(async (req) => {
     stripe_checkout_session_id: session.id,
     status: 'pending',
   })
+
+  if (isAutoRenew) {
+    await supabase.from('members').update({ auto_renew: true }).eq('id', body.member_id)
+  }
 
   return new Response(JSON.stringify({ url: session.url }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },

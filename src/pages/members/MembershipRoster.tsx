@@ -16,6 +16,12 @@ const US_STATES = [
   'TN','TX','UT','VT','VA','WA','WV','WI','WY',
 ]
 
+const UNASSIGNED = 'unassigned'
+
+function daysUntil(dateStr: string): number {
+  return Math.round((new Date(dateStr).getTime() - Date.now()) / 86400000)
+}
+
 function statusTone(status: Member['membership_status']) {
   if (status === 'active') return 'active' as const
   if (status === 'lapsed') return 'attention' as const
@@ -40,7 +46,7 @@ export default function MembershipRoster() {
       supabase.from('posts').select('*').then(({ data }: any) => {
         const list = (data ?? []) as Post[]
         setPosts(list)
-        if (list.length > 0 && !selectedPostId) setSelectedPostId(list[0].id)
+        if (!selectedPostId) setSelectedPostId(list.length > 0 ? list[0].id : UNASSIGNED)
       })
     } else if (profile?.post_id) {
       setSelectedPostId(profile.post_id)
@@ -50,7 +56,11 @@ export default function MembershipRoster() {
 
   async function loadMembers() {
     if (!selectedPostId) return
-    const { data } = await supabase.from('members').select('*').eq('post_id', selectedPostId).order('membership_number')
+    const query =
+      selectedPostId === UNASSIGNED
+        ? supabase.from('members').select('*').is('post_id', null).order('membership_number')
+        : supabase.from('members').select('*').eq('post_id', selectedPostId).order('membership_number')
+    const { data } = await query
     setMembers((data ?? []) as Member[])
   }
 
@@ -60,7 +70,7 @@ export default function MembershipRoster() {
   }, [selectedPostId])
 
   function copyJoinLink() {
-    if (!selectedPostId) return
+    if (!selectedPostId || selectedPostId === UNASSIGNED) return
     const link = `${window.location.origin}/join-membership/${selectedPostId}`
     navigator.clipboard.writeText(link)
     setCopied(true)
@@ -72,6 +82,7 @@ export default function MembershipRoster() {
     if (!file || !selectedPostId) return
     setImporting(true)
     setImportSummary(null)
+    const targetPostId = selectedPostId === UNASSIGNED ? null : selectedPostId
 
     Papa.parse(file, {
       header: false,
@@ -86,7 +97,7 @@ export default function MembershipRoster() {
           const [, name, email, phone, membershipNumber, address, branch] = row
           if (!name || !name.trim()) continue
           await supabase.from('members').insert({
-            post_id: selectedPostId,
+            post_id: targetPostId,
             full_name: name.trim(),
             email: email?.trim() || null,
             phone: phone?.trim() || null,
@@ -117,6 +128,9 @@ export default function MembershipRoster() {
   })
 
   const selectedPost = posts.find((p) => p.id === selectedPostId)
+  const renewalsDue = members.filter(
+    (m) => m.membership_type === 'annual' && m.membership_status === 'active' && m.expires_at && daysUntil(m.expires_at) <= 30 && daysUntil(m.expires_at) >= 0
+  )
 
   if (!selectedPostId) {
     return (
@@ -133,40 +147,66 @@ export default function MembershipRoster() {
         eyebrow="Membership"
         title="Membership Roster"
         action={
-          isNational && posts.length > 1 ? (
+          isNational ? (
             <select className="input-field w-64" value={selectedPostId} onChange={(e) => setSelectedPostId(e.target.value)}>
               {posts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}
+              <option value={UNASSIGNED}>Unassigned Members (National)</option>
             </select>
           ) : undefined
         }
       />
 
-      <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
-        <div>
-          <div className="eyebrow mb-1">Join / Renew Link</div>
+      {renewalsDue.length > 0 && (
+        <div className="panel p-3 mb-4 border-status-developing/40 text-sm text-status-developing">
+          {renewalsDue.length} membership{renewalsDue.length !== 1 ? 's' : ''} renewing within 30 days
+        </div>
+      )}
+
+      {selectedPostId !== UNASSIGNED && (
+        <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
+          <div>
+            <div className="eyebrow mb-1">Join / Renew Link</div>
+            <p className="text-sm text-muted">
+              Share this with prospective and renewing members — Annual ($49.99) or Lifetime ($499.99), paid
+              directly by card. Their membership activates automatically the moment payment clears.
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <label className="btn-ghost flex items-center gap-2 cursor-pointer">
+              <Upload size={16} /> {importing ? 'Importing…' : 'Import CSV'}
+              <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleCsvImport} disabled={importing} />
+            </label>
+            <button onClick={() => setShowAdd(true)} className="btn-ghost flex items-center gap-2">
+              <Plus size={16} /> Add Member
+            </button>
+            <button onClick={copyJoinLink} className="btn-gold flex items-center gap-2">
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+              {copied ? 'Copied!' : 'Copy Link'}
+            </button>
+          </div>
+        </div>
+      )}
+      {selectedPostId === UNASSIGNED && (
+        <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
           <p className="text-sm text-muted">
-            Share this with prospective and renewing members — Annual ($49.99) or Lifetime ($499.99), paid
-            directly by card. Their membership activates automatically the moment payment clears.
+            Members not currently tied to any post — either joined as national-at-large via <code>/join</code>,
+            or their post was later deleted. Their membership itself is untouched either way.
           </p>
+          <div className="flex gap-2 shrink-0">
+            <label className="btn-ghost flex items-center gap-2 cursor-pointer">
+              <Upload size={16} /> {importing ? 'Importing…' : 'Import CSV'}
+              <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleCsvImport} disabled={importing} />
+            </label>
+            <button onClick={() => setShowAdd(true)} className="btn-ghost flex items-center gap-2">
+              <Plus size={16} /> Add Member
+            </button>
+          </div>
         </div>
-        <div className="flex gap-2 shrink-0">
-          <label className="btn-ghost flex items-center gap-2 cursor-pointer">
-            <Upload size={16} /> {importing ? 'Importing…' : 'Import CSV'}
-            <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleCsvImport} disabled={importing} />
-          </label>
-          <button onClick={() => setShowAdd(true)} className="btn-ghost flex items-center gap-2">
-            <Plus size={16} /> Add Member
-          </button>
-          <button onClick={copyJoinLink} className="btn-gold flex items-center gap-2">
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-            {copied ? 'Copied!' : 'Copy Link'}
-          </button>
-        </div>
-      </div>
+      )}
 
       {importSummary && (
         <div className="panel p-3 mb-4 text-sm text-status-active">{importSummary}</div>
@@ -244,8 +284,8 @@ export default function MembershipRoster() {
 
       {showAdd && (
         <AddMemberModal
-          postId={selectedPostId}
-          postName={selectedPost?.name}
+          postId={selectedPostId === UNASSIGNED ? null : selectedPostId}
+          postName={selectedPostId === UNASSIGNED ? 'Unassigned' : selectedPost?.name}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false)
@@ -274,7 +314,7 @@ function AddMemberModal({
   onClose,
   onAdded,
 }: {
-  postId: string
+  postId: string | null
   postName?: string
   onClose: () => void
   onAdded: () => void
@@ -384,6 +424,9 @@ function EditMemberModal({
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cancellingRenew, setCancellingRenew] = useState(false)
+  const [autoRenew, setAutoRenew] = useState(member.auto_renew)
+  const [showAddToFoundingTeam, setShowAddToFoundingTeam] = useState(false)
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -419,6 +462,13 @@ function EditMemberModal({
     base.setFullYear(base.getFullYear() + 1)
     update('expires_at', base.toISOString().slice(0, 10))
     update('membership_status', 'active')
+  }
+
+  async function cancelAutoRenew() {
+    setCancellingRenew(true)
+    await supabase.functions.invoke('cancel-membership-subscription', { body: { member_id: member.id } })
+    setAutoRenew(false)
+    setCancellingRenew(false)
   }
 
   return (
@@ -470,6 +520,14 @@ function EditMemberModal({
                 Renew +1 Year
               </button>
             </div>
+            <div className="flex items-center justify-between mt-2 text-xs text-muted">
+              <span>Auto-renew: {autoRenew ? <span className="text-status-active">On (charges automatically)</span> : 'Off'}</span>
+              {autoRenew && (
+                <button type="button" onClick={cancelAutoRenew} disabled={cancellingRenew} className="text-status-attention hover:underline disabled:opacity-50">
+                  {cancellingRenew ? 'Cancelling…' : 'Cancel Auto-Renew'}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -478,7 +536,91 @@ function EditMemberModal({
         <button onClick={handleSave} disabled={saving} className="btn-gold w-full disabled:opacity-50">
           {saving ? 'Saving…' : 'Save Changes'}
         </button>
+
+        <button
+          type="button"
+          onClick={() => setShowAddToFoundingTeam(true)}
+          className="btn-ghost w-full text-sm"
+        >
+          Add to a Post's Founding Team
+        </button>
       </div>
+
+      {showAddToFoundingTeam && <AddToFoundingTeamModal member={member} onClose={() => setShowAddToFoundingTeam(false)} />}
+    </Modal>
+  )
+}
+
+function AddToFoundingTeamModal({ member, onClose }: { member: Member; onClose: () => void }) {
+  const [posts, setPosts] = useState<Post[]>([])
+  const [postId, setPostId] = useState('')
+  const [position, setPosition] = useState('member')
+  const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.from('posts').select('*').then(({ data }: any) => setPosts((data ?? []) as Post[]))
+  }, [])
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!postId) return
+    setSaving(true)
+    setError(null)
+    const { error } = await supabase.from('founding_team_members').insert({
+      post_id: postId,
+      name: member.full_name,
+      email: member.email,
+      phone: member.phone,
+      position,
+      combat_status: 'Non-combat veteran',
+      dd214_storage_path: member.dd214_storage_path, // reuses their existing upload — no need to ask again
+    })
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setDone(true)
+  }
+
+  return (
+    <Modal title={`Add ${member.full_name} to a Founding Team`} onClose={onClose}>
+      {done ? (
+        <p className="text-sm text-status-active">
+          Added. Their existing DD214 carried over — no need to re-upload. Verify them as usual in Founding Team
+          to activate real access if they have an account.
+        </p>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <select required className="input-field" value={postId} onChange={(e) => setPostId(e.target.value)}>
+            <option value="">Select post…</option>
+            {posts.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <select className="input-field" value={position} onChange={(e) => setPosition(e.target.value)}>
+            <option value="commander">Commander</option>
+            <option value="vice_commander">Vice Commander</option>
+            <option value="adjutant">Adjutant</option>
+            <option value="quartermaster">Quartermaster</option>
+            <option value="sergeant_at_arms">Sergeant-at-Arms</option>
+            <option value="member">Additional Member</option>
+          </select>
+          {!member.dd214_storage_path && (
+            <p className="text-xs text-status-attention">
+              This member has no DD214 on file — they'll need to upload one separately for verification.
+            </p>
+          )}
+          {error && <p className="text-status-attention text-sm">{error}</p>}
+          <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
+            {saving ? 'Adding…' : 'Add to Founding Team'}
+          </button>
+        </form>
+      )}
     </Modal>
   )
 }

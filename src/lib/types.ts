@@ -188,6 +188,8 @@ export interface Member {
   joined_at: string | null
   expires_at: string | null
   dd214_storage_path: string | null
+  auto_renew: boolean
+  stripe_subscription_id: string | null
   profile_id: string | null
   created_at: string
   updated_at: string

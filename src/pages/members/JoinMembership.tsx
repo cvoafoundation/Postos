@@ -24,6 +24,7 @@ export default function JoinMembership() {
     state: '',
     military_branch: '',
     membership_type: 'annual' as MembershipType,
+    auto_renew: true,
     password: '',
   })
   const [wantsAccount, setWantsAccount] = useState(true)
@@ -120,7 +121,12 @@ export default function JoinMembership() {
     }
 
     const { data, error: checkoutError } = await supabase.functions.invoke('create-membership-checkout', {
-      body: { member_id: member.id, post_id: postId, membership_type: form.membership_type },
+      body: {
+        member_id: member.id,
+        post_id: postId,
+        membership_type: form.membership_type,
+        auto_renew: form.membership_type === 'annual' ? form.auto_renew : false,
+      },
     })
 
     setSubmitting(false)
@@ -251,6 +257,12 @@ export default function JoinMembership() {
                         <div className="font-mono text-gold text-lg">${MEMBERSHIP_PRICES.lifetime}</div>
                       </label>
                     </div>
+                    {form.membership_type === 'annual' && (
+                      <label className="flex items-center gap-2 text-xs text-muted cursor-pointer mt-2">
+                        <input type="checkbox" checked={form.auto_renew} onChange={(e) => update('auto_renew', e.target.checked)} />
+                        Auto-renew annually (charges automatically each year — cancel anytime)
+                      </label>
+                    )}
                   </div>
 
                   <div className="border-t border-hairline pt-3">

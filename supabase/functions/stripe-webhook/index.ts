@@ -21,7 +21,9 @@
 //      it doesn't have a Supabase auth token)
 //   3. In Stripe Dashboard: Developers -> Webhooks -> Add endpoint.
 //      URL: https://<your-project-ref>.supabase.co/functions/v1/stripe-webhook
-//      Event to send: checkout.session.completed
+//      Events to send: checkout.session.completed, invoice.payment_succeeded,
+//        customer.subscription.deleted (the last two power auto-renew —
+//        annual memberships where the member opted into automatic billing)
 //      Copy the "Signing secret" shown after creating it — that's your
 //      STRIPE_WEBHOOK_SECRET from step 1.
 
@@ -97,16 +99,16 @@ serve(async (req) => {
       const expiresAt =
         membershipType === 'lifetime' ? null : new Date(now.setFullYear(now.getFullYear() + 1)).toISOString().slice(0, 10)
 
-      const { data: updatedMember } = await supabase
-        .from('members')
-        .update({
-          membership_status: 'active',
-          joined_at: new Date().toISOString().slice(0, 10),
-          expires_at: expiresAt,
-        })
-        .eq('id', memberId)
-        .select()
-        .single()
+      const patch: Record<string, unknown> = {
+        membership_status: 'active',
+        joined_at: new Date().toISOString().slice(0, 10),
+        expires_at: expiresAt,
+      }
+      if (session.mode === 'subscription' && typeof session.subscription === 'string') {
+        patch.stripe_subscription_id = session.subscription
+      }
+
+      const { data: updatedMember } = await supabase.from('members').update(patch).eq('id', memberId).select().single()
 
       if (updatedMember) {
         await sendMembershipNotification({
@@ -117,6 +119,39 @@ serve(async (req) => {
         })
       }
     }
+  }
+
+  // This is the actual auto-renew mechanism: Stripe charges the saved card
+  // automatically every year for an active subscription, and fires this
+  // event each time it succeeds — including the very first charge, which
+  // this skips (billing_reason distinguishes it) since checkout.session.completed
+  // already activated the membership above.
+  if (event.type === 'invoice.payment_succeeded') {
+    const invoice = event.data.object as Stripe.Invoice
+    if (invoice.billing_reason === 'subscription_cycle' && typeof invoice.subscription === 'string') {
+      const { data: member } = await supabase
+        .from('members')
+        .select('*')
+        .eq('stripe_subscription_id', invoice.subscription)
+        .single()
+
+      if (member) {
+        const newExpiry = new Date()
+        newExpiry.setFullYear(newExpiry.getFullYear() + 1)
+        await supabase
+          .from('members')
+          .update({ membership_status: 'active', expires_at: newExpiry.toISOString().slice(0, 10) })
+          .eq('id', member.id)
+      }
+    }
+  }
+
+  // A subscription actually ending (cancelled, or payment ultimately failed
+  // and Stripe gave up retrying) — stop treating it as auto-renewing, but
+  // don't touch membership_status; they already paid through expires_at.
+  if (event.type === 'customer.subscription.deleted') {
+    const subscription = event.data.object as Stripe.Subscription
+    await supabase.from('members').update({ auto_renew: false, stripe_subscription_id: null }).eq('stripe_subscription_id', subscription.id)
   }
 
   return new Response(JSON.stringify({ received: true }), { headers: { 'Content-Type': 'application/json' } })

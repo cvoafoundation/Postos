@@ -666,7 +666,50 @@ Run `fix-cory-profile.sql`, deploy the new `invite-user` Edge Function, and push
 double check in Supabase → Authentication → URL Configuration that "Site URL" is set to your
 actual deployed site — that's where invite links send people.
 
+## Membership Roster round — four real fixes
+
+**1. Your CSV data isn't lost.** `members.post_id` uses "on delete set null," not cascade — when
+you deleted those two test posts, their members became *unassigned*, not deleted. The bug was
+that the Membership Roster page had no way to view unassigned members at all. Fixed: the post
+selector now always includes an **"Unassigned Members (National)"** option, so nothing tied to
+a deleted (or never-assigned) post is invisible again.
+
+**2. Renewals due, 30 days out.** The roster page now shows a banner when any annual
+memberships are renewing within 30 days. For actual proactive notification (not just "check
+when you remember to look"), a new scheduled function `send-renewal-reminders` emails a digest
+to National every day it finds anything due in exactly 30 days. This needs to be scheduled —
+either Supabase's `pg_cron` (setup command is in the function's own file comments) or any
+external cron service hitting the function's URL daily. Doesn't run itself; something has to
+trigger it once a day.
+
+**3. Real auto-renew, only for Annual.** Both `/join` and `/join-membership/:postId` now ask
+annual signups if they want to auto-renew. If yes, this uses a genuine Stripe **subscription**
+(not a one-time payment) — Stripe charges their card automatically every year, and a new
+webhook handler extends their membership another year automatically each time it succeeds.
+Lifetime members never see this option — there's no yearly charge to auto-renew. Staff can
+cancel a member's auto-renew from the Edit Member view, which actually cancels the Stripe
+subscription, not just a local flag.
+
+**4. Membership → Founding Team bridge.** Any member's edit view now has an **"Add to a Post's
+Founding Team"** button — pick a post and position, and it creates their founding team entry
+pre-filled with their existing name/email/phone, **reusing their already-uploaded DD214** so
+they never have to submit it twice. They still go through the same verification checkboxes as
+anyone else before real officer access activates.
+
+### Deploying this
+
+1. Run `membership-big-fixes.sql`.
+2. Deploy the two new Edge Functions: `cancel-membership-subscription` and
+   `send-renewal-reminders` (the latter with `--no-verify-jwt`, same as the Stripe webhook).
+3. In Stripe Dashboard → Webhooks → your existing endpoint → add two more events:
+   `invoice.payment_succeeded` and `customer.subscription.deleted` (on top of
+   `checkout.session.completed`, which should already be there).
+4. Push the code.
+5. Optional but recommended: schedule `send-renewal-reminders` to actually run daily (see the
+   function file for the exact `pg_cron` command).
+
 ## Stack
+
 
 
 

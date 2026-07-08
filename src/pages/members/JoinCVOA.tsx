@@ -147,6 +147,7 @@ function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'memb
     military_branch: '',
     post_id: '',
     membership_type: 'annual' as MembershipType,
+    auto_renew: true,
     password: '',
   })
   const [wantsAccount, setWantsAccount] = useState(true)
@@ -227,6 +228,7 @@ function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'memb
         member_id: member.id,
         post_id: mode === 'join_existing' ? form.post_id || null : null,
         membership_type: form.membership_type,
+        auto_renew: form.membership_type === 'annual' ? form.auto_renew : false,
       },
     })
 
@@ -336,6 +338,12 @@ function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'memb
                 <div className="font-mono text-gold text-lg">${MEMBERSHIP_PRICES.lifetime}</div>
               </label>
             </div>
+            {form.membership_type === 'annual' && (
+              <label className="flex items-center gap-2 text-xs text-muted cursor-pointer mt-2">
+                <input type="checkbox" checked={form.auto_renew} onChange={(e) => update('auto_renew', e.target.checked)} />
+                Auto-renew annually (charges automatically each year — cancel anytime)
+              </label>
+            )}
           </div>
 
           <div className="border-t border-hairline pt-3">

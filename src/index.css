@@ -1,3 +1,47 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-base text-ink;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    @apply bg-gold/30 text-ink;
+  }
+  *:focus-visible {
+    outline: 2px solid #C9A227;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-widest2 text-muted;
+  }
+  .panel {
+    @apply bg-charcoal border border-hairline rounded-sm;
+  }
+  .stat-number {
+    @apply font-display text-5xl leading-none tracking-wide text-ink;
+  }
+  .btn-gold {
+    @apply bg-gold text-base font-body font-semibold px-4 py-2 rounded-sm hover:bg-gold-bright transition-colors;
+  }
+  .btn-ghost {
+    @apply border border-hairline text-ink font-body px-4 py-2 rounded-sm hover:border-gold hover:text-gold transition-colors;
+  }
+  .input-field {
+    @apply bg-surface border border-hairline rounded-sm px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-gold outline-none w-full;
+  }
+  .table-head {
+    @apply eyebrow text-left px-4 py-3 border-b border-hairline;
+  }
+  .table-cell {
+    @apply px-4 py-3 text-sm border-b border-hairline/60;
+  }
+}
