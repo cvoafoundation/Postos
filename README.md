@@ -708,7 +708,40 @@ anyone else before real officer access activates.
 5. Optional but recommended: schedule `send-renewal-reminders` to actually run daily (see the
    function file for the exact `pg_cron` command).
 
+## Walkthrough optimization round — five items from the tab-by-tab review
+
+**1. Post-scoped home for Commanders/Officers.** Logging into a post-level account no longer
+shows the full National dashboard (org-wide sponsor revenue, every post's health, national
+recruiting totals — data that account shouldn't see). Post Commanders and Officers now land on
+their own post's home: their member count, sponsor pipeline, last meeting, and either their
+Post Health score (active posts) or Launch Checklist progress (forming posts).
+
+**2. Plain "member" role locked to Veterans Congress only.** Sidebar now shows just Congress for
+that role — and this is enforced at the route level too, not just hidden from the menu. Typing
+any other module's URL directly now shows "Access Restricted."
+
+**3. Founding Team Builder is now list-then-detail.** National sees a list of every post
+currently building its team first (`/founding-team`), clicks one, and lands on that post's full
+roster (`/founding-team/:postId`) — same pattern as Post Health. Post-scoped accounts skip the
+list entirely and go straight to their own team, since they only ever have one.
+
+**4. Meetings organized by phase.** The Compliance Dashboard now has a month selector —
+pick "July 2026 URO," see every active post with a clear Submitted/Not Submitted status for
+that specific period, click a submitted post to pull up their actual meeting. The existing
+cross-post search stays exactly as it was.
+
+**5. Multi-signer NCC sign-off before a charter is issued.** An application sitting in Vetting
+now shows every current National account and whether they've individually signed off — and the
+"Advance to Approved" button is disabled until every one of them has. This is a real database
+constraint, not just a UI suggestion — one person can no longer unilaterally move a candidate
+to Approved.
+
+Run `walkthrough-optimizations.sql`, then push the code — you've got GitHub Desktop set up now,
+so this is just: drop the new files into your local `Postos` folder (replacing what's there),
+GitHub Desktop will show the changes, commit, push.
+
 ## Stack
+
 
 
 

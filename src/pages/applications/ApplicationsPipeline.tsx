@@ -12,6 +12,7 @@ import { ApplicationDetailModal } from './ApplicationDetail'
 export default function ApplicationsPipeline() {
   const [applications, setApplications] = useState<PostApplication[]>([])
   const [scoreByApplication, setScoreByApplication] = useState<Record<string, number>>({})
+  const [readyForApproval, setReadyForApproval] = useState<Set<string>>(new Set())
   const [showNew, setShowNew] = useState(false)
   const [reviewing, setReviewing] = useState<PostApplication | null>(null)
   const [viewing, setViewing] = useState<PostApplication | null>(null)
@@ -20,13 +21,29 @@ export default function ApplicationsPipeline() {
 
   async function load() {
     setLoading(true)
-    const [appsRes, scoresRes] = await Promise.all([
+    const [appsRes, scoresRes, nationalRes, signoffsRes] = await Promise.all([
       supabase.from('post_applications').select('*').order('created_at', { ascending: false }),
       supabase
         .from('vetting_scorecards')
         .select('application_id, leadership_score, communication_score, professionalism_score, reliability_score, mission_alignment_score'),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).in('role', ['national_commander', 'national_staff']),
+      supabase.from('application_signoffs').select('application_id'),
     ])
     setApplications((appsRes.data ?? []) as PostApplication[])
+
+    // Every NCC (National) account must sign off before an application in
+    // Vetting can move to Approved — this is what actually gates issuing a
+    // charter, not just one person clicking Advance.
+    const nationalCount = nationalRes.count ?? 0
+    const signoffCounts: Record<string, number> = {}
+    for (const row of (signoffsRes.data ?? []) as any[]) {
+      signoffCounts[row.application_id] = (signoffCounts[row.application_id] ?? 0) + 1
+    }
+    const ready = new Set<string>()
+    for (const [appId, count] of Object.entries(signoffCounts)) {
+      if (nationalCount > 0 && count >= nationalCount) ready.add(appId)
+    }
+    setReadyForApproval(ready)
 
     // Average every category across every scorecard for each application, for
     // a quick at-a-glance score on the kanban card itself.
@@ -138,6 +155,7 @@ export default function ApplicationsPipeline() {
             <ApplicationCard
               application={a}
               score={scoreByApplication[a.id]}
+              readyForApproval={readyForApproval.has(a.id)}
               onMove={moveStatus}
               onReview={() => setReviewing(a)}
               onView={() => setViewing(a)}
@@ -181,12 +199,14 @@ export default function ApplicationsPipeline() {
 function ApplicationCard({
   application,
   score,
+  readyForApproval,
   onMove,
   onReview,
   onView,
 }: {
   application: PostApplication
   score?: number
+  readyForApproval: boolean
   onMove: (id: string, status: PostStatus) => void
   onReview: () => void
   onView: () => void
@@ -195,6 +215,7 @@ function ApplicationCard({
   const next = POST_STATUS_ORDER[currentIndex + 1]
   const prev = POST_STATUS_ORDER[currentIndex - 1]
   const hasDD214 = !!application.dd214_storage_path
+  const blockedBySignoff = application.status === 'vetting' && !readyForApproval
 
   return (
     <div className="panel p-3">
@@ -264,9 +285,15 @@ function ApplicationCard({
             </button>
           )}
           <button
-            disabled={!next || !hasDD214}
+            disabled={!next || !hasDD214 || blockedBySignoff}
             onClick={() => next && onMove(application.id, next)}
-            title={!hasDD214 ? 'Cannot advance without a DD214 on file' : undefined}
+            title={
+              !hasDD214
+                ? 'Cannot advance without a DD214 on file'
+                : blockedBySignoff
+                ? 'Every National account must sign off before this candidate can be approved'
+                : undefined
+            }
             className="text-[11px] font-mono text-gold hover:text-gold-bright disabled:opacity-30"
           >
             Advance →

@@ -7,6 +7,7 @@ import Dashboard from '@/pages/Dashboard'
 import ApplicationsPipeline from '@/pages/applications/ApplicationsPipeline'
 import VettingBoard from '@/pages/vetting/VettingBoard'
 import FoundingTeamBuilder from '@/pages/founding-team/FoundingTeamBuilder'
+import FoundingTeamList from '@/pages/founding-team/FoundingTeamList'
 import JoinFoundingTeam from '@/pages/founding-team/JoinFoundingTeam'
 import PublicChecklist from '@/pages/checklist/PublicChecklist'
 import PublicRecruitSignup from '@/pages/recruiting/PublicRecruitSignup'
@@ -37,6 +38,7 @@ import MembershipRoster from '@/pages/members/MembershipRoster'
 import JoinMembership from '@/pages/members/JoinMembership'
 import JoinCVOA from '@/pages/members/JoinCVOA'
 import MemberHome from '@/pages/members/MemberHome'
+import PostHome from '@/pages/PostHome'
 import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
 import NCCDrive from '@/pages/drive/NCCDrive'
 import SharedDriveView from '@/pages/drive/SharedDriveView'
@@ -96,12 +98,62 @@ function AuthenticatedApp() {
             </RoleGuard>
           }
         />
-        <Route path="/founding-team" element={<FoundingTeamBuilder />} />
-        <Route path="/checklist" element={<LaunchChecklist />} />
-        <Route path="/toolkit" element={<Toolkit />} />
-        <Route path="/meetings" element={<Meetings />} />
-        <Route path="/meetings/uro/:meetingId" element={<UroMeetingWizard />} />
-        <Route path="/meetings/uro/:meetingId/view" element={<UroMeetingView />} />
+        <Route
+          path="/founding-team"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <FoundingTeamRoute />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/founding-team/:postId"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <FoundingTeamBuilder />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/checklist"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <LaunchChecklist />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/toolkit"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <Toolkit />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/meetings"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <Meetings />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/meetings/uro/:meetingId"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <UroMeetingWizard />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/meetings/uro/:meetingId/view"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <UroMeetingView />
+            </RoleGuard>
+          }
+        />
         <Route
           path="/meetings/uro-compliance"
           element={
@@ -118,9 +170,30 @@ function AuthenticatedApp() {
             </RoleGuard>
           }
         />
-        <Route path="/meetings/uro-actions" element={<UroActionItemReport />} />
-        <Route path="/recruiting" element={<RecruitingPipeline />} />
-        <Route path="/sponsors" element={<SponsorsCRM />} />
+        <Route
+          path="/meetings/uro-actions"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <UroActionItemReport />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/recruiting"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <RecruitingPipeline />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/sponsors"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <SponsorsCRM />
+            </RoleGuard>
+          }
+        />
         <Route path="/congress" element={<CongressRoute />} />
         <Route path="/congress/resolutions/:id" element={<ResolutionDetail />} />
         <Route
@@ -148,11 +221,46 @@ function AuthenticatedApp() {
             </RoleGuard>
           }
         />
-        <Route path="/health" element={<PostHealth />} />
-        <Route path="/health/:postId" element={<PostHealthDetail />} />
-        <Route path="/build-a-post" element={<BuildAPost />} />
-        <Route path="/build-a-post/:moduleId" element={<BuildAPostDetail />} />
-        <Route path="/members" element={<MembershipRoster />} />
+        <Route
+          path="/health"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <PostHealth />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/health/:postId"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <PostHealthDetail />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/build-a-post"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <BuildAPost />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/build-a-post/:moduleId"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <BuildAPostDetail />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/members"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <MembershipRoster />
+            </RoleGuard>
+          }
+        />
         <Route
           path="/drive"
           element={
@@ -161,7 +269,14 @@ function AuthenticatedApp() {
             </RoleGuard>
           }
         />
-        <Route path="/shared-files" element={<SharedDriveView />} />
+        <Route
+          path="/shared-files"
+          element={
+            <RoleGuard roles={['post_commander', 'post_officer']}>
+              <SharedDriveView />
+            </RoleGuard>
+          }
+        />
         <Route
           path="/posts"
           element={
@@ -189,7 +304,15 @@ function CongressRoute() {
   return isNational ? <VeteransCongress /> : <CongressMemberView />
 }
 
+function FoundingTeamRoute() {
+  const { isNational } = useAuth()
+  return isNational ? <FoundingTeamList /> : <FoundingTeamBuilder />
+}
+
 function HomeRoute() {
-  const { profile } = useAuth()
-  return profile?.role === 'member' ? <MemberHome /> : <Dashboard />
+  const { profile, isNational } = useAuth()
+  if (isNational) return <Dashboard />
+  if (profile?.role === 'member') return <MemberHome />
+  if (profile?.role === 'post_commander' || profile?.role === 'post_officer') return <PostHome />
+  return <Dashboard />
 }

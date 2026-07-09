@@ -45,11 +45,8 @@ const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
   { to: '/build-a-post', label: 'Build A Post', icon: Hammer },
 ]
 
-// A plain paying member isn't running a post — a much smaller, relevant set.
+// A plain paying member isn't running a post — Veterans Congress only.
 const MEMBER_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
-  { to: '/meetings', label: 'Meetings', icon: CalendarCheck },
-  { to: '/toolkit', label: 'Post Toolkit', icon: FolderDown },
-  { to: '/shared-files', label: 'Shared Files', icon: HardDrive },
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
 ]
 

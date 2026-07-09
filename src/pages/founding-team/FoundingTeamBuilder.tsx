@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -31,30 +32,34 @@ async function openDocument(path: string) {
 }
 
 export default function FoundingTeamBuilder() {
+  const { postId: routePostId } = useParams<{ postId: string }>()
+  const navigate = useNavigate()
   const { profile, isNational } = useAuth()
-  const [posts, setPosts] = useState<Post[]>([])
+  const [post, setPost] = useState<Post | null>(null)
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [members, setMembers] = useState<FoundingTeamMember[]>([])
   const [copied, setCopied] = useState(false)
 
-  // National roles can manage any post still in formation; post-scoped roles
-  // (Post Commander, etc.) are locked to their own post.
+  // National navigates here via the Founding Team list, arriving with a
+  // specific post already chosen in the URL. Post-scoped roles only ever
+  // have their own post, so they skip the list entirely.
   useEffect(() => {
     if (isNational) {
-      supabase
-        .from('posts')
-        .select('*')
-        .in('status', ['approved', 'founding_team_building'])
-        .then(({ data }: any) => {
-          const list = (data ?? []) as Post[]
-          setPosts(list)
-          if (list.length > 0 && !selectedPostId) setSelectedPostId(list[0].id)
-        })
+      if (routePostId) {
+        setSelectedPostId(routePostId)
+      } else {
+        navigate('/founding-team', { replace: true })
+      }
     } else if (profile?.post_id) {
       setSelectedPostId(profile.post_id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNational, profile?.post_id])
+  }, [isNational, profile?.post_id, routePostId])
+
+  useEffect(() => {
+    if (!selectedPostId) return
+    supabase.from('posts').select('*').eq('id', selectedPostId).single().then(({ data }: any) => setPost(data as Post))
+  }, [selectedPostId])
 
   async function loadMembers(postId: string) {
     const { data } = await supabase.from('founding_team_members').select('*').eq('post_id', postId)
@@ -108,31 +113,18 @@ export default function FoundingTeamBuilder() {
     )
   }
 
-  const selectedPost = posts.find((p) => p.id === selectedPostId)
+  const selectedPost = post
   const filledPositions = new Set(members.map((m) => m.position))
   const missing = REQUIRED_POSITIONS.filter((p) => !filledPositions.has(p as any))
 
   return (
     <div>
-      <PageHeader
-        eyebrow="Module 3"
-        title="Founding Team Builder"
-        action={
-          isNational && posts.length > 1 ? (
-            <select
-              className="input-field w-64"
-              value={selectedPostId}
-              onChange={(e) => setSelectedPostId(e.target.value)}
-            >
-              {posts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          ) : undefined
-        }
-      />
+      {isNational && (
+        <button onClick={() => navigate('/founding-team')} className="text-xs font-mono text-muted hover:text-gold mb-4">
+          ← Back to Founding Teams
+        </button>
+      )}
+      <PageHeader eyebrow="Module 3" title={selectedPost ? `${selectedPost.name} — Founding Team` : 'Founding Team Builder'} />
 
       <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
         <div>

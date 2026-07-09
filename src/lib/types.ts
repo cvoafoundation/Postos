@@ -247,6 +247,13 @@ export interface Post {
   updated_at: string
 }
 
+export interface ApplicationSignoff {
+  id: string
+  application_id: string
+  profile_id: string
+  signed_at: string
+}
+
 export interface PostApplication {
   id: string
   post_id: string | null
