@@ -16,7 +16,7 @@ export default function FoundingTeamList() {
 
   useEffect(() => {
     async function load() {
-      const { data: postsData } = await supabase.from('posts').select('*').in('status', ['approved', 'founding_team_building'])
+      const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false })
       const list = (postsData ?? []) as Post[]
       setPosts(list)
 
@@ -39,15 +39,15 @@ export default function FoundingTeamList() {
     <div>
       <PageHeader eyebrow="Module 3" title="Founding Teams" />
       <p className="text-sm text-muted mb-6 max-w-2xl">
-        Every post currently building its founding team. Click one to see its roster, verify members, and manage
-        positions.
+        Every post's founding team — including ones already active, since the roster and
+        verification history don't disappear once a post graduates. Click one to see its roster.
       </p>
 
       {loading ? (
         <p className="text-sm text-muted">Loading…</p>
       ) : posts.length === 0 ? (
         <EmptyState
-          title="No post in formation yet"
+          title="No posts yet"
           hint="A post shows up here once an application is advanced to Founding Team Building from the Application Pipeline."
         />
       ) : (
@@ -65,10 +65,11 @@ export default function FoundingTeamList() {
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-sm font-medium">{post.name}</div>
-                  <StatusBadge label={POST_STATUS_LABELS[post.status]} tone="developing" />
+                  <StatusBadge label={POST_STATUS_LABELS[post.status]} tone={post.status === 'active_post' ? 'active' : 'developing'} />
                 </div>
                 <div className="text-xs text-muted font-mono">
                   {filledCount}/5 positions filled · {verifiedCount}/{members.length || 0} verified
+                  {members.length === 0 && ' · no roster on file'}
                 </div>
               </button>
             )

@@ -161,6 +161,18 @@ create table post_applications (
   updated_at timestamptz not null default now()
 );
 
+-- Every current National account (Commander or Staff) must individually
+-- sign off on a candidate before their application can move from Vetting
+-- to Approved — this is what actually gates issuing a charter, not just
+-- one person's decision.
+create table application_signoffs (
+  id uuid primary key default uuid_generate_v4(),
+  application_id uuid not null references post_applications(id) on delete cascade,
+  profile_id uuid not null references profiles(id),
+  signed_at timestamptz not null default now(),
+  unique (application_id, profile_id)
+);
+
 -- ----------------------------------------------------------------------------
 -- MODULE 2: VETTING SYSTEM
 -- ----------------------------------------------------------------------------
@@ -916,6 +928,7 @@ alter table profiles enable row level security;
 alter table pending_profile_signups enable row level security;
 alter table posts enable row level security;
 alter table post_applications enable row level security;
+alter table application_signoffs enable row level security;
 alter table vetting_scorecards enable row level security;
 alter table vetting_interviews enable row level security;
 alter table vetting_decisions enable row level security;
@@ -1028,6 +1041,13 @@ create policy "applications_update_national" on post_applications
   for update using (is_national_role());
 create policy "applications_delete_national" on post_applications
   for delete using (is_national_role());
+
+create policy "application_signoffs_select_national" on application_signoffs
+  for select using (is_national_role());
+create policy "application_signoffs_insert_own" on application_signoffs
+  for insert with check (is_national_role() and profile_id = auth.uid());
+create policy "application_signoffs_delete_own" on application_signoffs
+  for delete using (profile_id = auth.uid());
 
 create policy "vetting_scorecards_national" on vetting_scorecards
   for all using (is_national_role());
