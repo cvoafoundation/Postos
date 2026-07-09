@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -9,6 +9,8 @@ import { supabase } from '@/lib/supabase'
 import { RESOLUTION_STATUS_LABELS, type CongressAnnouncement, type Resolution } from '@/lib/types'
 import { Plus, ThumbsUp, ExternalLink } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { useAuth } from '@/context/AuthContext'
+import { Modal } from '@/components/ui/Modal'
 
 function statusTone(status: string) {
   if (status === 'passed' || status === 'implemented') return 'active' as const
@@ -18,10 +20,12 @@ function statusTone(status: string) {
 
 export default function VeteransCongress() {
   const navigate = useNavigate()
+  const { isNational } = useAuth()
   const [resolutions, setResolutions] = useState<Resolution[]>([])
   const [voteCounts, setVoteCounts] = useState<Record<string, number>>({})
   const [announcements, setAnnouncements] = useState<CongressAnnouncement[]>([])
   const [showNew, setShowNew] = useState(false)
+  const [showNewAnnouncement, setShowNewAnnouncement] = useState(false)
 
   async function load() {
     const { data } = await supabase.from('resolutions').select('*').order('created_at', { ascending: false })
@@ -188,7 +192,14 @@ export default function VeteransCongress() {
         </div>
 
         <div className="panel p-5">
-          <div className="eyebrow mb-4">National Announcements</div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="eyebrow">National Announcements</div>
+            {isNational && (
+              <button onClick={() => setShowNewAnnouncement(true)} className="text-xs text-gold hover:text-gold-bright flex items-center gap-1">
+                <Plus size={12} /> New
+              </button>
+            )}
+          </div>
           {announcements.length === 0 ? (
             <EmptyState title="No announcements yet" />
           ) : (
@@ -217,6 +228,72 @@ export default function VeteransCongress() {
           }}
         />
       )}
+
+      {showNewAnnouncement && (
+        <NewAnnouncementModal
+          onClose={() => setShowNewAnnouncement(false)}
+          onCreated={() => {
+            setShowNewAnnouncement(false)
+            load()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function NewAnnouncementModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { profile } = useAuth()
+  const [form, setForm] = useState({ title: '', body: '', category: 'General' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    const { error } = await supabase.from('congress_announcements').insert({
+      title: form.title,
+      body: form.body,
+      category: form.category,
+      published_by: profile?.id ?? null,
+    })
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    onCreated()
+  }
+
+  return (
+    <Modal title="New National Announcement" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <input required placeholder="Title" className="input-field" value={form.title} onChange={(e) => update('title', e.target.value)} />
+        <select className="input-field" value={form.category} onChange={(e) => update('category', e.target.value)}>
+          <option>General</option>
+          <option>Legislative</option>
+          <option>Compliance</option>
+          <option>Event</option>
+          <option>Urgent</option>
+        </select>
+        <textarea
+          required
+          placeholder="Announcement text"
+          className="input-field"
+          rows={4}
+          value={form.body}
+          onChange={(e) => update('body', e.target.value)}
+        />
+        {error && <p className="text-status-attention text-sm">{error}</p>}
+        <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
+          {saving ? 'Publishing…' : 'Publish Announcement'}
+        </button>
+      </form>
+    </Modal>
   )
 }

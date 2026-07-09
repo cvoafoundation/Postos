@@ -19,7 +19,7 @@ import {
   type DebateResponseType,
 } from '@/lib/types'
 import { format, formatDistanceToNow } from 'date-fns'
-import { Upload, FileText, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Upload, FileText, ThumbsUp, ThumbsDown, Trash2 } from 'lucide-react'
 
 function statusTone(status: string) {
   if (status === 'passed' || status === 'implemented') return 'active' as const
@@ -102,6 +102,20 @@ export default function ResolutionDetail() {
     }
     await supabase.from('resolutions').update({ status }).eq('id', resolution.id)
     load()
+  }
+
+  async function deleteResolution() {
+    if (!resolution) return
+    const confirmed = window.confirm(
+      `Permanently delete "${resolution.title}"? This removes the resolution and everything tied to it — amendments, debate, votes, documents. This cannot be undone.`
+    )
+    if (!confirmed) return
+    const { error } = await supabase.from('resolutions').delete().eq('id', resolution.id)
+    if (error) {
+      window.alert(`Couldn't delete: ${error.message}`)
+      return
+    }
+    navigate('/congress')
   }
 
   async function castVote(vote: boolean) {
@@ -198,11 +212,18 @@ export default function ResolutionDetail() {
         eyebrow={resolution.resolution_number ?? 'Resolution'}
         title={resolution.title}
         action={
-          isNational && nextStatus ? (
-            <button onClick={() => advanceStatus(nextStatus)} className="btn-gold">
-              Advance to {RESOLUTION_STATUS_LABELS[nextStatus]} →
-            </button>
-          ) : undefined
+          <div className="flex items-center gap-3">
+            {isNational && nextStatus && (
+              <button onClick={() => advanceStatus(nextStatus)} className="btn-gold">
+                Advance to {RESOLUTION_STATUS_LABELS[nextStatus]} →
+              </button>
+            )}
+            {isNational && (
+              <button onClick={deleteResolution} className="text-xs text-muted hover:text-status-attention flex items-center gap-1.5">
+                <Trash2 size={13} /> Delete
+              </button>
+            )}
+          </div>
         }
       />
 

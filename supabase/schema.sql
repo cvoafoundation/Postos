@@ -1186,6 +1186,8 @@ create policy "resolutions_write_delegate" on resolutions
   for insert with check (auth.uid() is not null);
 create policy "resolutions_update_own_or_national" on resolutions
   for update using (submitted_by = auth.uid() or is_national_role());
+create policy "resolutions_delete_national" on resolutions
+  for delete using (is_national_role());
 
 create policy "resolution_co_sponsors_read_all" on resolution_co_sponsors for select using (true);
 create policy "resolution_co_sponsors_write_auth" on resolution_co_sponsors
