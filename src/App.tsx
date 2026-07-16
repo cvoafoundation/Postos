@@ -39,6 +39,8 @@ import JoinMembership from '@/pages/members/JoinMembership'
 import JoinCVOA from '@/pages/members/JoinCVOA'
 import MemberHome from '@/pages/members/MemberHome'
 import PostHome from '@/pages/PostHome'
+import MyMembership from '@/pages/members/MyMembership'
+import VerifyMembership from '@/pages/members/VerifyMembership'
 import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
 import NCCDrive from '@/pages/drive/NCCDrive'
 import SharedDriveView from '@/pages/drive/SharedDriveView'
@@ -55,6 +57,7 @@ export default function App() {
       <Route path="/become-a-sponsor/:postId" element={<BecomeASponsor />} />
       <Route path="/join-membership/:postId" element={<JoinMembership />} />
       <Route path="/join" element={<JoinCVOA />} />
+      <Route path="/verify-membership/:memberId" element={<VerifyMembership />} />
       <Route path="/membership-payment-result" element={<MembershipPaymentResult />} />
       <Route path="/transparency" element={<TransparencyPortal />} />
       {/* Everything else is gated behind auth */}
@@ -261,6 +264,7 @@ function AuthenticatedApp() {
             </RoleGuard>
           }
         />
+        <Route path="/my-membership" element={<MyMembership />} />
         <Route
           path="/drive"
           element={

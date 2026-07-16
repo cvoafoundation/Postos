@@ -1508,6 +1508,31 @@ create trigger trg_promote_member_account
   after update on members
   for each row execute function promote_member_account();
 
+-- Powers the QR code on the digital membership card. Deliberately returns
+-- only the fields safe to show a stranger who scans the card (no email,
+-- phone, or address) — this is callable by anyone, including anonymous
+-- visitors, which is the whole point of a scannable card, so it must never
+-- leak anything sensitive.
+create or replace function verify_membership(p_member_id uuid)
+returns table (
+  full_name text,
+  membership_number text,
+  membership_type membership_type,
+  membership_status membership_status,
+  joined_at date,
+  expires_at date
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select full_name, membership_number, membership_type, membership_status, joined_at, expires_at
+  from members
+  where id = p_member_id;
+$$;
+
+grant execute on function verify_membership(uuid) to anon, authenticated;
+
 -- Auto-generates a membership number ("19-000000001") on insert, unless one
 -- was already supplied (e.g. importing existing numbers from a CSV so
 -- historical numbering isn't silently rewritten). Falls back to admission

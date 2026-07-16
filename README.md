@@ -740,7 +740,31 @@ Run `walkthrough-optimizations.sql`, then push the code — you've got GitHub De
 so this is just: drop the new files into your local `Postos` folder (replacing what's there),
 GitHub Desktop will show the changes, commit, push.
 
+## Digital membership card — generated automatically, no one has to make it
+
+**"My Membership"** is a new page (sidebar, for members and post officers) showing a real digital
+card: CVOA branding, membership number, join date, expiration (or "Never" for Lifetime), and a
+QR code. There's nothing to generate — it always reflects your actual, current membership
+record. Renew, and the expiration date on the card is already right the next time you open it.
+
+**The QR code is real, not decorative.** Scanning it opens a public verification page —
+`/verify-membership/:memberId` — showing a simple "✓ Valid CVOA Member" or "Membership Not
+Active" with their name and number. Deliberately shows *only* what's safe for a stranger to see
+if they scan someone's card at a discount counter or event check-in: no email, phone, or
+address. That's enforced by a dedicated database function, not just something the page chooses
+not to display — even a direct API call can't pull those fields through this path.
+
+**Where it lives**: `/my-membership` inside the app, linked from the Member Home screen's
+membership summary ("View Digital Card →"). Available to plain members and post
+officers/commanders alike, since either could be a dues-paying member.
+
+Run `digital-membership-card.sql`, then push the code — a new `qrcode` package is included in
+`package.json`, so make sure whatever build step you use picks up the updated dependencies
+(GitHub Desktop push → Vercel rebuild handles this automatically, nothing extra needed on your
+end).
+
 ## Stack
+
 
 
 
