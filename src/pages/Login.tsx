@@ -2,103 +2,121 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { PostApplicationForm } from '@/components/forms/PostApplicationForm'
-import { ChevronDown, CheckCircle2, Flag, UserPlus, KeyRound } from 'lucide-react'
+import { MembershipForm } from '@/pages/members/JoinCVOA'
+import type { Post } from '@/lib/types'
+import { useEffect } from 'react'
+import { CheckCircle2, Flag, UserPlus, IdCard, LogIn } from 'lucide-react'
 
-type Section = 'start_post' | 'join_post' | 'staff' | null
+type Path = 'choose' | 'start_post' | 'join_existing' | 'member_only' | 'staff'
 
 export default function Login() {
-  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [open, setOpen] = useState<Section>(searchParams.get('login') === 'true' ? 'staff' : null)
+  const [path, setPath] = useState<Path>(searchParams.get('login') === 'true' ? 'staff' : 'choose')
   const [submitted, setSubmitted] = useState(false)
+  const [posts, setPosts] = useState<Post[]>([])
 
-  function toggle(section: Section) {
-    setOpen((current) => (current === section ? null : section))
-  }
+  useEffect(() => {
+    supabase
+      .from('posts')
+      .select('*')
+      .eq('status', 'active_post')
+      .order('name')
+      .then(({ data }: any) => setPosts((data ?? []) as Post[]))
+  }, [])
 
   return (
-    <div className="min-h-screen bg-base px-4 py-12">
-      <div className="max-w-xl mx-auto">
+    <div className="min-h-screen bg-base px-4 py-16">
+      <div className={`mx-auto ${path === 'choose' ? 'max-w-5xl' : 'max-w-md'}`}>
         <div className="text-center mb-10">
-          <div className="font-display text-4xl tracking-wide text-gold">CVOA</div>
+          <img src="/images/cvoa-logo.png" alt="CVOA" className="w-28 h-28 mx-auto mb-3" />
           <div className="eyebrow mt-1">Post Operating System</div>
         </div>
 
-        <div className="space-y-3">
-          {/* 1. Start Your Own CVOA Post */}
-          <div className="panel overflow-hidden">
-            <button
-              onClick={() => toggle('start_post')}
-              className="w-full flex items-center justify-between p-5 text-left hover:bg-surface/60 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <Flag className="text-gold" size={20} />
-                <div>
-                  <div className="font-display text-xl tracking-wide">Start Your Own CVOA Post</div>
-                  <div className="text-xs text-muted mt-0.5">No post near you yet? Begin the application here.</div>
-                </div>
-              </div>
-              <ChevronDown size={18} className={`text-muted transition-transform ${open === 'start_post' ? 'rotate-180' : ''}`} />
-            </button>
-            {open === 'start_post' && (
-              <div className="p-5 pt-0">
-                {submitted ? (
-                  <div className="text-center py-8">
-                    <CheckCircle2 className="mx-auto mb-4 text-status-active" size={40} />
-                    <div className="font-display text-2xl tracking-wide mb-2">Application Received</div>
-                    <p className="text-sm text-muted max-w-sm mx-auto">
-                      Thank you for stepping up. National Staff reviews every inquiry — expect to hear from us soon
-                      about next steps.
-                    </p>
-                  </div>
-                ) : (
-                  <PostApplicationForm onSubmitted={() => setSubmitted(true)} submitLabel="Submit Application" />
-                )}
-              </div>
-            )}
+        {path === 'choose' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <PillarCard
+              icon={Flag}
+              title="Start a New Post"
+              subtitle="There isn't one in my area yet"
+              onClick={() => setPath('start_post')}
+            />
+            <PillarCard
+              icon={UserPlus}
+              title="Join an Existing Post"
+              subtitle="There's already a CVOA post near me"
+              onClick={() => setPath('join_existing')}
+            />
+            <PillarCard
+              icon={IdCard}
+              title="Just Become a Member"
+              subtitle="Not sure yet, or no local post"
+              onClick={() => setPath('member_only')}
+            />
+            <PillarCard
+              icon={LogIn}
+              title="Log In"
+              subtitle="Already have an account"
+              onClick={() => setPath('staff')}
+            />
           </div>
+        )}
 
-          {/* 2. Join an Existing Post */}
-          <div className="panel overflow-hidden">
-            <button
-              onClick={() => navigate('/join')}
-              className="w-full flex items-center justify-between p-5 text-left hover:bg-surface/60 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <UserPlus className="text-gold" size={20} />
-                <div>
-                  <div className="font-display text-xl tracking-wide">Join an Existing Post</div>
-                  <div className="text-xs text-muted mt-0.5">Already have a CVOA post nearby? Become a member.</div>
-                </div>
-              </div>
-              <ChevronDown size={18} className="text-muted -rotate-90" />
+        {path !== 'choose' && (
+          <div className="panel p-6">
+            <button onClick={() => setPath('choose')} className="text-xs font-mono uppercase tracking-wide text-muted hover:text-gold mb-4">
+              ← Back
             </button>
-          </div>
 
-          {/* 3. Staff Sign In */}
-          <div className="panel overflow-hidden">
-            <button
-              onClick={() => toggle('staff')}
-              className="w-full flex items-center justify-between p-5 text-left hover:bg-surface/60 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <KeyRound className="text-gold" size={20} />
-                <div>
-                  <div className="font-display text-xl tracking-wide">Staff Sign In</div>
-                  <div className="text-xs text-muted mt-0.5">Already have an account with CVOA Post OS?</div>
+            {path === 'start_post' &&
+              (submitted ? (
+                <div className="text-center py-8">
+                  <CheckCircle2 className="mx-auto mb-4 text-status-active" size={40} />
+                  <div className="font-display text-2xl tracking-wide mb-2">Application Received</div>
+                  <p className="text-sm text-muted max-w-sm mx-auto">
+                    Thank you for stepping up. National Staff reviews every inquiry — expect to hear from us soon
+                    about next steps.
+                  </p>
                 </div>
-              </div>
-              <ChevronDown size={18} className={`text-muted transition-transform ${open === 'staff' ? 'rotate-180' : ''}`} />
-            </button>
-            {open === 'staff' && (
-              <div className="p-5 pt-0">
-                <StaffLoginForm />
-              </div>
+              ) : (
+                <PostApplicationForm onSubmitted={() => setSubmitted(true)} submitLabel="Submit Application" />
+              ))}
+
+            {(path === 'join_existing' || path === 'member_only') && (
+              <MembershipForm mode={path} posts={posts} onBack={() => setPath('choose')} />
             )}
+
+            {path === 'staff' && <StaffLoginForm />}
           </div>
-        </div>
+        )}
       </div>
     </div>
+  )
+}
+
+function PillarCard({
+  icon: Icon,
+  title,
+  subtitle,
+  onClick,
+}: {
+  icon: typeof Flag
+  title: string
+  subtitle: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="panel p-8 flex flex-col items-center text-center gap-4 hover:border-gold transition-colors group min-h-[220px]"
+    >
+      <div className="w-16 h-16 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center group-hover:bg-gold/20 transition-colors">
+        <Icon className="text-gold" size={28} />
+      </div>
+      <div>
+        <div className="font-display text-xl tracking-wide text-ink">{title}</div>
+        <div className="text-xs text-muted mt-1.5">{subtitle}</div>
+      </div>
+    </button>
   )
 }
 

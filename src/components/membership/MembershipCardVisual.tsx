@@ -17,7 +17,7 @@ export function MembershipCardVisual({ member }: { member: Member }) {
     <div className="relative w-full max-w-sm mx-auto rounded-lg overflow-hidden border border-hairline bg-charcoal shadow-lg">
       <div className="bg-gradient-to-br from-surface to-base p-5 border-b border-hairline">
         <div className="flex items-center justify-between mb-1">
-          <div className="font-display text-2xl tracking-wide text-gold">CVOA</div>
+          <img src="/images/cvoa-logo.png" alt="CVOA" className="w-12 h-12" />
           <div className="text-right">
             <div className="eyebrow text-[10px]">{member.membership_type === 'lifetime' ? 'Lifetime Member' : 'Annual Member'}</div>
             <div className={`text-[10px] font-mono uppercase tracking-wide ${isActive ? 'text-status-active' : 'text-status-attention'}`}>

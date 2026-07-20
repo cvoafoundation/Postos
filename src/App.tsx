@@ -318,5 +318,18 @@ function HomeRoute() {
   if (isNational) return <Dashboard />
   if (profile?.role === 'member') return <MemberHome />
   if (profile?.role === 'post_commander' || profile?.role === 'post_officer') return <PostHome />
-  return <Dashboard />
+  // Anything else — guest_applicant (not yet verified/promoted), delegate, or
+  // a role we don't recognize — must never fall through to the National
+  // dashboard. This was a real gap: an account whose promotion hasn't
+  // happened yet (e.g. payment pending, or verification not done) used to
+  // land on the full org-wide view with no restriction at all.
+  return (
+    <div className="max-w-md mx-auto py-24 text-center">
+      <div className="font-display text-2xl tracking-wide mb-3">Account Pending</div>
+      <p className="text-sm text-muted">
+        Your account isn't fully active yet — this usually means a payment or verification step hasn't completed.
+        If you believe this is a mistake, contact National.
+      </p>
+    </div>
+  )
 }

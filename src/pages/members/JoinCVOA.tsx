@@ -1,8 +1,8 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, type ChangeEvent, type FormEvent } from 'react'
+import { Navigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { MEMBERSHIP_PRICES, type MembershipType, type Post } from '@/lib/types'
-import { Loader2, KeyRound, Upload, FileCheck, CheckCircle2, Flag, UserPlus, IdCard, LogIn } from 'lucide-react'
+import { Loader2, KeyRound, Upload, FileCheck } from 'lucide-react'
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
@@ -10,178 +10,14 @@ const US_STATES = [
   'TN','TX','UT','VT','VA','WA','WV','WI','WY',
 ]
 
-type Path = 'choose' | 'join_existing' | 'new_post' | 'member_only'
-
+// This page's own chooser was merged into the main "/" landing page, since
+// having two separate "what do you want to do" screens was confusing.
+// Kept as a redirect in case this link is already shared anywhere.
 export default function JoinCVOA() {
-  const navigate = useNavigate()
-  const [path, setPath] = useState<Path>('choose')
-  const [posts, setPosts] = useState<Post[]>([])
-
-  useEffect(() => {
-    supabase
-      .from('posts')
-      .select('*')
-      .eq('status', 'active_post')
-      .order('name')
-      .then(({ data }: any) => setPosts((data ?? []) as Post[]))
-  }, [])
-
-  return (
-    <div className="min-h-screen bg-base px-4 py-16">
-      <div className={`mx-auto ${path === 'choose' ? 'max-w-4xl' : 'max-w-md'}`}>
-        <div className="text-center mb-10">
-          <div className="font-display text-5xl tracking-wide text-gold">CVOA</div>
-          <div className="eyebrow mt-2">Combat Veterans of America</div>
-        </div>
-
-        {path === 'choose' && (
-          <div>
-            <p className="text-center text-sm text-muted mb-6">What are you looking to do?</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <ChooserCard
-                icon={UserPlus}
-                title="Join an Existing Post"
-                subtitle="There's already a CVOA post near me"
-                onClick={() => setPath('join_existing')}
-              />
-              <ChooserCard
-                icon={Flag}
-                title="Start a New Post"
-                subtitle="There isn't one in my area yet"
-                onClick={() => setPath('new_post')}
-              />
-              <ChooserCard
-                icon={IdCard}
-                title="Just Become a Member"
-                subtitle="Not sure yet, or no local post"
-                onClick={() => setPath('member_only')}
-              />
-              <ChooserCard
-                icon={LogIn}
-                title="Log In"
-                subtitle="Already have an account"
-                onClick={() => navigate('/?login=true')}
-              />
-            </div>
-          </div>
-        )}
-
-        {path !== 'choose' && (
-          <div className="panel p-6">
-            {path === 'new_post' && <StartPostForm onBack={() => setPath('choose')} />}
-            {(path === 'join_existing' || path === 'member_only') && (
-              <MembershipForm mode={path} posts={posts} onBack={() => setPath('choose')} />
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
+  return <Navigate to="/" replace />
 }
 
-function ChooserCard({
-  icon: Icon,
-  title,
-  subtitle,
-  onClick,
-}: {
-  icon: typeof Flag
-  title: string
-  subtitle: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="panel p-6 text-left hover:border-gold transition-colors flex flex-col items-start gap-3 group"
-    >
-      <div className="w-12 h-12 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center group-hover:bg-gold/20 transition-colors">
-        <Icon className="text-gold" size={22} />
-      </div>
-      <div>
-        <div className="font-display text-lg tracking-wide text-ink">{title}</div>
-        <div className="text-xs text-muted mt-1">{subtitle}</div>
-      </div>
-    </button>
-  )
-}
-
-function StartPostForm({ onBack }: { onBack: () => void }) {
-  const [form, setForm] = useState({ name: '', email: '', phone: '', city: '', state: '', motivation: '' })
-  const [saving, setSaving] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((f) => ({ ...f, [key]: value }))
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    const { error } = await supabase.from('post_applications').insert({
-      name: form.name,
-      email: form.email,
-      phone: form.phone || null,
-      city: form.city || null,
-      state: form.state,
-      motivation: form.motivation || null,
-    })
-    setSaving(false)
-    if (error) {
-      setError(error.message)
-      return
-    }
-    setSubmitted(true)
-  }
-
-  if (submitted) {
-    return (
-      <div className="text-center py-6">
-        <CheckCircle2 className="mx-auto mb-3 text-status-active" size={36} />
-        <div className="font-display text-xl mb-2">Application Submitted</div>
-        <p className="text-sm text-muted">National will follow up with next steps for starting your post.</p>
-      </div>
-    )
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <button type="button" onClick={onBack} className="text-xs text-muted hover:text-gold mb-2">
-        ← Back
-      </button>
-      <p className="text-sm text-muted mb-2">Tell us about yourself and where you want to start a post.</p>
-      <input required placeholder="Full name" className="input-field" value={form.name} onChange={(e) => update('name', e.target.value)} />
-      <input required type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
-      <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
-      <div className="grid grid-cols-2 gap-3">
-        <input placeholder="City" className="input-field" value={form.city} onChange={(e) => update('city', e.target.value)} />
-        <select required className="input-field" value={form.state} onChange={(e) => update('state', e.target.value)}>
-          <option value="">State</option>
-          {US_STATES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
-      <textarea
-        placeholder="Why do you want to start a post here?"
-        className="input-field"
-        rows={3}
-        value={form.motivation}
-        onChange={(e) => update('motivation', e.target.value)}
-      />
-      {error && <p className="text-status-attention text-sm">{error}</p>}
-      <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
-        {saving ? 'Submitting…' : 'Submit Application'}
-      </button>
-    </form>
-  )
-}
-
-function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'member_only'; posts: Post[]; onBack: () => void }) {
+export function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'member_only'; posts: Post[]; onBack: () => void }) {
   const [form, setForm] = useState({
     full_name: '',
     email: '',

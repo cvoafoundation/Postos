@@ -29,10 +29,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 import Stripe from 'npm:stripe@14.21.0'
-<<<<<<< HEAD
 import nodemailer from 'npm:nodemailer@6.9.16'
-=======
->>>>>>> 611d78fb876f3d49aef993be18c3ccdb14ebe9d6
 
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_KEY')!
 const STRIPE_WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET')!

@@ -57,11 +57,15 @@ const MEMBER_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
 export function Sidebar() {
   const { profile, isNational, signOut } = useAuth()
   const isPlainMember = profile?.role === 'member'
+  const isPostOfficer = profile?.role === 'post_commander' || profile?.role === 'post_officer'
 
   const navItems = [
     { to: '/', label: isPlainMember ? 'Home' : 'Global Dashboard', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
-    ...(isPlainMember ? MEMBER_ITEMS : SHARED_ITEMS).map((item) =>
+    // A guest_applicant (not yet verified/promoted) or any other
+    // unrecognized role gets neither toolset — an empty nav, matching the
+    // "Account Pending" screen they land on.
+    ...(isPlainMember ? MEMBER_ITEMS : isPostOfficer ? SHARED_ITEMS : []).map((item) =>
       item.to === '/health' && !isNational && profile?.post_id
         ? { ...item, to: `/health/${profile.post_id}` }
         : item
