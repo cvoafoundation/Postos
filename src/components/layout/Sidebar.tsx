@@ -64,10 +64,12 @@ export function Sidebar() {
   const navItems = [
     { to: '/', label: isPlainMember ? 'Home' : 'Global Dashboard', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
-    // A guest_applicant (not yet verified/promoted) or any other
-    // unrecognized role gets neither toolset — an empty nav, matching the
-    // "Account Pending" screen they land on.
-    ...(isPlainMember ? MEMBER_ITEMS : isPostOfficer ? SHARED_ITEMS : []).map((item) =>
+    // National always gets the full toolset too, on top of their own-only
+    // items above — they manage every post's modules directly. A plain
+    // member gets the small member set. A guest_applicant (not yet
+    // verified/promoted) or any other unrecognized role gets neither —
+    // an empty nav, matching the "Account Pending" screen they land on.
+    ...(isPlainMember ? MEMBER_ITEMS : isPostOfficer || isNational ? SHARED_ITEMS : []).map((item) =>
       item.to === '/health' && !isNational && profile?.post_id
         ? { ...item, to: `/health/${profile.post_id}` }
         : item

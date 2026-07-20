@@ -471,6 +471,52 @@ function EditMemberModal({
     setCancellingRenew(false)
   }
 
+  // For stuck test accounts, cash/check payments taken outside Stripe, or
+  // any case where the automatic Stripe webhook never fired — sets exactly
+  // what that webhook would have set. This also fires the same trigger
+  // that promotes their linked account from pending to real access, if
+  // they created one.
+  async function activateNow() {
+    const joinedAt = new Date().toISOString().slice(0, 10)
+    const expiresAt =
+      form.membership_type === 'lifetime'
+        ? null
+        : (() => {
+            const d = new Date()
+            d.setFullYear(d.getFullYear() + 1)
+            return d.toISOString().slice(0, 10)
+          })()
+    setSaving(true)
+    const { error } = await supabase
+      .from('members')
+      .update({ membership_status: 'active', joined_at: joinedAt, expires_at: expiresAt })
+      .eq('id', member.id)
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    update('membership_status', 'active')
+    update('expires_at', expiresAt ?? '')
+    onSaved()
+  }
+
+  async function deleteMember() {
+    const confirmed = window.confirm(
+      `Permanently delete ${member.full_name}'s membership record? If they created an account, that account stays but loses its membership access. This cannot be undone.`
+    )
+    if (!confirmed) return
+    setSaving(true)
+    const { error } = await supabase.from('members').delete().eq('id', member.id)
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    onSaved()
+    onClose()
+  }
+
   return (
     <Modal title={`Edit ${member.full_name}`} onClose={onClose}>
       <div className="space-y-3">
@@ -533,6 +579,12 @@ function EditMemberModal({
 
         {error && <p className="text-status-attention text-sm">{error}</p>}
 
+        {member.membership_status !== 'active' && (
+          <button onClick={activateNow} disabled={saving} className="w-full text-sm border border-status-active/40 text-status-active hover:bg-status-active/10 rounded-sm py-2 disabled:opacity-50">
+            Activate Now (cash/check payment, or fixing a stuck signup)
+          </button>
+        )}
+
         <button onClick={handleSave} disabled={saving} className="btn-gold w-full disabled:opacity-50">
           {saving ? 'Saving…' : 'Save Changes'}
         </button>
@@ -543,6 +595,15 @@ function EditMemberModal({
           className="btn-ghost w-full text-sm"
         >
           Add to a Post's Founding Team
+        </button>
+
+        <button
+          type="button"
+          onClick={deleteMember}
+          disabled={saving}
+          className="w-full text-xs text-muted hover:text-status-attention disabled:opacity-50"
+        >
+          Delete Member
         </button>
       </div>
 
