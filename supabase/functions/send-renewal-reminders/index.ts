@@ -27,7 +27,10 @@
 //      URL once a day works exactly as well.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
+<<<<<<< HEAD
 import nodemailer from 'npm:nodemailer@6.9.16'
+=======
+>>>>>>> 611d78fb876f3d49aef993be18c3ccdb14ebe9d6
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
