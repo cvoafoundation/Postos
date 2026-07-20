@@ -1,56 +1,100 @@
 import { useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { PostApplicationForm } from '@/components/forms/PostApplicationForm'
-import { ChevronDown, CheckCircle2 } from 'lucide-react'
+import { ChevronDown, CheckCircle2, Flag, UserPlus, KeyRound } from 'lucide-react'
+
+type Section = 'start_post' | 'join_post' | 'staff' | null
 
 export default function Login() {
+  const navigate = useNavigate()
+  const [open, setOpen] = useState<Section>(null)
   const [submitted, setSubmitted] = useState(false)
-  const [staffOpen, setStaffOpen] = useState(false)
+
+  function toggle(section: Section) {
+    setOpen((current) => (current === section ? null : section))
+  }
 
   return (
     <div className="min-h-screen bg-base px-4 py-12">
       <div className="max-w-xl mx-auto">
         <div className="text-center mb-10">
           <div className="font-display text-4xl tracking-wide text-gold">CVOA</div>
-          <div className="eyebrow mt-1 mb-6">Post Operating System</div>
-          <h1 className="font-display text-4xl md:text-5xl tracking-wide text-ink leading-tight">
-            Start Your CVOA Post
-          </h1>
-          <p className="text-muted text-sm mt-3 max-w-md mx-auto">
-            Tell us about yourself and your area. No call to National Headquarters required —
-            this is the first step in the pipeline, and our team will follow up directly.
-          </p>
+          <div className="eyebrow mt-1">Post Operating System</div>
         </div>
 
-        <div className="panel p-6">
-          {submitted ? (
-            <div className="text-center py-8">
-              <CheckCircle2 className="mx-auto mb-4 text-status-active" size={40} />
-              <div className="font-display text-2xl tracking-wide mb-2">Application Received</div>
-              <p className="text-sm text-muted max-w-sm mx-auto">
-                Thank you for stepping up. National Staff reviews every inquiry — expect to hear
-                from us soon about next steps.
-              </p>
-            </div>
-          ) : (
-            <PostApplicationForm onSubmitted={() => setSubmitted(true)} submitLabel="Submit Application" />
-          )}
-        </div>
+        <div className="space-y-3">
+          {/* 1. Start Your Own CVOA Post */}
+          <div className="panel overflow-hidden">
+            <button
+              onClick={() => toggle('start_post')}
+              className="w-full flex items-center justify-between p-5 text-left hover:bg-surface/60 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Flag className="text-gold" size={20} />
+                <div>
+                  <div className="font-display text-xl tracking-wide">Start Your Own CVOA Post</div>
+                  <div className="text-xs text-muted mt-0.5">No post near you yet? Begin the application here.</div>
+                </div>
+              </div>
+              <ChevronDown size={18} className={`text-muted transition-transform ${open === 'start_post' ? 'rotate-180' : ''}`} />
+            </button>
+            {open === 'start_post' && (
+              <div className="p-5 pt-0">
+                {submitted ? (
+                  <div className="text-center py-8">
+                    <CheckCircle2 className="mx-auto mb-4 text-status-active" size={40} />
+                    <div className="font-display text-2xl tracking-wide mb-2">Application Received</div>
+                    <p className="text-sm text-muted max-w-sm mx-auto">
+                      Thank you for stepping up. National Staff reviews every inquiry — expect to hear from us soon
+                      about next steps.
+                    </p>
+                  </div>
+                ) : (
+                  <PostApplicationForm onSubmitted={() => setSubmitted(true)} submitLabel="Submit Application" />
+                )}
+              </div>
+            )}
+          </div>
 
-        <div className="mt-10 pt-6 border-t border-hairline">
-          <button
-            onClick={() => setStaffOpen((v) => !v)}
-            className="flex items-center justify-center gap-2 w-full text-xs font-mono uppercase tracking-wide text-muted hover:text-gold transition-colors"
-          >
-            Post Operating System — Staff Sign In
-            <ChevronDown size={14} className={staffOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
-          </button>
+          {/* 2. Join an Existing Post */}
+          <div className="panel overflow-hidden">
+            <button
+              onClick={() => navigate('/join')}
+              className="w-full flex items-center justify-between p-5 text-left hover:bg-surface/60 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <UserPlus className="text-gold" size={20} />
+                <div>
+                  <div className="font-display text-xl tracking-wide">Join an Existing Post</div>
+                  <div className="text-xs text-muted mt-0.5">Already have a CVOA post nearby? Become a member.</div>
+                </div>
+              </div>
+              <ChevronDown size={18} className="text-muted -rotate-90" />
+            </button>
+          </div>
 
-          {staffOpen && (
-            <div className="mt-4 max-w-sm mx-auto">
-              <StaffLoginForm />
-            </div>
-          )}
+          {/* 3. Staff Sign In */}
+          <div className="panel overflow-hidden">
+            <button
+              onClick={() => toggle('staff')}
+              className="w-full flex items-center justify-between p-5 text-left hover:bg-surface/60 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <KeyRound className="text-gold" size={20} />
+                <div>
+                  <div className="font-display text-xl tracking-wide">Staff Sign In</div>
+                  <div className="text-xs text-muted mt-0.5">Already have an account with CVOA Post OS?</div>
+                </div>
+              </div>
+              <ChevronDown size={18} className={`text-muted transition-transform ${open === 'staff' ? 'rotate-180' : ''}`} />
+            </button>
+            {open === 'staff' && (
+              <div className="p-5 pt-0">
+                <StaffLoginForm />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -73,7 +117,7 @@ function StaffLoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="panel p-5 space-y-3">
+    <form onSubmit={handleSubmit} className="space-y-3">
       <div>
         <label className="eyebrow block mb-1.5">Email</label>
         <input
@@ -97,7 +141,7 @@ function StaffLoginForm() {
         />
       </div>
       {error && <p className="text-status-attention text-sm">{error}</p>}
-      <button type="submit" disabled={loading} className="btn-ghost w-full disabled:opacity-50">
+      <button type="submit" disabled={loading} className="btn-gold w-full disabled:opacity-50">
         {loading ? 'Signing in…' : 'Sign In'}
       </button>
     </form>
