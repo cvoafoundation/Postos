@@ -213,7 +213,24 @@ export const mockSupabase = {
   from(table: string) {
     return new QueryBuilder(table)
   },
-  async rpc(name: string, _args?: any) {
+  async rpc(name: string, args?: any) {
+    if (name === 'verify_membership') {
+      const member = (seedData.members ?? []).find((m: any) => m.id === args?.p_member_id)
+      if (!member) return { data: [], error: null }
+      return {
+        data: [
+          {
+            full_name: member.full_name,
+            membership_number: member.membership_number,
+            membership_type: member.membership_type,
+            membership_status: member.membership_status,
+            joined_at: member.joined_at,
+            expires_at: member.expires_at,
+          },
+        ],
+        error: null,
+      }
+    }
     if (name === 'link_founding_team_profile') {
       // Demo mode has no real auth users to link against — no-op success.
       return { data: null, error: null }

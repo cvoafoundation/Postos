@@ -9,9 +9,8 @@
 // (uses the same STRIPE_SECRET_KEY already configured for the other
 // membership functions — nothing new to set up)
 
-import { serve } from 'https://deno.land/std@0.190.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
-import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno'
+import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
+import Stripe from 'npm:stripe@14.21.0'
 
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -21,7 +20,7 @@ interface RequestBody {
   member_id: string
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',

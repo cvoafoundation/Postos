@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import type { FoundingTeamMember, Post } from '@/lib/types'
-import { Copy, Check, Trash2, FileText } from 'lucide-react'
+import { Copy, Check, Trash2, FileText, Plus, Upload, Loader2 } from 'lucide-react'
 import { formatDistanceToNow, differenceInDays } from 'date-fns'
 
 function isStaleVerification(verifiedAt: string): boolean {
@@ -31,30 +33,35 @@ async function openDocument(path: string) {
 }
 
 export default function FoundingTeamBuilder() {
+  const { postId: routePostId } = useParams<{ postId: string }>()
+  const navigate = useNavigate()
   const { profile, isNational } = useAuth()
-  const [posts, setPosts] = useState<Post[]>([])
+  const [post, setPost] = useState<Post | null>(null)
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [members, setMembers] = useState<FoundingTeamMember[]>([])
   const [copied, setCopied] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
 
-  // National roles can manage any post still in formation; post-scoped roles
-  // (Post Commander, etc.) are locked to their own post.
+  // National navigates here via the Founding Team list, arriving with a
+  // specific post already chosen in the URL. Post-scoped roles only ever
+  // have their own post, so they skip the list entirely.
   useEffect(() => {
     if (isNational) {
-      supabase
-        .from('posts')
-        .select('*')
-        .in('status', ['approved', 'founding_team_building'])
-        .then(({ data }: any) => {
-          const list = (data ?? []) as Post[]
-          setPosts(list)
-          if (list.length > 0 && !selectedPostId) setSelectedPostId(list[0].id)
-        })
+      if (routePostId) {
+        setSelectedPostId(routePostId)
+      } else {
+        navigate('/founding-team', { replace: true })
+      }
     } else if (profile?.post_id) {
       setSelectedPostId(profile.post_id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNational, profile?.post_id])
+  }, [isNational, profile?.post_id, routePostId])
+
+  useEffect(() => {
+    if (!selectedPostId) return
+    supabase.from('posts').select('*').eq('id', selectedPostId).single().then(({ data }: any) => setPost(data as Post))
+  }, [selectedPostId])
 
   async function loadMembers(postId: string) {
     const { data } = await supabase.from('founding_team_members').select('*').eq('post_id', postId)
@@ -108,31 +115,18 @@ export default function FoundingTeamBuilder() {
     )
   }
 
-  const selectedPost = posts.find((p) => p.id === selectedPostId)
+  const selectedPost = post
   const filledPositions = new Set(members.map((m) => m.position))
   const missing = REQUIRED_POSITIONS.filter((p) => !filledPositions.has(p as any))
 
   return (
     <div>
-      <PageHeader
-        eyebrow="Module 3"
-        title="Founding Team Builder"
-        action={
-          isNational && posts.length > 1 ? (
-            <select
-              className="input-field w-64"
-              value={selectedPostId}
-              onChange={(e) => setSelectedPostId(e.target.value)}
-            >
-              {posts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          ) : undefined
-        }
-      />
+      {isNational && (
+        <button onClick={() => navigate('/founding-team')} className="text-xs font-mono text-muted hover:text-gold mb-4">
+          ← Back to Founding Teams
+        </button>
+      )}
+      <PageHeader eyebrow="Module 3" title={selectedPost ? `${selectedPost.name} — Founding Team` : 'Founding Team Builder'} />
 
       <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
         <div>
@@ -142,10 +136,15 @@ export default function FoundingTeamBuilder() {
             here automatically. No staff data entry required.
           </p>
         </div>
-        <button onClick={copyInviteLink} className="btn-gold flex items-center gap-2 shrink-0">
-          {copied ? <Check size={16} /> : <Copy size={16} />}
-          {copied ? 'Copied!' : 'Copy Invite Link'}
-        </button>
+        <div className="flex gap-2 shrink-0">
+          <button onClick={() => setShowAdd(true)} className="btn-ghost flex items-center gap-2">
+            <Plus size={16} /> Add Manually
+          </button>
+          <button onClick={copyInviteLink} className="btn-gold flex items-center gap-2">
+            {copied ? <Check size={16} /> : <Copy size={16} />}
+            {copied ? 'Copied!' : 'Copy Invite Link'}
+          </button>
+        </div>
       </div>
 
       {missing.length > 0 && (
@@ -292,10 +291,102 @@ export default function FoundingTeamBuilder() {
         {members.length === 0 && (
           <EmptyState
             title="No founding team members yet"
-            hint="Share the invite link above to start populating this list."
+            hint="Share the invite link above, or add someone directly if they've already been in touch."
           />
         )}
       </div>
+
+      {showAdd && selectedPostId && (
+        <AddFoundingMemberModal
+          postId={selectedPostId}
+          onClose={() => setShowAdd(false)}
+          onAdded={() => {
+            setShowAdd(false)
+            loadMembers(selectedPostId)
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function AddFoundingMemberModal({ postId, onClose, onAdded }: { postId: string; onClose: () => void; onAdded: () => void }) {
+  const [form, setForm] = useState({ name: '', email: '', phone: '', position: 'member', combat_status: 'Non-combat veteran' })
+  const [docFile, setDocFile] = useState<File | null>(null)
+  const [docPath, setDocPath] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    const path = `founding-team/${crypto.randomUUID()}-${file.name}`
+    const { data, error } = await supabase.storage.from('dd214-uploads').upload(path, file)
+    setUploading(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setDocFile(file)
+    setDocPath(data?.path ?? path)
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    const { error } = await supabase.from('founding_team_members').insert({
+      post_id: postId,
+      name: form.name,
+      email: form.email || null,
+      phone: form.phone || null,
+      position: form.position,
+      combat_status: form.combat_status,
+      dd214_storage_path: docPath,
+    })
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    onAdded()
+  }
+
+  return (
+    <Modal title="Add Founding Team Member" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <input required placeholder="Full name" className="input-field" value={form.name} onChange={(e) => update('name', e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <input type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
+          <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
+        </div>
+        <select className="input-field" value={form.position} onChange={(e) => update('position', e.target.value)}>
+          {ALL_POSITIONS.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <select className="input-field" value={form.combat_status} onChange={(e) => update('combat_status', e.target.value)}>
+          <option>Non-combat veteran</option>
+          <option>Combat veteran</option>
+        </select>
+        <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+          <Upload size={14} />
+          {uploading ? <Loader2 size={14} className="animate-spin" /> : docFile ? docFile.name : 'Attach DD214 (optional, can add later)'}
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFileChange} disabled={uploading} />
+        </label>
+        {error && <p className="text-status-attention text-sm">{error}</p>}
+        <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
+          {saving ? 'Adding…' : 'Add Member'}
+        </button>
+      </form>
+    </Modal>
   )
 }

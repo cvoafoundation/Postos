@@ -19,8 +19,7 @@
 //      (uses the SUPABASE_SERVICE_ROLE_KEY that's already available to
 //      every Edge Function automatically — nothing new to configure)
 
-import { serve } from 'https://deno.land/std@0.190.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -32,7 +31,7 @@ interface RequestBody {
   post_id: string | null
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',

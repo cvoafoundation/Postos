@@ -16,6 +16,7 @@ import {
   HardDrive,
   UserCog,
   Building2,
+  CreditCard,
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
@@ -36,6 +37,7 @@ const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
   { to: '/checklist', label: 'Launch Checklist', icon: ListChecks },
   { to: '/meetings', label: 'Meetings', icon: CalendarCheck },
   { to: '/members', label: 'Membership Roster', icon: IdCard },
+  { to: '/my-membership', label: 'My Membership', icon: CreditCard },
   { to: '/toolkit', label: 'Post Toolkit', icon: FolderDown },
   { to: '/shared-files', label: 'Shared Files', icon: HardDrive },
   { to: '/recruiting', label: 'Recruiting Engine', icon: Radar },
@@ -45,11 +47,10 @@ const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
   { to: '/build-a-post', label: 'Build A Post', icon: Hammer },
 ]
 
-// A plain paying member isn't running a post — a much smaller, relevant set.
+// A plain paying member isn't running a post — Veterans Congress and their
+// own membership card.
 const MEMBER_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
-  { to: '/meetings', label: 'Meetings', icon: CalendarCheck },
-  { to: '/toolkit', label: 'Post Toolkit', icon: FolderDown },
-  { to: '/shared-files', label: 'Shared Files', icon: HardDrive },
+  { to: '/my-membership', label: 'My Membership', icon: CreditCard },
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
 ]
 

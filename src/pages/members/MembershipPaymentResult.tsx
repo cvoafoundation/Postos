@@ -1,8 +1,9 @@
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { CheckCircle2, XCircle } from 'lucide-react'
 
 export default function MembershipPaymentResult() {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const success = searchParams.get('status') === 'success'
 
   return (
@@ -14,9 +15,13 @@ export default function MembershipPaymentResult() {
             <>
               <CheckCircle2 className="mx-auto mb-4 text-status-active" size={44} />
               <div className="font-display text-2xl tracking-wide mb-2">Payment Received</div>
-              <p className="text-sm text-muted">
-                Your membership is active. You should receive a confirmation shortly — welcome to CVOA.
+              <p className="text-sm text-muted mb-6">
+                Your membership is active. If you created an account, log in now to see your digital membership
+                card.
               </p>
+              <button onClick={() => navigate('/?login=true')} className="btn-gold w-full">
+                Log In to Your Account
+              </button>
             </>
           ) : (
             <>

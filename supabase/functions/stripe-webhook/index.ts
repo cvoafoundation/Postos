@@ -27,46 +27,45 @@
 //      Copy the "Signing secret" shown after creating it — that's your
 //      STRIPE_WEBHOOK_SECRET from step 1.
 
-import { serve } from 'https://deno.land/std@0.190.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
-import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno'
+import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
+import Stripe from 'npm:stripe@14.21.0'
+import nodemailer from 'npm:nodemailer@6.9.16'
 
-const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')!
+const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_KEY')!
 const STRIPE_WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-const NOTIFY_FROM_ADDRESS = Deno.env.get('NOTIFY_FROM_ADDRESS') ?? 'CVOA Post OS <onboarding@resend.dev>'
+const WORKSPACE_EMAIL = Deno.env.get('WORKSPACE_EMAIL')
+const WORKSPACE_APP_PASSWORD = Deno.env.get('WORKSPACE_APP_PASSWORD')
 
 const NOTIFY_RECIPIENTS = ['command@combatvetsofamerica.org', 'maddymarked@gmail.com']
 
 async function sendMembershipNotification(member: { full_name: string; address: string | null; membership_number: string | null; membership_type: string }) {
-  if (!RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY not set — skipping membership notification email (dry run):', member)
+  if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
+    console.warn('WORKSPACE_EMAIL/WORKSPACE_APP_PASSWORD not set — skipping membership notification email (dry run):', member)
     return
   }
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: NOTIFY_FROM_ADDRESS,
-      to: NOTIFY_RECIPIENTS,
-      subject: `New ${member.membership_type} membership: ${member.full_name}`,
-      html: `<p>A membership payment just cleared:</p>
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: { user: WORKSPACE_EMAIL, pass: WORKSPACE_APP_PASSWORD },
+  })
+  await transporter.sendMail({
+    from: `CVOA Post OS <${WORKSPACE_EMAIL}>`,
+    to: NOTIFY_RECIPIENTS.join(', '),
+    subject: `New ${member.membership_type} membership: ${member.full_name}`,
+    html: `<p>A membership payment just cleared:</p>
              <ul>
                <li><strong>Name:</strong> ${member.full_name}</li>
                <li><strong>Address:</strong> ${member.address ?? 'Not provided'}</li>
                <li><strong>Membership Number:</strong> ${member.membership_number ?? 'Pending assignment'}</li>
                <li><strong>Type:</strong> ${member.membership_type}</li>
              </ul>`,
-    }),
   })
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
   const signature = req.headers.get('stripe-signature')!
   const body = await req.text()

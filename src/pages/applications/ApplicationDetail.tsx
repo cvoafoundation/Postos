@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
-import { POST_STATUS_LABELS, type PostApplication } from '@/lib/types'
+import { useAuth } from '@/context/AuthContext'
+import { POST_STATUS_LABELS, type ApplicationSignoff, type PostApplication, type Profile } from '@/lib/types'
 import { format } from 'date-fns'
-import { Trash2, Star } from 'lucide-react'
+import { Trash2, Star, Users, CheckCircle2 } from 'lucide-react'
 
 interface Scorecard {
   id: string
@@ -112,6 +113,81 @@ function ScorecardSummary({ applicationId }: { applicationId: string }) {
   )
 }
 
+function SignoffPanel({ applicationId }: { applicationId: string }) {
+  const { profile } = useAuth()
+  const [nationalAccounts, setNationalAccounts] = useState<Profile[]>([])
+  const [signoffs, setSignoffs] = useState<ApplicationSignoff[]>([])
+  const [loading, setLoading] = useState(true)
+
+  async function load() {
+    const [accountsRes, signoffsRes] = await Promise.all([
+      supabase.from('profiles').select('*').in('role', ['national_commander', 'national_staff']),
+      supabase.from('application_signoffs').select('*').eq('application_id', applicationId),
+    ])
+    setNationalAccounts((accountsRes.data ?? []) as Profile[])
+    setSignoffs((signoffsRes.data ?? []) as ApplicationSignoff[])
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applicationId])
+
+  const mySignoff = signoffs.find((s) => s.profile_id === profile?.id)
+
+  async function signOff() {
+    if (!profile) return
+    await supabase.from('application_signoffs').insert({ application_id: applicationId, profile_id: profile.id })
+    load()
+  }
+
+  async function undoSignoff() {
+    if (!mySignoff) return
+    await supabase.from('application_signoffs').delete().eq('id', mySignoff.id)
+    load()
+  }
+
+  if (loading) return null
+
+  return (
+    <div className="border-t border-hairline pt-4">
+      <div className="eyebrow mb-2 flex items-center gap-1.5">
+        <Users size={12} /> NCC Sign-off ({signoffs.length}/{nationalAccounts.length})
+      </div>
+      <p className="text-xs text-muted mb-3">
+        Every National account must sign off before this candidate can be approved and issued a charter.
+      </p>
+      <div className="space-y-1.5 mb-3">
+        {nationalAccounts.map((acct) => {
+          const signed = signoffs.some((s) => s.profile_id === acct.id)
+          return (
+            <div key={acct.id} className="flex items-center justify-between text-sm">
+              <span>{acct.full_name}</span>
+              {signed ? (
+                <span className="flex items-center gap-1 text-status-active text-xs">
+                  <CheckCircle2 size={13} /> Signed
+                </span>
+              ) : (
+                <span className="text-xs text-muted">Pending</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {mySignoff ? (
+        <button onClick={undoSignoff} className="text-xs text-muted hover:text-status-attention">
+          Undo my sign-off
+        </button>
+      ) : (
+        <button onClick={signOff} className="btn-gold text-xs px-3 py-1.5">
+          Sign Off
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function ApplicationDetailModal({
   application,
   onClose,
@@ -174,6 +250,8 @@ export function ApplicationDetailModal({
             value={application.dd214_storage_path ? application.dd214_review_status : 'Not uploaded'}
           />
         </div>
+
+        {application.status === 'vetting' && <SignoffPanel applicationId={application.id} />}
 
         <div className="border-t border-hairline pt-4">
           {!confirmingDelete ? (

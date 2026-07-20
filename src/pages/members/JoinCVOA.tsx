@@ -1,7 +1,8 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { MEMBERSHIP_PRICES, type MembershipType, type Post } from '@/lib/types'
-import { Loader2, KeyRound, Upload, FileCheck, CheckCircle2 } from 'lucide-react'
+import { Loader2, KeyRound, Upload, FileCheck, CheckCircle2, Flag, UserPlus, IdCard, LogIn } from 'lucide-react'
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
@@ -12,6 +13,7 @@ const US_STATES = [
 type Path = 'choose' | 'join_existing' | 'new_post' | 'member_only'
 
 export default function JoinCVOA() {
+  const navigate = useNavigate()
   const [path, setPath] = useState<Path>('choose')
   const [posts, setPosts] = useState<Post[]>([])
 
@@ -25,40 +27,82 @@ export default function JoinCVOA() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-base px-4 py-16 flex items-start justify-center">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="font-display text-3xl tracking-wide text-gold">CVOA</div>
-          <div className="eyebrow mt-1">Join Combat Veterans of America</div>
+    <div className="min-h-screen bg-base px-4 py-16">
+      <div className={`mx-auto ${path === 'choose' ? 'max-w-4xl' : 'max-w-md'}`}>
+        <div className="text-center mb-10">
+          <div className="font-display text-5xl tracking-wide text-gold">CVOA</div>
+          <div className="eyebrow mt-2">Combat Veterans of America</div>
         </div>
 
-        <div className="panel p-6">
-          {path === 'choose' && (
-            <div className="space-y-3">
-              <p className="text-sm text-muted mb-4">What are you looking to do?</p>
-              <button onClick={() => setPath('join_existing')} className="w-full text-left panel p-4 hover:border-gold transition-colors">
-                <div className="text-sm font-medium text-ink">Join an existing post</div>
-                <div className="text-xs text-muted mt-1">There's already a CVOA post near me</div>
-              </button>
-              <button onClick={() => setPath('new_post')} className="w-full text-left panel p-4 hover:border-gold transition-colors">
-                <div className="text-sm font-medium text-ink">Start a new post</div>
-                <div className="text-xs text-muted mt-1">There isn't one in my area yet — I want to start one</div>
-              </button>
-              <button onClick={() => setPath('member_only')} className="w-full text-left panel p-4 hover:border-gold transition-colors">
-                <div className="text-sm font-medium text-ink">Just become a member for now</div>
-                <div className="text-xs text-muted mt-1">Not sure yet, or no local post — join as a national member</div>
-              </button>
+        {path === 'choose' && (
+          <div>
+            <p className="text-center text-sm text-muted mb-6">What are you looking to do?</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <ChooserCard
+                icon={UserPlus}
+                title="Join an Existing Post"
+                subtitle="There's already a CVOA post near me"
+                onClick={() => setPath('join_existing')}
+              />
+              <ChooserCard
+                icon={Flag}
+                title="Start a New Post"
+                subtitle="There isn't one in my area yet"
+                onClick={() => setPath('new_post')}
+              />
+              <ChooserCard
+                icon={IdCard}
+                title="Just Become a Member"
+                subtitle="Not sure yet, or no local post"
+                onClick={() => setPath('member_only')}
+              />
+              <ChooserCard
+                icon={LogIn}
+                title="Log In"
+                subtitle="Already have an account"
+                onClick={() => navigate('/?login=true')}
+              />
             </div>
-          )}
+          </div>
+        )}
 
-          {path === 'new_post' && <StartPostForm onBack={() => setPath('choose')} />}
-
-          {(path === 'join_existing' || path === 'member_only') && (
-            <MembershipForm mode={path} posts={posts} onBack={() => setPath('choose')} />
-          )}
-        </div>
+        {path !== 'choose' && (
+          <div className="panel p-6">
+            {path === 'new_post' && <StartPostForm onBack={() => setPath('choose')} />}
+            {(path === 'join_existing' || path === 'member_only') && (
+              <MembershipForm mode={path} posts={posts} onBack={() => setPath('choose')} />
+            )}
+          </div>
+        )}
       </div>
     </div>
+  )
+}
+
+function ChooserCard({
+  icon: Icon,
+  title,
+  subtitle,
+  onClick,
+}: {
+  icon: typeof Flag
+  title: string
+  subtitle: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="panel p-6 text-left hover:border-gold transition-colors flex flex-col items-start gap-3 group"
+    >
+      <div className="w-12 h-12 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center group-hover:bg-gold/20 transition-colors">
+        <Icon className="text-gold" size={22} />
+      </div>
+      <div>
+        <div className="font-display text-lg tracking-wide text-ink">{title}</div>
+        <div className="text-xs text-muted mt-1">{subtitle}</div>
+      </div>
+    </button>
   )
 }
 
@@ -189,26 +233,29 @@ function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'memb
     setSubmitting(true)
     setError(null)
 
-    const { data: member, error: memberError } = await supabase
-      .from('members')
-      .insert({
-        post_id: mode === 'join_existing' ? form.post_id || null : null,
-        full_name: form.full_name,
-        email: form.email || null,
-        phone: form.phone || null,
-        address: form.address || null,
-        state: form.state || null,
-        military_branch: form.military_branch || null,
-        membership_type: form.membership_type,
-        membership_status: 'pending_payment',
-        dd214_storage_path: docPath,
-      })
-      .select()
-      .single()
+    // Generated here rather than read back after insert — reading a row
+    // back is governed by the SELECT policy (National or your own post),
+    // which an anonymous visitor signing up doesn't satisfy. Providing the
+    // id ourselves means we never need to ask for it back.
+    const memberId = crypto.randomUUID()
 
-    if (memberError || !member) {
+    const { error: memberError } = await supabase.from('members').insert({
+      id: memberId,
+      post_id: mode === 'join_existing' ? form.post_id || null : null,
+      full_name: form.full_name,
+      email: form.email || null,
+      phone: form.phone || null,
+      address: form.address || null,
+      state: form.state || null,
+      military_branch: form.military_branch || null,
+      membership_type: form.membership_type,
+      membership_status: 'pending_payment',
+      dd214_storage_path: docPath,
+    })
+
+    if (memberError) {
       setSubmitting(false)
-      setError(memberError?.message ?? 'Something went wrong creating your record.')
+      setError(memberError.message)
       return
     }
 
@@ -225,7 +272,7 @@ function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'memb
 
     const { data, error: checkoutError } = await supabase.functions.invoke('create-membership-checkout', {
       body: {
-        member_id: member.id,
+        member_id: memberId,
         post_id: mode === 'join_existing' ? form.post_id || null : null,
         membership_type: form.membership_type,
         auto_renew: form.membership_type === 'annual' ? form.auto_renew : false,

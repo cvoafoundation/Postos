@@ -57,9 +57,12 @@ export default function MemberHome() {
       </div>
 
       {member && (
-        <div className="panel p-5 mb-8 flex items-center justify-between">
+        <button
+          onClick={() => navigate('/my-membership')}
+          className="w-full panel p-5 mb-8 flex items-center justify-between hover:border-gold transition-colors text-left"
+        >
           <div>
-            <div className="eyebrow mb-1">Your Membership</div>
+            <div className="eyebrow mb-1">Your Membership — View Digital Card →</div>
             <div className="font-mono text-gold text-lg">{member.membership_number}</div>
             <div className="text-sm text-muted mt-1">
               {member.membership_type === 'lifetime' ? 'Lifetime Member' : 'Annual Member'}
@@ -67,7 +70,7 @@ export default function MemberHome() {
             </div>
           </div>
           <StatusBadge label={member.membership_status.replaceAll('_', ' ')} tone={member.membership_status === 'active' ? 'active' : 'developing'} />
-        </div>
+        </button>
       )}
 
       <div className="eyebrow mb-3">Get Involved</div>

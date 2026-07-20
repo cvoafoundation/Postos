@@ -6,29 +6,32 @@
 //   1. Sends the applicant a confirmation email.
 //   2. Sends National Staff an alert email with a direct link to review.
 //
-// This is what makes intake "hands-off" — without it, applications land in
-// the database silently and someone has to remember to check the dashboard.
+// Sends through CVOA's own Google Workspace account via SMTP — no
+// third-party email service, no separate bill. Uses an "App Password"
+// (not your real login password) so this code never actually has your
+// real Workspace credentials.
 //
-// DEPLOYING THIS (one-time setup, ~10 minutes):
-//   1. Sign up for Resend (or any transactional email API — SendGrid, Postmark,
-//      etc. work the same way, just swap the fetch call below).
-//   2. In Supabase: Project Settings -> Edge Functions -> add a secret:
-//        RESEND_API_KEY = <your Resend API key>
+// DEPLOYING THIS (one-time setup):
+//   1. Turn on 2-Step Verification for the sending account if it isn't on
+//      already (Google Account -> Security -> 2-Step Verification).
+//   2. Google Account -> Security -> App Passwords -> create one, name it
+//      something like "CVOA Post OS" -> copy the 16-character password.
+//   3. In Supabase: Edge Functions -> Secrets, add:
+//        WORKSPACE_EMAIL = command@combatvetsofamerica.org (the sending address)
+//        WORKSPACE_APP_PASSWORD = <the 16-character app password from step 2>
 //        STAFF_ALERT_EMAIL = <the inbox that should get new-application alerts>
-//   3. Deploy: `supabase functions deploy notify-new-application`
-//   4. In Supabase Dashboard -> Database -> Webhooks -> Create a new webhook:
+//   4. Deploy this function.
+//   5. In Supabase Dashboard -> Database -> Webhooks -> Create a new webhook:
 //        Table: post_applications
 //        Events: Insert
 //        Type: Supabase Edge Function
 //        Function: notify-new-application
-//   From that point on, every new application triggers this automatically —
-//   nobody has to remember to check anything.
 
-import { serve } from 'https://deno.land/std@0.190.0/http/server.ts'
+import nodemailer from 'npm:nodemailer@6.9.16'
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
+const WORKSPACE_EMAIL = Deno.env.get('WORKSPACE_EMAIL')
+const WORKSPACE_APP_PASSWORD = Deno.env.get('WORKSPACE_APP_PASSWORD')
 const STAFF_ALERT_EMAIL = Deno.env.get('STAFF_ALERT_EMAIL')
-const FROM_ADDRESS = Deno.env.get('NOTIFY_FROM_ADDRESS') ?? 'CVOA Post OS <onboarding@resend.dev>'
 
 interface WebhookPayload {
   type: 'INSERT'
@@ -44,21 +47,25 @@ interface WebhookPayload {
 }
 
 async function sendEmail(to: string, subject: string, html: string) {
-  if (!RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY not set — skipping email send (dry run):', { to, subject })
+  if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
+    console.warn('WORKSPACE_EMAIL/WORKSPACE_APP_PASSWORD not set — skipping email send (dry run):', { to, subject })
     return
   }
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ from: FROM_ADDRESS, to, subject, html }),
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: { user: WORKSPACE_EMAIL, pass: WORKSPACE_APP_PASSWORD },
+  })
+  await transporter.sendMail({
+    from: `CVOA Post OS <${WORKSPACE_EMAIL}>`,
+    to,
+    subject,
+    html,
   })
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const payload = (await req.json()) as WebhookPayload
   const app = payload.record
 

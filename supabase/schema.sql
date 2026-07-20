@@ -161,6 +161,18 @@ create table post_applications (
   updated_at timestamptz not null default now()
 );
 
+-- Every current National account (Commander or Staff) must individually
+-- sign off on a candidate before their application can move from Vetting
+-- to Approved — this is what actually gates issuing a charter, not just
+-- one person's decision.
+create table application_signoffs (
+  id uuid primary key default uuid_generate_v4(),
+  application_id uuid not null references post_applications(id) on delete cascade,
+  profile_id uuid not null references profiles(id),
+  signed_at timestamptz not null default now(),
+  unique (application_id, profile_id)
+);
+
 -- ----------------------------------------------------------------------------
 -- MODULE 2: VETTING SYSTEM
 -- ----------------------------------------------------------------------------
@@ -916,6 +928,7 @@ alter table profiles enable row level security;
 alter table pending_profile_signups enable row level security;
 alter table posts enable row level security;
 alter table post_applications enable row level security;
+alter table application_signoffs enable row level security;
 alter table vetting_scorecards enable row level security;
 alter table vetting_interviews enable row level security;
 alter table vetting_decisions enable row level security;
@@ -1028,6 +1041,13 @@ create policy "applications_update_national" on post_applications
   for update using (is_national_role());
 create policy "applications_delete_national" on post_applications
   for delete using (is_national_role());
+
+create policy "application_signoffs_select_national" on application_signoffs
+  for select using (is_national_role());
+create policy "application_signoffs_insert_own" on application_signoffs
+  for insert with check (is_national_role() and profile_id = auth.uid());
+create policy "application_signoffs_delete_own" on application_signoffs
+  for delete using (profile_id = auth.uid());
 
 create policy "vetting_scorecards_national" on vetting_scorecards
   for all using (is_national_role());
@@ -1166,6 +1186,8 @@ create policy "resolutions_write_delegate" on resolutions
   for insert with check (auth.uid() is not null);
 create policy "resolutions_update_own_or_national" on resolutions
   for update using (submitted_by = auth.uid() or is_national_role());
+create policy "resolutions_delete_national" on resolutions
+  for delete using (is_national_role());
 
 create policy "resolution_co_sponsors_read_all" on resolution_co_sponsors for select using (true);
 create policy "resolution_co_sponsors_write_auth" on resolution_co_sponsors
@@ -1485,6 +1507,31 @@ $$;
 create trigger trg_promote_member_account
   after update on members
   for each row execute function promote_member_account();
+
+-- Powers the QR code on the digital membership card. Deliberately returns
+-- only the fields safe to show a stranger who scans the card (no email,
+-- phone, or address) — this is callable by anyone, including anonymous
+-- visitors, which is the whole point of a scannable card, so it must never
+-- leak anything sensitive.
+create or replace function verify_membership(p_member_id uuid)
+returns table (
+  full_name text,
+  membership_number text,
+  membership_type membership_type,
+  membership_status membership_status,
+  joined_at date,
+  expires_at date
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select full_name, membership_number, membership_type, membership_status, joined_at, expires_at
+  from members
+  where id = p_member_id;
+$$;
+
+grant execute on function verify_membership(uuid) to anon, authenticated;
 
 -- Auto-generates a membership number ("19-000000001") on insert, unless one
 -- was already supplied (e.g. importing existing numbers from a CSV so

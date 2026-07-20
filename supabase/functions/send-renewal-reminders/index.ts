@@ -26,16 +26,16 @@
 //      cron service, GitHub Actions on a schedule, etc.) hitting this same
 //      URL once a day works exactly as well.
 
-import { serve } from 'https://deno.land/std@0.190.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
+import nodemailer from 'npm:nodemailer@6.9.16'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-const NOTIFY_FROM_ADDRESS = Deno.env.get('NOTIFY_FROM_ADDRESS') ?? 'CVOA Post OS <onboarding@resend.dev>'
+const WORKSPACE_EMAIL = Deno.env.get('WORKSPACE_EMAIL')
+const WORKSPACE_APP_PASSWORD = Deno.env.get('WORKSPACE_APP_PASSWORD')
 const NOTIFY_RECIPIENTS = ['command@combatvetsofamerica.org', 'maddymarked@gmail.com']
 
-serve(async () => {
+Deno.serve(async () => {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
   const targetDate = new Date()
@@ -55,9 +55,9 @@ serve(async () => {
     })
   }
 
-  if (!RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY not set — skipping renewal reminder email (dry run):', members)
-    return new Response(JSON.stringify({ sent: false, reason: 'RESEND_API_KEY not configured.' }), {
+  if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
+    console.warn('WORKSPACE_EMAIL/WORKSPACE_APP_PASSWORD not set — skipping renewal reminder email (dry run):', members)
+    return new Response(JSON.stringify({ sent: false, reason: 'WORKSPACE_EMAIL/WORKSPACE_APP_PASSWORD not configured.' }), {
       headers: { 'Content-Type': 'application/json' },
     })
   }
@@ -69,15 +69,17 @@ serve(async () => {
     )
     .join('')
 
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: NOTIFY_FROM_ADDRESS,
-      to: NOTIFY_RECIPIENTS,
-      subject: `${members.length} membership${members.length !== 1 ? 's' : ''} renewing in 30 days`,
-      html: `<p>The following annual memberships expire on ${targetDateStr}:</p><ul>${rows}</ul>`,
-    }),
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: { user: WORKSPACE_EMAIL, pass: WORKSPACE_APP_PASSWORD },
+  })
+  await transporter.sendMail({
+    from: `CVOA Post OS <${WORKSPACE_EMAIL}>`,
+    to: NOTIFY_RECIPIENTS.join(', '),
+    subject: `${members.length} membership${members.length !== 1 ? 's' : ''} renewing in 30 days`,
+    html: `<p>The following annual memberships expire on ${targetDateStr}:</p><ul>${rows}</ul>`,
   })
 
   return new Response(JSON.stringify({ sent: true, count: members.length }), {

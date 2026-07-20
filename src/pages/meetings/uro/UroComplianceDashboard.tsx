@@ -5,13 +5,19 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { supabase } from '@/lib/supabase'
 import type { Post, UroMeeting } from '@/lib/types'
-import { differenceInDays, format } from 'date-fns'
+import { differenceInDays, format, startOfMonth, subMonths } from 'date-fns'
+import { CheckCircle2, XCircle } from 'lucide-react'
+
+function monthKey(dateStr: string): string {
+  return dateStr.slice(0, 7) // "YYYY-MM"
+}
 
 export default function UroComplianceDashboard() {
   const navigate = useNavigate()
   const [posts, setPosts] = useState<Post[]>([])
   const [meetings, setMeetings] = useState<UroMeeting[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'))
 
   useEffect(() => {
     Promise.all([
@@ -39,6 +45,13 @@ export default function UroComplianceDashboard() {
   }
   const missing = posts.filter((p) => !lastMeetingByPost[p.id] || differenceInDays(new Date(), new Date(lastMeetingByPost[p.id].meeting_date)) > 45)
 
+  // Last 12 months, most recent first, for the phase selector.
+  const monthOptions = Array.from({ length: 12 }, (_, i) => format(startOfMonth(subMonths(new Date(), i)), 'yyyy-MM'))
+  const meetingsThisMonthByPost: Record<string, UroMeeting> = {}
+  for (const m of meetings) {
+    if (monthKey(m.meeting_date) === selectedMonth) meetingsThisMonthByPost[m.post_id] = m
+  }
+
   return (
     <div>
       <PageHeader eyebrow="Veterans Congress Standard" title="URO Compliance Dashboard" />
@@ -60,6 +73,49 @@ export default function UroComplianceDashboard() {
           <div className="font-display text-3xl text-status-attention">{nonCompliant}</div>
           <div className="eyebrow mt-1">Non-Compliant Meetings</div>
         </div>
+      </div>
+
+      <div className="panel p-5 mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <div className="eyebrow">Meetings by Phase</div>
+          <select className="input-field w-48" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
+            {monthOptions.map((m) => (
+              <option key={m} value={m}>
+                {format(new Date(m + '-02'), 'MMMM yyyy')} URO
+              </option>
+            ))}
+          </select>
+        </div>
+        {posts.length === 0 ? (
+          <EmptyState title="No active posts yet" />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {posts.map((post) => {
+              const meeting = meetingsThisMonthByPost[post.id]
+              return (
+                <button
+                  key={post.id}
+                  onClick={() => meeting && navigate(`/meetings/uro/${meeting.id}/view`)}
+                  disabled={!meeting}
+                  className={`flex items-center justify-between border rounded-sm p-2.5 text-left text-sm ${
+                    meeting ? 'border-hairline hover:border-gold cursor-pointer' : 'border-hairline opacity-60 cursor-default'
+                  }`}
+                >
+                  <span>{post.name}</span>
+                  {meeting ? (
+                    <span className="flex items-center gap-1.5 text-xs text-status-active">
+                      <CheckCircle2 size={14} /> Submitted
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-xs text-status-attention">
+                      <XCircle size={14} /> Not Submitted
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

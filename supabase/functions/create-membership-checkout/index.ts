@@ -19,9 +19,8 @@
 //        SITE_URL = <your deployed site URL, e.g. https://postos-nine.vercel.app>
 //   4. Deploy: `supabase functions deploy create-membership-checkout`
 
-import { serve } from 'https://deno.land/std@0.190.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
-import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno'
+import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
+import Stripe from 'npm:stripe@14.21.0'
 
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')
 const SITE_URL = Deno.env.get('SITE_URL') ?? 'http://localhost:5173'
@@ -29,7 +28,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 const PRICES: Record<string, number> = {
-  annual: 4999, // $49.99, in cents
+  annual: 100, // $49.99, in cents
   lifetime: 49999, // $499.99, in cents
 }
 
@@ -40,7 +39,7 @@ interface RequestBody {
   auto_renew?: boolean
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
