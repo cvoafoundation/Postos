@@ -48,7 +48,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .single()
       .then(async ({ data }) => {
         if (data) {
-          setProfile(data as Profile)
+          const existingProfile = data as Profile
+          // An existing account stuck at guest_applicant never got a
+          // second chance before this — it was only ever checked once, at
+          // the exact moment the account was first created. If that
+          // check happened before payment cleared (the normal order of
+          // events), it silently failed forever after. This retries it on
+          // every login until it succeeds, so nothing stays stuck.
+          if (existingProfile.role === 'guest_applicant') {
+            await supabase.rpc('link_founding_team_profile')
+            await supabase.rpc('link_member_profile')
+            const { data: refreshed } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+            setProfile((refreshed as Profile) ?? existingProfile)
+            setLoading(false)
+            return
+          }
+          setProfile(existingProfile)
           setLoading(false)
           return
         }
@@ -97,6 +112,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setLoading(false)
             return
           }
+
+          // No pending signup record — most commonly because it was
+          // already used up by an earlier attempt with this same email
+          // (retesting, or a previous partial signup). Rather than leaving
+          // the account permanently profile-less with no way to ever
+          // recover, create a basic profile directly from what the
+          // account itself already knows, then run the same linking.
+          const { data: newProfile } = await supabase
+            .from('profiles')
+            .insert({
+              id: session.user.id,
+              full_name: (session.user.user_metadata?.full_name as string | undefined) ?? email.split('@')[0],
+              email,
+              role: 'guest_applicant',
+              post_id: null,
+            })
+            .select()
+            .single()
+
+          await supabase.rpc('link_founding_team_profile')
+          await supabase.rpc('link_member_profile')
+          const { data: refreshed } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+          setProfile((refreshed as Profile) ?? (newProfile as Profile) ?? null)
+          setLoading(false)
+          return
         }
 
         setProfile(null)
