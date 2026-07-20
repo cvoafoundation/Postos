@@ -26,8 +26,7 @@
 //      cron service, GitHub Actions on a schedule, etc.) hitting this same
 //      URL once a day works exactly as well.
 
-import { serve } from 'https://deno.land/std@0.190.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -35,7 +34,7 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 const NOTIFY_FROM_ADDRESS = Deno.env.get('NOTIFY_FROM_ADDRESS') ?? 'CVOA Post OS <onboarding@resend.dev>'
 const NOTIFY_RECIPIENTS = ['command@combatvetsofamerica.org', 'maddymarked@gmail.com']
 
-serve(async () => {
+Deno.serve(async () => {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
   const targetDate = new Date()
