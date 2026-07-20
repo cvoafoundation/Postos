@@ -828,6 +828,7 @@ create table drive_folders (
   name text not null,
   color text, -- hex color for visual organization, Google-Drive-style
   shared_with_posts boolean not null default false, -- makes this folder (and its direct contents) read-only visible to every post account
+  shared_with_post_id uuid references posts(id), -- OR targeted at one specific post only — that post's own private drop, invisible to everyone else
   deleted_at timestamptz, -- soft delete; trashed items purge automatically after 30 days
   created_by uuid references profiles(id),
   created_at timestamptz not null default now()
@@ -1247,13 +1248,19 @@ create policy "state_admission_order_read_all" on state_admission_order for sele
 
 create policy "drive_folders_national_all" on drive_folders for all using (is_national_role());
 create policy "drive_folders_shared_read" on drive_folders
-  for select using (shared_with_posts = true and auth.uid() is not null);
+  for select using (
+    (shared_with_posts = true and auth.uid() is not null)
+    or (shared_with_post_id = current_post_id())
+  );
 
 create policy "drive_files_national_all" on drive_files for all using (is_national_role());
 create policy "drive_files_shared_read" on drive_files
   for select using (
-    auth.uid() is not null
-    and folder_id in (select id from drive_folders where shared_with_posts = true)
+    folder_id in (
+      select id from drive_folders
+      where (shared_with_posts = true and auth.uid() is not null)
+         or (shared_with_post_id = current_post_id())
+    )
   );
 
 create policy "members_select_post_or_national" on members

@@ -34,12 +34,42 @@ export default function MembershipRoster() {
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [query, setQuery] = useState('')
+  const [globalResults, setGlobalResults] = useState<Member[] | null>(null)
+  const [searchingGlobal, setSearchingGlobal] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Member | null>(null)
   const [copied, setCopied] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importSummary, setImportSummary] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // National's search looks across every post and unassigned members at
+  // once — not just whichever bucket happens to be selected. This is what
+  // was missing: a member could exist and simply be sitting in a different
+  // post's roster (or unassigned) than whatever was currently selected,
+  // making them impossible to find even though they were never actually
+  // lost.
+  async function searchGlobally(q: string) {
+    if (!q.trim() || !isNational) {
+      setGlobalResults(null)
+      return
+    }
+    setSearchingGlobal(true)
+    const { data } = await supabase
+      .from('members')
+      .select('*')
+      .or(`full_name.ilike.%${q}%,email.ilike.%${q}%,membership_number.ilike.%${q}%`)
+    setGlobalResults((data ?? []) as Member[])
+    setSearchingGlobal(false)
+  }
+
+  useEffect(() => {
+    if (isNational) {
+      const timeout = setTimeout(() => searchGlobally(query), 350)
+      return () => clearTimeout(timeout)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, isNational])
 
   useEffect(() => {
     if (isNational) {
@@ -221,6 +251,38 @@ export default function MembershipRoster() {
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
+
+      {isNational && query.trim() && (
+        <div className="panel p-4 mb-4">
+          <div className="eyebrow mb-2">Search Results — Every Post + Unassigned</div>
+          {searchingGlobal ? (
+            <p className="text-sm text-muted">Searching…</p>
+          ) : !globalResults || globalResults.length === 0 ? (
+            <p className="text-sm text-muted">No members found anywhere matching "{query}".</p>
+          ) : (
+            <div className="space-y-1.5">
+              {globalResults.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => {
+                    setSelectedPostId(m.post_id ?? UNASSIGNED)
+                    setEditing(m)
+                  }}
+                  className="w-full flex items-center justify-between border border-hairline hover:border-gold rounded-sm p-2.5 text-left text-sm"
+                >
+                  <div>
+                    <span className="font-mono text-gold mr-2">{m.membership_number ?? '—'}</span>
+                    {m.full_name}
+                  </div>
+                  <span className="text-xs text-muted">
+                    {m.post_id ? posts.find((p) => p.id === m.post_id)?.name ?? 'A post' : 'Unassigned'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="panel overflow-hidden">
         <table className="w-full">

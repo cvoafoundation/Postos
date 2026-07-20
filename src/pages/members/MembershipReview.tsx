@@ -9,25 +9,26 @@ import { FileText, CheckCircle2, XCircle } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function MembershipReview() {
-  const { profile } = useAuth()
+  const { profile, isNational } = useAuth()
   const [members, setMembers] = useState<Member[]>([])
   const [filter, setFilter] = useState<'pending' | 'verified' | 'rejected' | 'all'>('pending')
   const [loading, setLoading] = useState(true)
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('members')
-      .select('*')
-      .not('dd214_storage_path', 'is', null)
-      .order('created_at', { ascending: false })
+    let query = supabase.from('members').select('*').not('dd214_storage_path', 'is', null).order('created_at', { ascending: false })
+    if (!isNational && profile?.post_id) {
+      query = query.eq('post_id', profile.post_id)
+    }
+    const { data } = await query
     setMembers((data ?? []) as Member[])
     setLoading(false)
   }
 
   useEffect(() => {
     load()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.post_id, isNational])
 
   async function review(member: Member, status: 'verified' | 'rejected') {
     await supabase
@@ -47,7 +48,7 @@ export default function MembershipReview() {
 
   return (
     <div>
-      <PageHeader eyebrow="National Only" title="Membership DD214 Review" />
+      <PageHeader eyebrow={isNational ? 'National Only' : 'Your Post'} title="Membership DD214 Review" />
       <p className="text-sm text-muted mb-6 max-w-2xl">
         A member's card activates instantly the moment payment clears — that never waits on this. This is a
         separate, second check: confirm the DD214 they uploaded actually holds up, at your own pace.

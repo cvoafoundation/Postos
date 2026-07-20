@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
 import type { DriveFile, DriveFolder } from '@/lib/types'
-import { Folder, FileText, Download, ChevronDown, ChevronRight } from 'lucide-react'
+import { Folder, FileText, Download, ChevronDown, ChevronRight, Lock } from 'lucide-react'
 import { format } from 'date-fns'
 
 function formatSize(bytes: number | null): string {
@@ -14,23 +15,31 @@ function formatSize(bytes: number | null): string {
 }
 
 export default function SharedDriveView() {
+  const { profile } = useAuth()
   const [folders, setFolders] = useState<DriveFolder[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [filesByFolder, setFilesByFolder] = useState<Record<string, DriveFile[]>>({})
 
   useEffect(() => {
+    if (!profile) return
+    // Global broadcast folders (visible to everyone) plus anything National
+    // has targeted specifically at this member's own post — private to
+    // that post, invisible to every other one.
+    const filter = profile.post_id
+      ? `shared_with_posts.eq.true,shared_with_post_id.eq.${profile.post_id}`
+      : `shared_with_posts.eq.true`
     supabase
       .from('drive_folders')
       .select('*')
-      .eq('shared_with_posts', true)
+      .or(filter)
       .is('deleted_at', null)
       .order('name')
       .then(({ data }: any) => {
         setFolders((data ?? []) as DriveFolder[])
         setLoading(false)
       })
-  }, [])
+  }, [profile])
 
   async function toggleExpand(folder: DriveFolder) {
     if (expanded === folder.id) {
@@ -51,10 +60,9 @@ export default function SharedDriveView() {
 
   return (
     <div>
-      <PageHeader eyebrow="From National" title="Shared Files" />
+      <PageHeader eyebrow="From National" title="Post Drive" />
       <p className="text-sm text-muted mb-6 max-w-xl">
-        Folders National has shared with every post — read-only. Templates, official forms, and reference
-        material live here.
+        Files National has shared — some visible to every post, some sent privately to yours alone. Read-only.
       </p>
 
       {loading ? (
@@ -72,6 +80,11 @@ export default function SharedDriveView() {
                 <div className="flex items-center gap-3">
                   <Folder size={18} style={{ color: folder.color ?? '#C9A227' }} />
                   <span className="text-sm">{folder.name}</span>
+                  {folder.shared_with_post_id && (
+                    <span title="Sent privately to your post only" className="text-[10px] font-mono text-gold flex items-center gap-1">
+                      <Lock size={11} /> Private
+                    </span>
+                  )}
                 </div>
                 {expanded === folder.id ? <ChevronDown size={15} className="text-muted" /> : <ChevronRight size={15} className="text-muted" />}
               </button>

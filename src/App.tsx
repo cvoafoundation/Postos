@@ -36,6 +36,8 @@ import BuildAPost from '@/pages/build-a-post/BuildAPost'
 import BuildAPostDetail from '@/pages/build-a-post/BuildAPostDetail'
 import MembershipRoster from '@/pages/members/MembershipRoster'
 import MembershipReview from '@/pages/members/MembershipReview'
+import PostOfficersDirectory from '@/pages/founding-team/PostOfficersDirectory'
+import PostMembersDirectory from '@/pages/members/PostMembersDirectory'
 import JoinMembership from '@/pages/members/JoinMembership'
 import JoinCVOA from '@/pages/members/JoinCVOA'
 import MemberHome from '@/pages/members/MemberHome'
@@ -269,11 +271,13 @@ function AuthenticatedApp() {
         <Route
           path="/membership-review"
           element={
-            <RoleGuard roles={[]}>
+            <RoleGuard roles={['post_commander', 'post_officer']}>
               <MembershipReview />
             </RoleGuard>
           }
         />
+        <Route path="/post-officers" element={<PostOfficersDirectory />} />
+        <Route path="/post-members" element={<PostMembersDirectory />} />
         <Route
           path="/drive"
           element={

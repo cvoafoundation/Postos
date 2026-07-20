@@ -8,6 +8,7 @@ interface AuthContextValue {
   profile: Profile | null
   loading: boolean
   isNational: boolean
+  isDelegate: boolean
   hasRole: (...roles: UserRole[]) => boolean
   signOut: () => Promise<void>
 }
@@ -18,6 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isDelegate, setIsDelegate] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -104,6 +106,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isNational = profile?.role === 'national_commander' || profile?.role === 'national_staff'
 
+  useEffect(() => {
+    if (!profile?.id) {
+      setIsDelegate(false)
+      return
+    }
+    // Exactly one delegate (and optionally an alternate) is designated per
+    // post — this is what actually gates casting a formal Congress vote,
+    // not just being any officer at that post.
+    supabase
+      .from('congress_delegates')
+      .select('id')
+      .eq('profile_id', profile.id)
+      .then(({ data }) => setIsDelegate(!!data && data.length > 0))
+  }, [profile?.id])
+
   function hasRole(...roles: UserRole[]) {
     return !!profile && roles.includes(profile.role)
   }
@@ -113,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, profile, loading, isNational, hasRole, signOut }}>
+    <AuthContext.Provider value={{ session, profile, loading, isNational, isDelegate, hasRole, signOut }}>
       {children}
     </AuthContext.Provider>
   )

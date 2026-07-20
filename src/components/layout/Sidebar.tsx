@@ -27,32 +27,38 @@ import clsx from 'clsx'
 const NATIONAL_ONLY_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
   { to: '/applications', label: 'Application Pipeline', icon: GitBranch },
   { to: '/vetting', label: 'Vetting System', icon: ClipboardCheck },
-  { to: '/membership-review', label: 'Membership DD214 Review', icon: FileCheck2 },
   { to: '/posts', label: 'Posts Management', icon: Building2 },
   { to: '/users', label: 'User Management', icon: UserCog },
   { to: '/drive', label: 'NCC Drive', icon: HardDrive },
 ]
 
-// Shared by post officers/commanders — the full toolset for running a post.
+// Shared by post officers/commanders — everything a plain member sees,
+// plus the full toolset for running a post.
 const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
+  { to: '/my-membership', label: 'My Membership', icon: CreditCard },
+  { to: '/shared-files', label: 'Post Drive', icon: HardDrive },
+  { to: '/post-officers', label: 'Post Officers', icon: Users },
+  { to: '/post-members', label: 'Post Members', icon: IdCard },
+  { to: '/congress', label: 'Veterans Congress', icon: Landmark },
   { to: '/founding-team', label: 'Founding Team', icon: Users },
   { to: '/checklist', label: 'Launch Checklist', icon: ListChecks },
   { to: '/meetings', label: 'Meetings', icon: CalendarCheck },
   { to: '/members', label: 'Membership Roster', icon: IdCard },
-  { to: '/my-membership', label: 'My Membership', icon: CreditCard },
+  { to: '/membership-review', label: 'Membership DD214 Review', icon: FileCheck2 },
   { to: '/toolkit', label: 'Post Toolkit', icon: FolderDown },
-  { to: '/shared-files', label: 'Shared Files', icon: HardDrive },
   { to: '/recruiting', label: 'Recruiting Engine', icon: Radar },
   { to: '/sponsors', label: 'Sponsorship CRM', icon: HandCoins },
-  { to: '/congress', label: 'Veterans Congress', icon: Landmark },
   { to: '/health', label: 'Post Health', icon: HeartPulse },
   { to: '/build-a-post', label: 'Build A Post', icon: Hammer },
 ]
 
-// A plain paying member isn't running a post — Veterans Congress and their
-// own membership card.
+// A plain paying member — their card, their post's own drive drop, who
+// their officers and fellow members are, and Veterans Congress.
 const MEMBER_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
   { to: '/my-membership', label: 'My Membership', icon: CreditCard },
+  { to: '/shared-files', label: 'Post Drive', icon: HardDrive },
+  { to: '/post-officers', label: 'Post Officers', icon: Users },
+  { to: '/post-members', label: 'Post Members', icon: IdCard },
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
 ]
 

@@ -687,6 +687,7 @@ export interface DriveFolder {
   name: string
   color: string | null
   shared_with_posts: boolean
+  shared_with_post_id: string | null
   deleted_at: string | null
   created_by: string | null
   created_at: string

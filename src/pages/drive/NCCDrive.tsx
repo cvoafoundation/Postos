@@ -21,6 +21,7 @@ import {
   RotateCcw,
   X,
   Users,
+  Target,
 } from 'lucide-react'
 import { format, differenceInDays } from 'date-fns'
 
@@ -64,6 +65,8 @@ export default function NCCDrive() {
   const [trashedFiles, setTrashedFiles] = useState<DriveFile[]>([])
   const [moveTarget, setMoveTarget] = useState<MoveTarget | null>(null)
   const [allFolders, setAllFolders] = useState<DriveFolder[]>([])
+  const [postPickerFor, setPostPickerFor] = useState<string | null>(null)
+  const [postsForSharing, setPostsForSharing] = useState<{ id: string; name: string }[]>([])
 
   async function load(folderId: string | null) {
     setLoading(true)
@@ -126,6 +129,14 @@ export default function NCCDrive() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFolderId, showTrash])
+
+  useEffect(() => {
+    supabase
+      .from('posts')
+      .select('id, name')
+      .order('name')
+      .then(({ data }: any) => setPostsForSharing((data ?? []) as { id: string; name: string }[]))
+  }, [])
 
   async function createFolder() {
     const name = window.prompt('Folder name?')
@@ -205,6 +216,12 @@ export default function NCCDrive() {
     const shared_with_posts = !folder.shared_with_posts
     setFolders((prev) => prev.map((f) => (f.id === folder.id ? { ...f, shared_with_posts } : f)))
     await supabase.from('drive_folders').update({ shared_with_posts }).eq('id', folder.id)
+  }
+
+  async function setSharedWithPost(folder: DriveFolder, postId: string | null) {
+    setFolders((prev) => prev.map((f) => (f.id === folder.id ? { ...f, shared_with_post_id: postId } : f)))
+    await supabase.from('drive_folders').update({ shared_with_post_id: postId }).eq('id', folder.id)
+    setPostPickerFor(null)
   }
 
   // Soft delete — moves to Trash instead of destroying immediately.
@@ -460,6 +477,14 @@ export default function NCCDrive() {
                               <Users size={13} className="text-gold" />
                             </span>
                           )}
+                          {folder.shared_with_post_id && (
+                            <span
+                              title={`Shared privately with ${postsForSharing.find((p) => p.id === folder.shared_with_post_id)?.name ?? 'one post'}`}
+                              className="text-[10px] font-mono text-gold border border-gold/30 rounded-sm px-1.5"
+                            >
+                              {postsForSharing.find((p) => p.id === folder.shared_with_post_id)?.name ?? 'One post'}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 text-muted" onClick={(e) => e.stopPropagation()}>
                           <button
@@ -468,6 +493,13 @@ export default function NCCDrive() {
                             title={folder.shared_with_posts ? 'Shared with every post — click to unshare' : 'Share with every post (read-only)'}
                           >
                             <Users size={14} />
+                          </button>
+                          <button
+                            onClick={() => setPostPickerFor(postPickerFor === folder.id ? null : folder.id)}
+                            className={folder.shared_with_post_id ? 'text-gold' : 'hover:text-gold'}
+                            title="Share privately with one specific post"
+                          >
+                            <Target size={14} />
                           </button>
                           <button onClick={() => setColorPickerFor(colorPickerFor === folder.id ? null : folder.id)} className="hover:text-gold" title="Color">
                             <Palette size={14} />
@@ -482,6 +514,27 @@ export default function NCCDrive() {
                             <Trash2 size={14} />
                           </button>
                         </div>
+                        {postPickerFor === folder.id && (
+                          <div className="absolute right-3 top-full mt-1 panel p-2 w-56 max-h-64 overflow-y-auto z-10" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => setSharedWithPost(folder, null)}
+                              className="w-full text-left text-xs px-2 py-1.5 rounded-sm hover:bg-surface/60 text-muted"
+                            >
+                              Not shared with a specific post
+                            </button>
+                            {postsForSharing.map((p) => (
+                              <button
+                                key={p.id}
+                                onClick={() => setSharedWithPost(folder, p.id)}
+                                className={`w-full text-left text-xs px-2 py-1.5 rounded-sm hover:bg-surface/60 ${
+                                  folder.shared_with_post_id === p.id ? 'text-gold' : ''
+                                }`}
+                              >
+                                {p.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {colorPickerFor === folder.id && (
                           <div className="absolute right-3 top-full mt-1 panel p-2 flex gap-1.5 z-10" onClick={(e) => e.stopPropagation()}>
                             {FOLDER_COLORS.map((c) => (

@@ -38,7 +38,7 @@ const RESPONSE_LABELS: Record<DebateResponseType, string> = {
 export default function ResolutionDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { profile, isNational } = useAuth()
+  const { profile, isNational, isDelegate } = useAuth()
 
   const [resolution, setResolution] = useState<Resolution | null>(null)
   const [amendments, setAmendments] = useState<ResolutionAmendment[]>([])
@@ -377,24 +377,31 @@ export default function ResolutionDetail() {
           {resolution.status === 'voting' && resolution.vote_type && (
             <div className="panel p-5">
               <div className="eyebrow mb-3">Cast Your Vote</div>
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                <button
-                  onClick={() => castVote(true)}
-                  className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border ${
-                    myVote === true ? 'bg-status-active text-base border-status-active' : 'border-hairline hover:border-status-active text-ink'
-                  }`}
-                >
-                  <ThumbsUp size={14} /> Support
-                </button>
-                <button
-                  onClick={() => castVote(false)}
-                  className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border ${
-                    myVote === false ? 'bg-status-attention text-base border-status-attention' : 'border-hairline hover:border-status-attention text-ink'
-                  }`}
-                >
-                  <ThumbsDown size={14} /> Oppose
-                </button>
-              </div>
+              {(resolution.vote_type === 'delegate_vote' || resolution.vote_type === 'constitutional_amendment') && !isNational && !isDelegate ? (
+                <p className="text-xs text-muted">
+                  This is a formal {resolution.vote_type === 'constitutional_amendment' ? 'constitutional amendment' : 'delegate'} vote —
+                  only your post's designated delegate can cast it on your chapter's behalf.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  <button
+                    onClick={() => castVote(true)}
+                    className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border ${
+                      myVote === true ? 'bg-status-active text-base border-status-active' : 'border-hairline hover:border-status-active text-ink'
+                    }`}
+                  >
+                    <ThumbsUp size={14} /> Support
+                  </button>
+                  <button
+                    onClick={() => castVote(false)}
+                    className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border ${
+                      myVote === false ? 'bg-status-attention text-base border-status-attention' : 'border-hairline hover:border-status-attention text-ink'
+                    }`}
+                  >
+                    <ThumbsDown size={14} /> Oppose
+                  </button>
+                </div>
+              )}
 
               <div className="border-t border-hairline pt-3">
                 <div className="flex justify-between text-xs text-muted mb-1">
