@@ -189,26 +189,29 @@ function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'memb
     setSubmitting(true)
     setError(null)
 
-    const { data: member, error: memberError } = await supabase
-      .from('members')
-      .insert({
-        post_id: mode === 'join_existing' ? form.post_id || null : null,
-        full_name: form.full_name,
-        email: form.email || null,
-        phone: form.phone || null,
-        address: form.address || null,
-        state: form.state || null,
-        military_branch: form.military_branch || null,
-        membership_type: form.membership_type,
-        membership_status: 'pending_payment',
-        dd214_storage_path: docPath,
-      })
-      .select()
-      .single()
+    // Generated here rather than read back after insert — reading a row
+    // back is governed by the SELECT policy (National or your own post),
+    // which an anonymous visitor signing up doesn't satisfy. Providing the
+    // id ourselves means we never need to ask for it back.
+    const memberId = crypto.randomUUID()
 
-    if (memberError || !member) {
+    const { error: memberError } = await supabase.from('members').insert({
+      id: memberId,
+      post_id: mode === 'join_existing' ? form.post_id || null : null,
+      full_name: form.full_name,
+      email: form.email || null,
+      phone: form.phone || null,
+      address: form.address || null,
+      state: form.state || null,
+      military_branch: form.military_branch || null,
+      membership_type: form.membership_type,
+      membership_status: 'pending_payment',
+      dd214_storage_path: docPath,
+    })
+
+    if (memberError) {
       setSubmitting(false)
-      setError(memberError?.message ?? 'Something went wrong creating your record.')
+      setError(memberError.message)
       return
     }
 
@@ -225,7 +228,7 @@ function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'memb
 
     const { data, error: checkoutError } = await supabase.functions.invoke('create-membership-checkout', {
       body: {
-        member_id: member.id,
+        member_id: memberId,
         post_id: mode === 'join_existing' ? form.post_id || null : null,
         membership_type: form.membership_type,
         auto_renew: form.membership_type === 'annual' ? form.auto_renew : false,
