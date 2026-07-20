@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { PostApplicationForm } from '@/components/forms/PostApplicationForm'
 import { ChevronDown, CheckCircle2, Flag, UserPlus, KeyRound } from 'lucide-react'
@@ -8,7 +8,8 @@ type Section = 'start_post' | 'join_post' | 'staff' | null
 
 export default function Login() {
   const navigate = useNavigate()
-  const [open, setOpen] = useState<Section>(null)
+  const [searchParams] = useSearchParams()
+  const [open, setOpen] = useState<Section>(searchParams.get('login') === 'true' ? 'staff' : null)
   const [submitted, setSubmitted] = useState(false)
 
   function toggle(section: Section) {
