@@ -35,6 +35,7 @@ import PostHealthDetail from '@/pages/health/PostHealthDetail'
 import BuildAPost from '@/pages/build-a-post/BuildAPost'
 import BuildAPostDetail from '@/pages/build-a-post/BuildAPostDetail'
 import MembershipRoster from '@/pages/members/MembershipRoster'
+import MembershipReview from '@/pages/members/MembershipReview'
 import JoinMembership from '@/pages/members/JoinMembership'
 import JoinCVOA from '@/pages/members/JoinCVOA'
 import MemberHome from '@/pages/members/MemberHome'
@@ -265,6 +266,14 @@ function AuthenticatedApp() {
           }
         />
         <Route path="/my-membership" element={<MyMembership />} />
+        <Route
+          path="/membership-review"
+          element={
+            <RoleGuard roles={[]}>
+              <MembershipReview />
+            </RoleGuard>
+          }
+        />
         <Route
           path="/drive"
           element={

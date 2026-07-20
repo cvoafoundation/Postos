@@ -719,6 +719,9 @@ create table members (
   joined_at date,
   expires_at date, -- null for lifetime members
   dd214_storage_path text, -- required at signup, in the shared 'dd214-uploads' bucket
+  dd214_review_status verification_status not null default 'pending', -- manually reviewed by National; does NOT block instant card access on payment
+  dd214_reviewed_by uuid references profiles(id),
+  dd214_reviewed_at timestamptz,
   auto_renew boolean not null default false, -- annual only — lifetime members never auto-renew, they've already paid for good
   stripe_subscription_id text, -- set when auto_renew is on; used to cancel it later
   profile_id uuid references profiles(id), -- linked once they create an account; real access activates on payment, mirroring how founding team accounts activate on verification

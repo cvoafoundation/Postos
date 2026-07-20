@@ -33,7 +33,7 @@ export function MembershipCardVisual({ member }: { member: Member }) {
           <div className="text-lg font-medium text-ink mb-3">{member.full_name}</div>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <div className="eyebrow mb-0.5">Member ID</div>
+              <div className="eyebrow mb-0.5">WarFighter No.</div>
               <div className="font-mono text-gold">{member.membership_number ?? 'Pending'}</div>
             </div>
             <div>
@@ -57,8 +57,11 @@ export function MembershipCardVisual({ member }: { member: Member }) {
         </div>
       </div>
 
-      <div className="bg-base px-5 py-2 border-t border-hairline">
+      <div className="bg-base px-5 py-2 border-t border-hairline flex items-center justify-between">
         <div className="text-[9px] text-muted font-mono">Scan to verify membership status</div>
+        {member.dd214_review_status === 'pending' && (
+          <div className="text-[9px] text-status-developing font-mono uppercase">DD214 Review Pending</div>
+        )}
       </div>
     </div>
   )
