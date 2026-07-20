@@ -80,6 +80,10 @@ export function Sidebar() {
         ? { ...item, to: `/health/${profile.post_id}` }
         : item
     ),
+    // Only Commanders approve their post's Officers, and only National
+    // approves Commanders — a plain Officer never sees this, even though
+    // they otherwise share the same toolset.
+    ...(profile?.role === 'post_commander' || isNational ? [{ to: '/role-applications', label: 'Role Applications', icon: UserCog }] : []),
   ]
 
   return (

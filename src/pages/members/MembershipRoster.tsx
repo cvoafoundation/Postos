@@ -549,9 +549,20 @@ function EditMemberModal({
             return d.toISOString().slice(0, 10)
           })()
     setSaving(true)
+
+    // If this membership was never linked to an account (the actual reason
+    // a member can pay, be active, and still see nothing — the system
+    // doesn't know which login belongs to which membership), find and link
+    // it now by matching email, so activation actually reaches them.
+    let profileId = member.profile_id
+    if (!profileId && member.email) {
+      const { data: matchedProfile } = await supabase.from('profiles').select('id').eq('email', member.email).maybeSingle()
+      if (matchedProfile) profileId = matchedProfile.id
+    }
+
     const { error } = await supabase
       .from('members')
-      .update({ membership_status: 'active', joined_at: joinedAt, expires_at: expiresAt })
+      .update({ membership_status: 'active', joined_at: joinedAt, expires_at: expiresAt, profile_id: profileId })
       .eq('id', member.id)
     setSaving(false)
     if (error) {

@@ -29,6 +29,7 @@ export function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' 
     membership_type: 'annual' as MembershipType,
     auto_renew: true,
     password: '',
+    requested_role: 'member' as 'member' | 'post_officer' | 'post_commander',
   })
   const [wantsAccount, setWantsAccount] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -93,6 +94,20 @@ export function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' 
       setSubmitting(false)
       setError(memberError.message)
       return
+    }
+
+    // Plain membership never touches this — it's fully automatic on
+    // payment. Applying as an Officer or Commander creates a real approval
+    // request instead: Officer needs that post's own Commander to sign
+    // off; Commander needs National. Their membership itself still
+    // activates normally either way — this is a separate, additional gate
+    // only on the elevated role, not on becoming a member at all.
+    if (mode === 'join_existing' && form.post_id && form.requested_role !== 'member') {
+      await supabase.from('post_role_applications').insert({
+        member_id: memberId,
+        post_id: form.post_id,
+        requested_role: form.requested_role,
+      })
     }
 
     if (wantsAccount && form.password) {
@@ -196,15 +211,32 @@ export function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' 
           </div>
 
           {mode === 'join_existing' && (
-            <select required className="input-field" value={form.post_id} onChange={(e) => update('post_id', e.target.value)}>
-              <option value="">Select your post…</option>
-              {posts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — {p.city ? `${p.city}, ` : ''}
-                  {p.state}
-                </option>
-              ))}
-            </select>
+            <>
+              <select required className="input-field" value={form.post_id} onChange={(e) => update('post_id', e.target.value)}>
+                <option value="">Select your post…</option>
+                {posts.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — {p.city ? `${p.city}, ` : ''}
+                    {p.state}
+                  </option>
+                ))}
+              </select>
+
+              <div>
+                <label className="eyebrow block mb-1.5">Applying As</label>
+                <select className="input-field" value={form.requested_role} onChange={(e) => update('requested_role', e.target.value as typeof form.requested_role)}>
+                  <option value="member">Member</option>
+                  <option value="post_officer">Post Officer (needs your Commander's approval)</option>
+                  <option value="post_commander">Post Commander (needs National's approval)</option>
+                </select>
+                {form.requested_role !== 'member' && (
+                  <p className="text-xs text-status-developing mt-1.5">
+                    Your membership activates normally on payment — this specific role needs a separate approval
+                    first before it takes effect.
+                  </p>
+                )}
+              </div>
+            </>
           )}
 
           <div className="border-t border-hairline pt-3">

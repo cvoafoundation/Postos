@@ -38,6 +38,7 @@ import MembershipRoster from '@/pages/members/MembershipRoster'
 import MembershipReview from '@/pages/members/MembershipReview'
 import PostOfficersDirectory from '@/pages/founding-team/PostOfficersDirectory'
 import PostMembersDirectory from '@/pages/members/PostMembersDirectory'
+import RoleApplications from '@/pages/members/RoleApplications'
 import JoinMembership from '@/pages/members/JoinMembership'
 import JoinCVOA from '@/pages/members/JoinCVOA'
 import MemberHome from '@/pages/members/MemberHome'
@@ -278,6 +279,14 @@ function AuthenticatedApp() {
         />
         <Route path="/post-officers" element={<PostOfficersDirectory />} />
         <Route path="/post-members" element={<PostMembersDirectory />} />
+        <Route
+          path="/role-applications"
+          element={
+            <RoleGuard roles={['post_commander']}>
+              <RoleApplications />
+            </RoleGuard>
+          }
+        />
         <Route
           path="/drive"
           element={

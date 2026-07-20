@@ -1491,6 +1491,20 @@ begin
   set profile_id = auth.uid()
   where profile_id is null
     and email = (select email from auth.users where id = auth.uid());
+
+  -- The trigger on `members` only promotes an account at the moment
+  -- membership_status *becomes* active. That moment very often already
+  -- happened on Stripe's checkout page, seconds before this first login —
+  -- so the trigger never fires again here. This check is what actually
+  -- covers the normal, expected order of events (pay, then log in), not
+  -- just the reverse.
+  update profiles
+  set role = 'member', post_id = coalesce(profiles.post_id, m.post_id)
+  from members m
+  where profiles.id = auth.uid()
+    and m.profile_id = auth.uid()
+    and m.membership_status = 'active'
+    and profiles.role = 'guest_applicant';
 end;
 $$;
 
@@ -1517,6 +1531,84 @@ $$;
 create trigger trg_promote_member_account
   after update on members
   for each row execute function promote_member_account();
+
+create type post_role_request as enum ('post_officer', 'post_commander');
+
+-- A member can apply for more than just plain membership when joining a
+-- post — becoming an Officer requires that post's own Commander to
+-- approve; becoming a Commander requires National to approve. Plain
+-- membership never touches this table at all — it stays fully automatic.
+create table post_role_applications (
+  id uuid primary key default uuid_generate_v4(),
+  member_id uuid not null references members(id) on delete cascade,
+  post_id uuid not null references posts(id) on delete cascade,
+  requested_role post_role_request not null,
+  status verification_status not null default 'pending',
+  reviewed_by uuid references profiles(id),
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table post_role_applications enable row level security;
+
+create policy "post_role_applications_select" on post_role_applications
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "post_role_applications_insert_public" on post_role_applications
+  for insert with check (true);
+create policy "post_role_applications_update" on post_role_applications
+  for update using (
+    is_national_role()
+    or (
+      requested_role = 'post_officer'
+      and post_id = current_post_id()
+      and exists (select 1 from profiles where id = auth.uid() and role = 'post_commander')
+    )
+  );
+
+-- Approves a pending post role application: links the applicant's account
+-- (by email, same safe pattern as membership linking — a no-op if already
+-- linked or no account exists yet) and grants the real role and post
+-- assignment. Runs as the reviewer, but the actual permission check is the
+-- RLS policy above on this table, not this function.
+create or replace function approve_post_role_application(p_application_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  app post_role_applications;
+  applicant_member members;
+  matched_profile_id uuid;
+begin
+  select * into app from post_role_applications where id = p_application_id;
+  if app is null then
+    raise exception 'Application not found';
+  end if;
+
+  select * into applicant_member from members where id = app.member_id;
+
+  matched_profile_id := applicant_member.profile_id;
+  if matched_profile_id is null and applicant_member.email is not null then
+    select id into matched_profile_id from auth.users where email = applicant_member.email;
+    if matched_profile_id is not null then
+      update members set profile_id = matched_profile_id where id = applicant_member.id;
+    end if;
+  end if;
+
+  if matched_profile_id is not null then
+    update profiles
+    set role = app.requested_role::text::user_role, post_id = app.post_id
+    where id = matched_profile_id;
+  end if;
+
+  update post_role_applications
+  set status = 'verified', reviewed_by = auth.uid(), reviewed_at = now()
+  where id = p_application_id;
+end;
+$$;
+
+grant execute on function approve_post_role_application(uuid) to authenticated;
 
 -- Powers the QR code on the digital membership card. Deliberately returns
 -- only the fields safe to show a stranger who scans the card (no email,
