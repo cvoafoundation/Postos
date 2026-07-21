@@ -28,7 +28,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 const PRICES: Record<string, number> = {
-  annual: 100, // $49.99, in cents
+  annual: 4999, // $49.99, in cents
   lifetime: 49999, // $499.99, in cents
 }
 

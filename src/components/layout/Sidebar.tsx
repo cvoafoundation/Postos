@@ -19,6 +19,7 @@ import {
   CreditCard,
   FileCheck2,
   LogOut,
+  X,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { isDemoMode } from '@/lib/supabase'
@@ -62,7 +63,7 @@ const MEMBER_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
 ]
 
-export function Sidebar() {
+export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { profile, isNational, signOut } = useAuth()
   const isPlainMember = profile?.role === 'member'
   const isPostOfficer = profile?.role === 'post_commander' || profile?.role === 'post_officer'
@@ -87,53 +88,72 @@ export function Sidebar() {
   ]
 
   return (
-    <aside className="w-64 shrink-0 bg-charcoal border-r border-hairline flex flex-col h-screen sticky top-0">
-      <div className="px-5 py-6 border-b border-hairline">
-        <div className="font-display text-2xl tracking-wide text-gold leading-none">CVOA</div>
-        <div className="eyebrow mt-1">Post Operating System</div>
-        {isDemoMode && (
-          <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-status-developing/40 bg-status-developing/10 text-status-developing font-mono text-[10px] uppercase tracking-wide">
-            Demo Mode — local data
-          </div>
-        )}
-        {!isNational && profile?.post_id && (
-          <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-hairline text-muted font-mono text-[10px] uppercase tracking-wide">
-            Post Account
-          </div>
-        )}
-      </div>
+    <>
+      {/* Dims the page behind the drawer on mobile only — tapping it closes
+          the menu, same as tapping outside any dropdown. Desktop never
+          renders this since the sidebar is never in "drawer" mode there. */}
+      {isOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={onClose} />}
 
-      <nav className="flex-1 overflow-y-auto py-4">
-        {navItems.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={label}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 px-5 py-2.5 text-sm transition-colors border-l-2',
-                isActive
-                  ? 'border-gold text-gold bg-surface'
-                  : 'border-transparent text-muted hover:text-ink hover:bg-surface/60'
-              )
-            }
+      <aside
+        className={clsx(
+          'fixed md:sticky inset-y-0 left-0 z-40 w-64 shrink-0 bg-charcoal border-r border-hairline flex flex-col h-screen top-0',
+          'transition-transform duration-200 md:translate-x-0',
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
+        <div className="px-5 py-6 border-b border-hairline flex items-start justify-between">
+          <div>
+            <div className="font-display text-2xl tracking-wide text-gold leading-none">CVOA</div>
+            <div className="eyebrow mt-1">Post Operating System</div>
+            {isDemoMode && (
+              <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-status-developing/40 bg-status-developing/10 text-status-developing font-mono text-[10px] uppercase tracking-wide">
+                Demo Mode — local data
+              </div>
+            )}
+            {!isNational && profile?.post_id && (
+              <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-hairline text-muted font-mono text-[10px] uppercase tracking-wide">
+                Post Account
+              </div>
+            )}
+          </div>
+          <button onClick={onClose} className="md:hidden text-muted hover:text-ink -mr-1" aria-label="Close menu">
+            <X size={20} />
+          </button>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto py-4">
+          {navItems.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={label}
+              to={to}
+              end={end}
+              onClick={onClose}
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-3 px-5 py-2.5 text-sm transition-colors border-l-2',
+                  isActive
+                    ? 'border-gold text-gold bg-surface'
+                    : 'border-transparent text-muted hover:text-ink hover:bg-surface/60'
+                )
+              }
+            >
+              <Icon size={16} strokeWidth={1.75} />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="px-5 py-4 border-t border-hairline">
+          <div className="text-sm text-ink truncate">{profile?.full_name ?? 'Guest'}</div>
+          <div className="eyebrow mb-3">{profile?.role?.replaceAll('_', ' ') ?? 'unauthenticated'}</div>
+          <button
+            onClick={signOut}
+            className="flex items-center gap-2 text-xs text-muted hover:text-gold transition-colors"
           >
-            <Icon size={16} strokeWidth={1.75} />
-            <span>{label}</span>
-          </NavLink>
-        ))}
-      </nav>
-
-      <div className="px-5 py-4 border-t border-hairline">
-        <div className="text-sm text-ink truncate">{profile?.full_name ?? 'Guest'}</div>
-        <div className="eyebrow mb-3">{profile?.role?.replaceAll('_', ' ') ?? 'unauthenticated'}</div>
-        <button
-          onClick={signOut}
-          className="flex items-center gap-2 text-xs text-muted hover:text-gold transition-colors"
-        >
-          <LogOut size={14} /> Sign out
-        </button>
-      </div>
-    </aside>
+            <LogOut size={14} /> Sign out
+          </button>
+        </div>
+      </aside>
+    </>
   )
 }
