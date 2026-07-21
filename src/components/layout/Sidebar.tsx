@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutGrid,
   GitBranch,
@@ -27,6 +27,7 @@ import { supabase, isDemoMode } from '@/lib/supabase'
 import clsx from 'clsx'
 
 import type { NotificationSection } from '@/lib/notifications'
+import { useOnNotificationViewed } from '@/lib/notifications'
 
 type NavItem = { to: string; label: string; icon: typeof GitBranch; end?: boolean; section?: NotificationSection }
 
@@ -73,13 +74,12 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   const { profile, isNational, signOut } = useAuth()
   const isPlainMember = profile?.role === 'member'
   const isPostOfficer = profile?.role === 'post_commander' || profile?.role === 'post_officer'
+  const canSeeBadges = !isPlainMember && (isPostOfficer || isNational)
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const location = useLocation()
 
-  // A plain member never sees any of the 5 badged sections at all (they're
-  // all officer/national tooling), so there's nothing to fetch for them —
-  // avoids an unnecessary request on every member's home page load.
-  useEffect(() => {
-    if (isPlainMember || (!isPostOfficer && !isNational)) return
+  function refetchCounts() {
+    if (!canSeeBadges) return
     supabase.rpc('get_notification_counts').then(({ data }) => {
       const map: Record<string, number> = {}
       for (const row of (data ?? []) as { section: string; unseen_count: number }[]) {
@@ -87,7 +87,14 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
       }
       setCounts(map)
     })
-  }, [isPlainMember, isPostOfficer, isNational])
+  }
+
+  // Route change is a broad safety net (catches anything that changed the
+  // underlying data without going through the viewed-event below). The
+  // event listener is what actually makes badges clear reliably the
+  // instant a page finishes marking itself viewed, without racing it.
+  useEffect(refetchCounts, [canSeeBadges, location.pathname])
+  useOnNotificationViewed(refetchCounts)
 
   const navItems = [
     { to: '/', label: isPlainMember ? 'Home' : 'Global Dashboard', icon: LayoutGrid, end: true },
