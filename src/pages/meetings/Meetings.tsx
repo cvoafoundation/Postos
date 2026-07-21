@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge, healthTone } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
+import { useMarkNotificationViewed } from '@/lib/notifications'
 import { useAuth } from '@/context/AuthContext'
 import type { MeetingRecord, Post } from '@/lib/types'
 import { Search, Plus, FileText, Upload, AlertTriangle, CalendarCheck, ClipboardList, BarChart3, CheckSquare } from 'lucide-react'
@@ -30,6 +31,7 @@ function complianceStatus(lastDate: string | null): 'green' | 'yellow' | 'red' {
 }
 
 export default function Meetings() {
+  useMarkNotificationViewed('meetings')
   const navigate = useNavigate()
   const { profile, isNational } = useAuth()
   const [posts, setPosts] = useState<Record<string, string>>({})

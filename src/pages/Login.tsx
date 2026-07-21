@@ -48,7 +48,7 @@ export default function Login() {
             />
             <PillarCard
               icon={IdCard}
-              title="Just Become a Member"
+              title="Become a Member"
               subtitle="Not sure yet, or no local post"
               onClick={() => setPath('member_only')}
             />
@@ -82,7 +82,7 @@ export default function Login() {
               ))}
 
             {(path === 'join_existing' || path === 'member_only') && (
-              <MembershipForm mode={path} posts={posts} onBack={() => setPath('choose')} />
+              <MembershipForm mode={path} posts={posts} />
             )}
 
             {path === 'staff' && <StaffLoginForm />}

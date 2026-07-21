@@ -2316,3 +2316,59 @@ end $$;
 -- ============================================================================
 -- End of schema
 -- ============================================================================
+
+-- Sidebar notification badges (5 sections: applications, dd214_review,
+-- role_applications, meetings, membership_roster). Tracks per-admin,
+-- per-section "last viewed" so badges clear the moment that section's page
+-- is opened, regardless of whether anything on it has actually been
+-- resolved yet. Counting itself relies on each underlying table's existing
+-- RLS policies to naturally scope by role (post officers only ever see
+-- their own post's counts; National sees everything) — no role logic is
+-- duplicated here.
+create table admin_notification_views (
+  user_id uuid not null references profiles(id) on delete cascade,
+  section text not null,
+  last_viewed_at timestamptz not null default now(),
+  primary key (user_id, section)
+);
+
+alter table admin_notification_views enable row level security;
+
+create policy "notification_views_own" on admin_notification_views
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+create or replace function mark_notification_viewed(p_section text)
+returns void
+language sql
+security invoker
+as $$
+  insert into admin_notification_views (user_id, section, last_viewed_at)
+  values (auth.uid(), p_section, now())
+  on conflict (user_id, section) do update set last_viewed_at = now();
+$$;
+
+create or replace function get_notification_counts()
+returns table (section text, unseen_count bigint)
+language sql
+security invoker
+stable
+as $$
+  select 'applications', count(*) from post_applications
+    where status = 'new_inquiry'
+      and created_at > coalesce((select last_viewed_at from admin_notification_views where user_id = auth.uid() and section = 'applications'), 'epoch'::timestamptz)
+  union all
+  select 'dd214_review', count(*) from members
+    where dd214_review_status = 'pending'
+      and created_at > coalesce((select last_viewed_at from admin_notification_views where user_id = auth.uid() and section = 'dd214_review'), 'epoch'::timestamptz)
+  union all
+  select 'role_applications', count(*) from post_role_applications
+    where status = 'pending'
+      and created_at > coalesce((select last_viewed_at from admin_notification_views where user_id = auth.uid() and section = 'role_applications'), 'epoch'::timestamptz)
+  union all
+  select 'meetings', count(*) from uro_meetings
+    where status = 'published'
+      and created_at > coalesce((select last_viewed_at from admin_notification_views where user_id = auth.uid() and section = 'meetings'), 'epoch'::timestamptz)
+  union all
+  select 'membership_roster', count(*) from members
+    where created_at > coalesce((select last_viewed_at from admin_notification_views where user_id = auth.uid() and section = 'membership_roster'), 'epoch'::timestamptz)
+$$;

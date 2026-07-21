@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { useMarkNotificationViewed } from '@/lib/notifications'
 import type { Member, Post } from '@/lib/types'
 import { CheckCircle2, XCircle } from 'lucide-react'
 import { format } from 'date-fns'
@@ -22,6 +23,7 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 export default function RoleApplications() {
+  useMarkNotificationViewed('role_applications')
   const { profile, isNational } = useAuth()
   const [apps, setApps] = useState<RoleApplication[]>([])
   const [membersById, setMembersById] = useState<Record<string, Member>>({})

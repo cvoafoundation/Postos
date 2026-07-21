@@ -6,6 +6,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { useMarkNotificationViewed } from '@/lib/notifications'
 import type { Member, MembershipType, Post } from '@/lib/types'
 import { Plus, Upload, Copy, Check, Search } from 'lucide-react'
 import { format } from 'date-fns'
@@ -29,6 +30,7 @@ function statusTone(status: Member['membership_status']) {
 }
 
 export default function MembershipRoster() {
+  useMarkNotificationViewed('membership_roster')
   const { profile, isNational } = useAuth()
   const [posts, setPosts] = useState<Post[]>([])
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)

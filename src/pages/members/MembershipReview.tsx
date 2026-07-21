@@ -4,11 +4,13 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { useMarkNotificationViewed } from '@/lib/notifications'
 import type { Member } from '@/lib/types'
 import { FileText, CheckCircle2, XCircle } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function MembershipReview() {
+  useMarkNotificationViewed('dd214_review')
   const { profile, isNational } = useAuth()
   const [members, setMembers] = useState<Member[]>([])
   const [filter, setFilter] = useState<'pending' | 'verified' | 'rejected' | 'all'>('pending')

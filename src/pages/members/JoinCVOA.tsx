@@ -17,7 +17,7 @@ export default function JoinCVOA() {
   return <Navigate to="/" replace />
 }
 
-export function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' | 'member_only'; posts: Post[]; onBack: () => void }) {
+export function MembershipForm({ mode, posts }: { mode: 'join_existing' | 'member_only'; posts: Post[] }) {
   const [form, setForm] = useState({
     full_name: '',
     email: '',
@@ -147,10 +147,6 @@ export function MembershipForm({ mode, posts, onBack }: { mode: 'join_existing' 
 
   return (
     <div>
-      <button type="button" onClick={onBack} className="text-xs text-muted hover:text-gold mb-3">
-        ← Back
-      </button>
-
       <div className="mb-4">
         <label className="eyebrow block mb-2">Step 1 — Upload Your DD214</label>
         <p className="text-xs text-muted mb-3">Required to verify eligibility. Stored privately — only visible to National Staff.</p>

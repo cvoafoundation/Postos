@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/layout/AppShell'
 import { KanbanBoard, type KanbanColumn } from '@/components/ui/Kanban'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
+import { useMarkNotificationViewed } from '@/lib/notifications'
 import { POST_STATUS_LABELS, POST_STATUS_ORDER, type PostApplication, type PostStatus } from '@/lib/types'
 import { Plus, FileWarning, FileSearch, Eye, Star } from 'lucide-react'
 import { NewApplicationModal } from './NewApplication'
@@ -10,6 +11,7 @@ import { Dd214ReviewModal } from './Dd214Review'
 import { ApplicationDetailModal } from './ApplicationDetail'
 
 export default function ApplicationsPipeline() {
+  useMarkNotificationViewed('applications')
   const [applications, setApplications] = useState<PostApplication[]>([])
   const [scoreByApplication, setScoreByApplication] = useState<Record<string, number>>({})
   const [readyForApproval, setReadyForApproval] = useState<Set<string>>(new Set())

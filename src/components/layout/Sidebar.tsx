@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutGrid,
@@ -22,11 +23,15 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { isDemoMode } from '@/lib/supabase'
+import { supabase, isDemoMode } from '@/lib/supabase'
 import clsx from 'clsx'
 
-const NATIONAL_ONLY_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
-  { to: '/applications', label: 'Application Pipeline', icon: GitBranch },
+import type { NotificationSection } from '@/lib/notifications'
+
+type NavItem = { to: string; label: string; icon: typeof GitBranch; end?: boolean; section?: NotificationSection }
+
+const NATIONAL_ONLY_ITEMS: NavItem[] = [
+  { to: '/applications', label: 'Application Pipeline', icon: GitBranch, section: 'applications' },
   { to: '/vetting', label: 'Vetting System', icon: ClipboardCheck },
   { to: '/posts', label: 'Posts Management', icon: Building2 },
   { to: '/users', label: 'User Management', icon: UserCog },
@@ -35,7 +40,7 @@ const NATIONAL_ONLY_ITEMS: { to: string; label: string; icon: typeof GitBranch; 
 
 // Shared by post officers/commanders — everything a plain member sees,
 // plus the full toolset for running a post.
-const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
+const SHARED_ITEMS: NavItem[] = [
   { to: '/my-membership', label: 'My Membership', icon: CreditCard },
   { to: '/shared-files', label: 'Post Drive', icon: HardDrive },
   { to: '/post-officers', label: 'Post Officers', icon: Users },
@@ -43,9 +48,9 @@ const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
   { to: '/founding-team', label: 'Founding Team', icon: Users },
   { to: '/checklist', label: 'Launch Checklist', icon: ListChecks },
-  { to: '/meetings', label: 'Meetings', icon: CalendarCheck },
-  { to: '/members', label: 'Membership Roster', icon: IdCard },
-  { to: '/membership-review', label: 'Membership DD214 Review', icon: FileCheck2 },
+  { to: '/meetings', label: 'Meetings', icon: CalendarCheck, section: 'meetings' },
+  { to: '/members', label: 'Membership Roster', icon: IdCard, section: 'membership_roster' },
+  { to: '/membership-review', label: 'Membership DD214 Review', icon: FileCheck2, section: 'dd214_review' },
   { to: '/toolkit', label: 'Post Toolkit', icon: FolderDown },
   { to: '/recruiting', label: 'Recruiting Engine', icon: Radar },
   { to: '/sponsors', label: 'Sponsorship CRM', icon: HandCoins },
@@ -55,7 +60,7 @@ const SHARED_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
 
 // A plain paying member — their card, their post's own drive drop, who
 // their officers and fellow members are, and Veterans Congress.
-const MEMBER_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: boolean }[] = [
+const MEMBER_ITEMS: NavItem[] = [
   { to: '/my-membership', label: 'My Membership', icon: CreditCard },
   { to: '/shared-files', label: 'Post Drive', icon: HardDrive },
   { to: '/post-officers', label: 'Post Officers', icon: Users },
@@ -63,10 +68,26 @@ const MEMBER_ITEMS: { to: string; label: string; icon: typeof GitBranch; end?: b
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
 ]
 
+
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { profile, isNational, signOut } = useAuth()
   const isPlainMember = profile?.role === 'member'
   const isPostOfficer = profile?.role === 'post_commander' || profile?.role === 'post_officer'
+  const [counts, setCounts] = useState<Record<string, number>>({})
+
+  // A plain member never sees any of the 5 badged sections at all (they're
+  // all officer/national tooling), so there's nothing to fetch for them —
+  // avoids an unnecessary request on every member's home page load.
+  useEffect(() => {
+    if (isPlainMember || (!isPostOfficer && !isNational)) return
+    supabase.rpc('get_notification_counts').then(({ data }) => {
+      const map: Record<string, number> = {}
+      for (const row of (data ?? []) as { section: string; unseen_count: number }[]) {
+        map[row.section] = Number(row.unseen_count)
+      }
+      setCounts(map)
+    })
+  }, [isPlainMember, isPostOfficer, isNational])
 
   const navItems = [
     { to: '/', label: isPlainMember ? 'Home' : 'Global Dashboard', icon: LayoutGrid, end: true },
@@ -84,7 +105,9 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     // Only Commanders approve their post's Officers, and only National
     // approves Commanders — a plain Officer never sees this, even though
     // they otherwise share the same toolset.
-    ...(profile?.role === 'post_commander' || isNational ? [{ to: '/role-applications', label: 'Role Applications', icon: UserCog }] : []),
+    ...(profile?.role === 'post_commander' || isNational
+      ? [{ to: '/role-applications', label: 'Role Applications', icon: UserCog, section: 'role_applications' as const }]
+      : []),
   ]
 
   return (
@@ -122,25 +145,33 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={label}
-              to={to}
-              end={end}
-              onClick={onClose}
-              className={({ isActive }) =>
-                clsx(
-                  'flex items-center gap-3 px-5 py-2.5 text-sm transition-colors border-l-2',
-                  isActive
-                    ? 'border-gold text-gold bg-surface'
-                    : 'border-transparent text-muted hover:text-ink hover:bg-surface/60'
-                )
-              }
-            >
-              <Icon size={16} strokeWidth={1.75} />
-              <span>{label}</span>
-            </NavLink>
-          ))}
+          {navItems.map(({ to, label, icon: Icon, end, section }) => {
+            const count = section ? counts[section] ?? 0 : 0
+            return (
+              <NavLink
+                key={label}
+                to={to}
+                end={end}
+                onClick={onClose}
+                className={({ isActive }) =>
+                  clsx(
+                    'flex items-center gap-3 px-5 py-2.5 text-sm transition-colors border-l-2',
+                    isActive
+                      ? 'border-gold text-gold bg-surface'
+                      : 'border-transparent text-muted hover:text-ink hover:bg-surface/60'
+                  )
+                }
+              >
+                <Icon size={16} strokeWidth={1.75} />
+                <span className="flex-1">{label}</span>
+                {count > 0 && (
+                  <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-gold text-base text-[10px] font-mono font-medium flex items-center justify-center">
+                    {count > 9 ? '9+' : count}
+                  </span>
+                )}
+              </NavLink>
+            )
+          })}
         </nav>
 
         <div className="px-5 py-4 border-t border-hairline">
