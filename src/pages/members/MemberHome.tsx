@@ -43,10 +43,21 @@ export default function MemberHome() {
   useEffect(() => {
     if (!profile) return
     Promise.all([
-      supabase.from('members').select('*').eq('profile_id', profile.id).single(),
+      // .single() breaks silently (returns null, no thrown error we catch)
+      // if duplicate members rows ever share the same profile_id — a real
+      // possibility from repeated test signups. Ordering + taking the first
+      // active row (or just the most recent) means one duplicate row can
+      // never blank out the whole card.
+      supabase
+        .from('members')
+        .select('*')
+        .eq('profile_id', profile.id)
+        .order('membership_status', { ascending: true }) // 'active' sorts before 'pending_payment'
+        .order('created_at', { ascending: false }),
       supabase.from('posts').select('*').eq('status', 'active_post').order('name'),
     ]).then(([m, p]) => {
-      setMember((m.data as Member) ?? null)
+      const rows = (m.data ?? []) as Member[]
+      setMember(rows.find((r) => r.membership_status === 'active') ?? rows[0] ?? null)
       setPosts((p.data ?? []) as Post[])
       setLoading(false)
     })
@@ -75,6 +86,19 @@ export default function MemberHome() {
 
   return (
     <div>
+      {/* The card is the first thing anyone sees on this page — full-size,
+          front and center, before anything else. */}
+      {member && (
+        <div className="mb-2">
+          <MembershipCardVisual member={member} role={profile?.role} />
+        </div>
+      )}
+      {member && (
+        <p className="text-xs text-muted text-center mb-8">
+          This card updates automatically as your membership status changes — nothing to regenerate.
+        </p>
+      )}
+
       {/* Branded hero band — the seal watermark and foil divider here echo
           the membership card itself, so the page feels like one designed
           system rather than a card sitting inside a generic app shell. */}
@@ -103,19 +127,6 @@ export default function MemberHome() {
           </div>
         </div>
       </div>
-
-      {/* The card is the main event on this page — full-size, front and
-          center, not a link tucked into a banner. */}
-      {member && (
-        <div className="mb-4">
-          <MembershipCardVisual member={member} role={profile?.role} />
-        </div>
-      )}
-      {member && (
-        <p className="text-xs text-muted text-center mb-10">
-          This card updates automatically as your membership status changes — nothing to regenerate.
-        </p>
-      )}
 
       <div className="eyebrow mb-3">Get Involved</div>
       <p className="text-sm text-muted mb-6 max-w-2xl">

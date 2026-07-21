@@ -113,7 +113,11 @@ export default function JoinMembership() {
         post_id: postId,
         role: 'member',
       })
-      const { error: signUpError } = await supabase.auth.signUp({ email: form.email, password: form.password })
+      const { error: signUpError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: { data: { full_name: form.full_name } },
+      })
       if (signUpError) {
         console.error('Account creation failed:', signUpError.message)
       }
