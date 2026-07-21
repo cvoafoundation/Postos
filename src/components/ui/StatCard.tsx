@@ -21,12 +21,12 @@ export function StatCard({
       : 'text-gold'
 
   return (
-    <div className="panel p-5">
+    <div className="panel p-5 h-full flex flex-col">
       <div className="flex items-center justify-between mb-3">
         <div className="eyebrow">{label}</div>
         {icon && <div className={accentClass}>{icon}</div>}
       </div>
-      <div className={`stat-number ${accentClass}`}>{value}</div>
+      <div className={`stat-number ${accentClass} flex-1 flex items-center justify-center text-center`}>{value}</div>
     </div>
   )
 }

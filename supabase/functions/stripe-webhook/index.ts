@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
     const memberId = session.metadata?.member_id
     const membershipType = session.metadata?.membership_type as 'annual' | 'lifetime' | undefined
 
-    await supabase
+    const { error: paymentUpdateError } = await supabase
       .from('membership_payments')
       .update({
         status: 'paid',
@@ -92,6 +92,10 @@ Deno.serve(async (req) => {
         stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : null,
       })
       .eq('stripe_checkout_session_id', session.id)
+
+    if (paymentUpdateError) {
+      console.error('DEBUG membership_payments update failed:', JSON.stringify(paymentUpdateError))
+    }
 
     if (memberId) {
       const now = new Date()
@@ -107,7 +111,18 @@ Deno.serve(async (req) => {
         patch.stripe_subscription_id = session.subscription
       }
 
-      const { data: updatedMember } = await supabase.from('members').update(patch).eq('id', memberId).select().single()
+      console.log('DEBUG about to update member:', memberId, 'with patch:', JSON.stringify(patch))
+
+      const { data: updatedMember, error: memberUpdateError } = await supabase
+        .from('members')
+        .update(patch)
+        .eq('id', memberId)
+        .select()
+        .single()
+
+      if (memberUpdateError) {
+        console.error('DEBUG members update failed:', JSON.stringify(memberUpdateError))
+      }
 
       if (updatedMember) {
         await sendMembershipNotification({
