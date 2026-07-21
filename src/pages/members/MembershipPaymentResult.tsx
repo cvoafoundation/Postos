@@ -9,7 +9,7 @@ export default function MembershipPaymentResult() {
   return (
     <div className="min-h-screen bg-base px-4 py-16 flex items-start justify-center">
       <div className="w-full max-w-md text-center">
-        <img src="/images/cvoa-logo.png" alt="CVOA" className="w-20 h-20 mx-auto mb-8" />
+        <img src="/images/cvoa-logo.png" alt="CVOA" className="w-20 h-20 object-contain mx-auto mb-8" />
         <div className="panel p-8">
           {success ? (
             <>

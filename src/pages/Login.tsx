@@ -28,7 +28,7 @@ export default function Login() {
     <div className="min-h-screen bg-base px-4 py-16">
       <div className={`mx-auto ${path === 'choose' ? 'max-w-5xl' : 'max-w-md'}`}>
         <div className="text-center mb-10">
-          <img src="/images/cvoa-logo.png" alt="CVOA" className="w-28 h-28 mx-auto mb-3" />
+          <img src="/images/cvoa-logo.png" alt="CVOA" className="w-28 h-28 object-contain mx-auto mb-3" />
           <div className="eyebrow mt-1">Post Operating System</div>
         </div>
 

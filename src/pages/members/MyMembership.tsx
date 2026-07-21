@@ -37,7 +37,7 @@ export default function MyMembership() {
         />
       ) : (
         <>
-          <MembershipCardVisual member={member} />
+          <MembershipCardVisual member={member} role={profile?.role} />
           <p className="text-xs text-muted text-center mt-4 max-w-sm mx-auto">
             This card updates automatically — renewals, status changes, and expiration dates always reflect your
             real membership record, nothing to regenerate.
