@@ -237,11 +237,14 @@ export default function MembershipRoster() {
       )}
 
       {selectedPostId === ALL_POSTS && (
-        <div className="panel p-4 mb-6">
+        <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
           <p className="text-sm text-muted">
             Every member across every post, plus anyone unassigned — {members.length} total. Pick a specific post
-            from the dropdown above for its join/renew link, CSV import, or to add a member directly to it.
+            from the dropdown above for its join/renew link or CSV import.
           </p>
+          <button onClick={() => setShowAdd(true)} className="btn-gold flex items-center gap-2 shrink-0">
+            <Plus size={16} /> Add Member
+          </button>
         </div>
       )}
       {selectedPostId !== UNASSIGNED && selectedPostId !== ALL_POSTS && (
@@ -404,8 +407,8 @@ export default function MembershipRoster() {
 
       {showAdd && (
         <AddMemberModal
-          postId={selectedPostId === UNASSIGNED ? null : selectedPostId}
-          postName={selectedPostId === UNASSIGNED ? 'Unassigned' : selectedPost?.name}
+          postId={selectedPostId === UNASSIGNED || selectedPostId === ALL_POSTS ? null : selectedPostId}
+          postName={selectedPostId === UNASSIGNED || selectedPostId === ALL_POSTS ? 'Unassigned' : selectedPost?.name}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false)
