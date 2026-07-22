@@ -41,6 +41,7 @@ import JoinCVOA from '@/pages/members/JoinCVOA'
 import MemberHome from '@/pages/members/MemberHome'
 import PostHome from '@/pages/PostHome'
 import MyMembership from '@/pages/members/MyMembership'
+import Settings from '@/pages/settings/Settings'
 import VerifyMembership from '@/pages/members/VerifyMembership'
 import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
 import NCCDrive from '@/pages/drive/NCCDrive'
@@ -72,7 +73,7 @@ function AuthenticatedApp() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-base">
-        <div className="eyebrow">Loading CVOA Post OS…</div>
+        <div className="eyebrow">Loading CVOA.ONE SYSTEM…</div>
       </div>
     )
   }
@@ -241,6 +242,7 @@ function AuthenticatedApp() {
           }
         />
         <Route path="/my-membership" element={<MyMembership />} />
+        <Route path="/settings" element={<Settings />} />
         <Route
           path="/membership-review"
           element={

@@ -18,6 +18,7 @@ import {
   CreditCard,
   FileCheck2,
   LogOut,
+  Settings as SettingsIcon,
   X,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
@@ -135,7 +136,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         <div className="px-5 py-6 border-b border-hairline flex items-start justify-between">
           <div>
             <div className="font-display text-2xl tracking-wide text-gold leading-none">CVOA</div>
-            <div className="eyebrow mt-1">Post Operating System</div>
+            <div className="eyebrow mt-1">One System (COS)</div>
             {isDemoMode && (
               <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-status-developing/40 bg-status-developing/10 text-status-developing font-mono text-[10px] uppercase tracking-wide">
                 Demo Mode — local data
@@ -185,6 +186,15 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         <div className="px-5 py-4 border-t border-hairline">
           <div className="text-sm text-ink truncate">{profile?.full_name ?? 'Guest'}</div>
           <div className="eyebrow mb-3">{profile?.role?.replaceAll('_', ' ') ?? 'unauthenticated'}</div>
+          <NavLink
+            to="/settings"
+            onClick={onClose}
+            className={({ isActive }) =>
+              `flex items-center gap-2 text-xs mb-2 transition-colors ${isActive ? 'text-gold' : 'text-muted hover:text-gold'}`
+            }
+          >
+            <SettingsIcon size={14} /> Settings
+          </NavLink>
           <button
             onClick={signOut}
             className="flex items-center gap-2 text-xs text-muted hover:text-gold transition-colors"

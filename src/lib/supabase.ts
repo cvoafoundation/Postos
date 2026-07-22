@@ -13,7 +13,7 @@ export const isDemoMode = !url || !anonKey
 if (isDemoMode) {
   // eslint-disable-next-line no-console
   console.info(
-    '[CVOA Post OS] Running in demo mode with local sample data — no Supabase project connected. ' +
+    '[CVOA.ONE SYSTEM] Running in demo mode with local sample data — no Supabase project connected. ' +
       'Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local to connect a real backend.'
   )
 }

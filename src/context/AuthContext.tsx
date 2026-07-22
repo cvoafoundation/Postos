@@ -11,6 +11,7 @@ interface AuthContextValue {
   isDelegate: boolean
   hasRole: (...roles: UserRole[]) => boolean
   signOut: () => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -169,8 +170,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut()
   }
 
+  // Settings lets someone edit their own name/phone directly in the
+  // `profiles` table — without this, the sidebar and everywhere else that
+  // reads `profile` would keep showing the old value until their next
+  // login, since nothing else re-triggers the initial profile fetch.
+  async function refreshProfile() {
+    if (!profile?.id) return
+    const { data } = await supabase.from('profiles').select('*').eq('id', profile.id).single()
+    if (data) setProfile(data as Profile)
+  }
+
   return (
-    <AuthContext.Provider value={{ session, profile, loading, isNational, isDelegate, hasRole, signOut }}>
+    <AuthContext.Provider value={{ session, profile, loading, isNational, isDelegate, hasRole, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

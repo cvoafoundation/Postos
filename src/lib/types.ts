@@ -554,6 +554,16 @@ export const RESOLUTION_CATEGORIES: ResolutionCategory[] = [
 
 export type CongressVoteType = 'informal_poll' | 'delegate_vote' | 'constitutional_amendment' | 'national_referendum'
 
+export interface ResolutionMemberPreference {
+  id: string
+  resolution_id: string
+  post_id: string
+  member_profile_id: string
+  preference: boolean
+  created_at: string
+  updated_at: string
+}
+
 export const VOTE_TYPE_LABELS: Record<CongressVoteType, string> = {
   informal_poll: 'Informal Poll (non-binding)',
   delegate_vote: 'Delegate Vote (binding)',

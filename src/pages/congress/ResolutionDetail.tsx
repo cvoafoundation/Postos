@@ -55,6 +55,9 @@ export default function ResolutionDetail() {
   const [responseType, setResponseType] = useState<DebateResponseType>('clarification')
   const [postingComment, setPostingComment] = useState(false)
   const [myVote, setMyVote] = useState<boolean | null>(null)
+  const [myPreference, setMyPreference] = useState<boolean | null>(null)
+  const [preferenceTally, setPreferenceTally] = useState<{ support: number; oppose: number } | null>(null)
+  const [savingPreference, setSavingPreference] = useState(false)
 
   async function load() {
     if (!id) return
@@ -85,6 +88,34 @@ export default function ResolutionDetail() {
         .eq('voter_id', profile.id)
         .single()
       setMyVote(mine ? (mine as any).vote : null)
+
+      const voteType = (resRes.data as Resolution).vote_type
+      const isFormalVoteType = voteType === 'delegate_vote' || voteType === 'constitutional_amendment'
+
+      // A regular member's own prior preference, so the buttons reflect
+      // what they already told their delegate if they revisit this page.
+      if (isFormalVoteType && !isNational && !isDelegate && profile.post_id) {
+        const { data: pref } = await supabase
+          .from('resolution_member_preferences')
+          .select('preference')
+          .eq('resolution_id', id)
+          .eq('member_profile_id', profile.id)
+          .single()
+        setMyPreference(pref ? (pref as any).preference : null)
+      }
+
+      // The delegate (or National) sees their post's anonymous tally — this
+      // never reveals who said what, only the totals, via the RPC's own
+      // server-side permission check.
+      if (isFormalVoteType && (isDelegate || isNational) && profile.post_id) {
+        const { data: tally } = await supabase.rpc('get_preference_tally', {
+          p_resolution_id: id,
+          p_post_id: profile.post_id,
+        })
+        if (tally && tally.length > 0) {
+          setPreferenceTally({ support: Number(tally[0].support_count), oppose: Number(tally[0].oppose_count) })
+        }
+      }
     }
     setLoading(false)
   }
@@ -141,6 +172,25 @@ export default function ResolutionDetail() {
     }
     setMyVote(vote)
     load()
+  }
+
+  // The "electoral college" mechanic — never counts toward the resolution
+  // passing, purely informs the one formal vote the delegate casts.
+  async function castPreference(preference: boolean) {
+    if (!resolution || !profile?.post_id) return
+    setSavingPreference(true)
+    await supabase.from('resolution_member_preferences').upsert(
+      {
+        resolution_id: resolution.id,
+        post_id: profile.post_id,
+        member_profile_id: profile.id,
+        preference,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'resolution_id,member_profile_id' }
+    )
+    setSavingPreference(false)
+    setMyPreference(preference)
   }
 
   async function postComment() {
@@ -378,10 +428,36 @@ export default function ResolutionDetail() {
             <div className="panel p-5">
               <div className="eyebrow mb-3">Cast Your Vote</div>
               {(resolution.vote_type === 'delegate_vote' || resolution.vote_type === 'constitutional_amendment') && !isNational && !isDelegate ? (
-                <p className="text-xs text-muted">
-                  This is a formal {resolution.vote_type === 'constitutional_amendment' ? 'constitutional amendment' : 'delegate'} vote —
-                  only your post's designated delegate can cast it on your chapter's behalf.
-                </p>
+                <div>
+                  <p className="text-xs text-muted mb-3">
+                    This is a formal {resolution.vote_type === 'constitutional_amendment' ? 'constitutional amendment' : 'delegate'} vote —
+                    only your post's designated delegate casts the vote that actually counts. But you can still show
+                    them how you'd vote — it's anonymous, non-binding, and only your own delegate sees the tally.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => castPreference(true)}
+                      disabled={savingPreference}
+                      className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border disabled:opacity-50 ${
+                        myPreference === true ? 'bg-status-active text-base border-status-active' : 'border-hairline hover:border-status-active text-ink'
+                      }`}
+                    >
+                      <ThumbsUp size={14} /> Support
+                    </button>
+                    <button
+                      onClick={() => castPreference(false)}
+                      disabled={savingPreference}
+                      className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border disabled:opacity-50 ${
+                        myPreference === false ? 'bg-status-attention text-base border-status-attention' : 'border-hairline hover:border-status-attention text-ink'
+                      }`}
+                    >
+                      <ThumbsDown size={14} /> Oppose
+                    </button>
+                  </div>
+                  {myPreference !== null && (
+                    <p className="text-[11px] text-muted mt-2">Your delegate can see this reflected in their post's tally, anonymously.</p>
+                  )}
+                </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2 mb-4">
                   <button
@@ -403,7 +479,33 @@ export default function ResolutionDetail() {
                 </div>
               )}
 
-              <div className="border-t border-hairline pt-3">
+              {(resolution.vote_type === 'delegate_vote' || resolution.vote_type === 'constitutional_amendment') &&
+                (isDelegate || isNational) &&
+                preferenceTally &&
+                preferenceTally.support + preferenceTally.oppose > 0 && (
+                  <div className="border-t border-hairline mt-4 pt-3">
+                    <div className="eyebrow mb-2">Your Post's Member Sentiment (anonymous)</div>
+                    <div className="flex justify-between text-xs text-muted mb-1">
+                      <span>{preferenceTally.support} support</span>
+                      <span>{preferenceTally.oppose} oppose</span>
+                    </div>
+                    <div className="h-2 bg-surface rounded-full overflow-hidden mb-2">
+                      <div
+                        className="h-full bg-status-active"
+                        style={{ width: `${(preferenceTally.support / (preferenceTally.support + preferenceTally.oppose)) * 100}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-gold">
+                      {preferenceTally.support > preferenceTally.oppose
+                        ? 'Your members lean toward supporting this — how you vote is still your call.'
+                        : preferenceTally.oppose > preferenceTally.support
+                        ? 'Your members lean toward opposing this — how you vote is still your call.'
+                        : "Your members are evenly split — how you vote is still your call."}
+                    </p>
+                  </div>
+                )}
+
+              <div className="border-t border-hairline pt-3 mt-4">
                 <div className="flex justify-between text-xs text-muted mb-1">
                   <span>{yesVotes} support</span>
                   <span>{noVotes} oppose</span>

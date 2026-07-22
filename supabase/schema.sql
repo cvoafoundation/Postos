@@ -2416,3 +2416,61 @@ create policy "sponsor_payments_insert_post_or_national" on sponsor_payments
   for insert with check (is_national_role() or post_id = current_post_id());
 create policy "sponsor_payments_delete_national" on sponsor_payments
   for delete using (is_national_role());
+
+-- ----------------------------------------------------------------------------
+-- Member preference (the "electoral college" mechanic): on a formal
+-- delegate_vote or constitutional_amendment resolution, regular members can
+-- register a non-binding preference. Their own post's delegate sees only
+-- the aggregate tally — never who said what, not even to National — as a
+-- nudge, not a rule. The delegate's own cast vote in resolution_votes
+-- remains the only vote that actually counts.
+-- ----------------------------------------------------------------------------
+create table resolution_member_preferences (
+  id uuid primary key default uuid_generate_v4(),
+  resolution_id uuid not null references resolutions(id) on delete cascade,
+  post_id uuid not null references posts(id) on delete cascade,
+  member_profile_id uuid not null references profiles(id) on delete cascade,
+  preference boolean not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (resolution_id, member_profile_id)
+);
+
+alter table resolution_member_preferences enable row level security;
+
+create policy "member_preferences_own_select" on resolution_member_preferences
+  for select using (member_profile_id = auth.uid());
+create policy "member_preferences_own_insert" on resolution_member_preferences
+  for insert with check (member_profile_id = auth.uid());
+create policy "member_preferences_own_update" on resolution_member_preferences
+  for update using (member_profile_id = auth.uid());
+
+-- Anonymous aggregate tally only — nobody, including National, can see who
+-- answered which way through this function, only the totals, and only if
+-- they're that post's actual delegate or National.
+create or replace function get_preference_tally(p_resolution_id uuid, p_post_id uuid)
+returns table (support_count bigint, oppose_count bigint)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not (
+    is_national_role()
+    or exists (
+      select 1 from congress_delegates
+      where post_id = p_post_id and profile_id = auth.uid() and is_alternate = false
+    )
+  ) then
+    return query select 0::bigint, 0::bigint;
+    return;
+  end if;
+
+  return query
+    select
+      count(*) filter (where preference = true),
+      count(*) filter (where preference = false)
+    from resolution_member_preferences
+    where resolution_id = p_resolution_id and post_id = p_post_id;
+end;
+$$;

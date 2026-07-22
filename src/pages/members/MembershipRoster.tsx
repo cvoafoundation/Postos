@@ -553,6 +553,21 @@ function EditMemberModal({
   const [autoRenew, setAutoRenew] = useState(member.auto_renew)
   const [showAddToFoundingTeam, setShowAddToFoundingTeam] = useState(false)
   const [linkedAccount, setLinkedAccount] = useState<{ full_name: string; role: string } | null>(null)
+  const [invitingAccount, setInvitingAccount] = useState(false)
+  const [inviteSent, setInviteSent] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+
+  async function sendInvite() {
+    setInvitingAccount(true)
+    setInviteError(null)
+    const { data, error } = await supabase.functions.invoke('invite-member', { body: { member_id: member.id } })
+    setInvitingAccount(false)
+    if (error || data?.error) {
+      setInviteError(data?.error ?? error?.message ?? 'Could not send the invite.')
+      return
+    }
+    setInviteSent(true)
+  }
 
   // Surfaces the login/role side right here — without this, there'd be no
   // way to know from the roster alone whether this person also has system
@@ -681,6 +696,23 @@ function EditMemberModal({
             </span>
             <span className="text-xs text-gold">Manage in User Management →</span>
           </button>
+        )}
+        {!linkedAccount && (
+          <div className="panel p-2.5">
+            {inviteSent ? (
+              <p className="text-xs text-status-active">Invite sent to {member.email} — they'll set their own password and see their card immediately.</p>
+            ) : member.email ? (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted">No account yet — already paid, just no login.</span>
+                <button onClick={sendInvite} disabled={invitingAccount} className="text-xs text-gold hover:text-gold-bright shrink-0 disabled:opacity-50">
+                  {invitingAccount ? 'Sending…' : 'Send Invite to Create Account'}
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-muted">No email on file — add one above to send an account invite.</p>
+            )}
+            {inviteError && <p className="text-xs text-status-attention mt-1.5">{inviteError}</p>}
+          </div>
         )}
         <input placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
