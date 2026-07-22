@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import Papa from 'papaparse'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -18,6 +19,7 @@ const US_STATES = [
 ]
 
 const UNASSIGNED = 'unassigned'
+const ALL_POSTS = 'all'
 
 function daysUntil(dateStr: string): number {
   return Math.round((new Date(dateStr).getTime() - Date.now()) / 86400000)
@@ -32,6 +34,7 @@ function statusTone(status: Member['membership_status']) {
 export default function MembershipRoster() {
   useMarkNotificationViewed('membership_roster')
   const { profile, isNational } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [posts, setPosts] = useState<Post[]>([])
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [members, setMembers] = useState<Member[]>([])
@@ -40,6 +43,7 @@ export default function MembershipRoster() {
   const [searchingGlobal, setSearchingGlobal] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Member | null>(null)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importSummary, setImportSummary] = useState<string | null>(null)
@@ -73,12 +77,16 @@ export default function MembershipRoster() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, isNational])
 
+  // National lands on the full cross-post roster by default — not an
+  // arbitrary specific post — since "which post happens to sort first" was
+  // never a meaningful starting point. Post officers still land straight on
+  // their own post's roster, unchanged.
   useEffect(() => {
     if (isNational) {
-      supabase.from('posts').select('*').then(({ data }: any) => {
+      supabase.from('posts').select('*').order('name').then(({ data }: any) => {
         const list = (data ?? []) as Post[]
         setPosts(list)
-        if (!selectedPostId) setSelectedPostId(list.length > 0 ? list[0].id : UNASSIGNED)
+        if (!selectedPostId) setSelectedPostId(ALL_POSTS)
       })
     } else if (profile?.post_id) {
       setSelectedPostId(profile.post_id)
@@ -86,10 +94,35 @@ export default function MembershipRoster() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNational, profile?.post_id])
 
+  // Deep link from User Management: "?highlight=<memberId>" jumps straight
+  // to that person's own roster entry and opens it, instead of leaving
+  // National to hunt for them across posts by hand.
+  useEffect(() => {
+    const targetId = searchParams.get('highlight')
+    if (!targetId || !isNational) return
+    supabase
+      .from('members')
+      .select('*')
+      .eq('id', targetId)
+      .single()
+      .then(({ data }) => {
+        const member = data as Member | null
+        if (!member) return
+        setSelectedPostId(member.post_id ?? UNASSIGNED)
+        setHighlightId(member.id)
+        setEditing(member)
+        searchParams.delete('highlight')
+        setSearchParams(searchParams, { replace: true })
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNational])
+
   async function loadMembers() {
     if (!selectedPostId) return
     const query =
-      selectedPostId === UNASSIGNED
+      selectedPostId === ALL_POSTS
+        ? supabase.from('members').select('*').order('membership_number')
+        : selectedPostId === UNASSIGNED
         ? supabase.from('members').select('*').is('post_id', null).order('membership_number')
         : supabase.from('members').select('*').eq('post_id', selectedPostId).order('membership_number')
     const { data } = await query
@@ -102,7 +135,7 @@ export default function MembershipRoster() {
   }, [selectedPostId])
 
   function copyJoinLink() {
-    if (!selectedPostId || selectedPostId === UNASSIGNED) return
+    if (!selectedPostId || selectedPostId === UNASSIGNED || selectedPostId === ALL_POSTS) return
     const link = `${window.location.origin}/join-membership/${selectedPostId}`
     navigator.clipboard.writeText(link)
     setCopied(true)
@@ -181,6 +214,7 @@ export default function MembershipRoster() {
         action={
           isNational ? (
             <select className="input-field w-64" value={selectedPostId} onChange={(e) => setSelectedPostId(e.target.value)}>
+              <option value={ALL_POSTS}>All Members (Every Post)</option>
               {posts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -198,7 +232,15 @@ export default function MembershipRoster() {
         </div>
       )}
 
-      {selectedPostId !== UNASSIGNED && (
+      {selectedPostId === ALL_POSTS && (
+        <div className="panel p-4 mb-6">
+          <p className="text-sm text-muted">
+            Every member across every post, plus anyone unassigned — {members.length} total. Pick a specific post
+            from the dropdown above for its join/renew link, CSV import, or to add a member directly to it.
+          </p>
+        </div>
+      )}
+      {selectedPostId !== UNASSIGNED && selectedPostId !== ALL_POSTS && (
         <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
           <div>
             <div className="eyebrow mb-1">Join / Renew Link</div>
@@ -286,12 +328,13 @@ export default function MembershipRoster() {
         </div>
       )}
 
-      <div className="panel overflow-hidden">
+      <div className="panel overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr>
               <th className="table-head">Member #</th>
               <th className="table-head">Name</th>
+              {selectedPostId === ALL_POSTS && <th className="table-head">Post</th>}
               <th className="table-head">Contact</th>
               <th className="table-head">DD214</th>
               <th className="table-head">Address</th>
@@ -303,10 +346,19 @@ export default function MembershipRoster() {
           </thead>
           <tbody>
             {filtered.map((m) => (
-              <tr key={m.id} onClick={() => setEditing(m)} className="cursor-pointer hover:bg-surface/60">
+              <tr
+                key={m.id}
+                onClick={() => setEditing(m)}
+                className={`cursor-pointer hover:bg-surface/60 ${highlightId === m.id ? 'bg-gold/5' : ''}`}
+              >
                 <td className="table-cell font-mono text-xs text-gold">{m.membership_number ?? '—'}</td>
-                <td className="table-cell">{m.full_name}</td>
-                <td className="table-cell text-xs text-muted">
+                <td className="table-cell whitespace-nowrap">{m.full_name}</td>
+                {selectedPostId === ALL_POSTS && (
+                  <td className="table-cell text-xs text-muted whitespace-nowrap">
+                    {m.post_id ? posts.find((p) => p.id === m.post_id)?.name ?? 'A post' : 'Unassigned'}
+                  </td>
+                )}
+                <td className="table-cell text-xs text-muted whitespace-nowrap">
                   <div>{m.email}</div>
                   <div>{m.phone}</div>
                 </td>
@@ -325,13 +377,13 @@ export default function MembershipRoster() {
                     <span className="text-status-attention text-xs">None</span>
                   )}
                 </td>
-                <td className="table-cell text-xs text-muted">{m.address}</td>
-                <td className="table-cell text-muted">{m.military_branch}</td>
-                <td className="table-cell capitalize">{m.membership_type}</td>
-                <td className="table-cell">
+                <td className="table-cell text-xs text-muted whitespace-nowrap">{m.address}</td>
+                <td className="table-cell text-muted whitespace-nowrap">{m.military_branch}</td>
+                <td className="table-cell capitalize whitespace-nowrap">{m.membership_type}</td>
+                <td className="table-cell whitespace-nowrap">
                   <StatusBadge label={m.membership_status.replaceAll('_', ' ')} tone={statusTone(m.membership_status)} />
                 </td>
-                <td className="table-cell text-muted text-xs">
+                <td className="table-cell text-muted text-xs whitespace-nowrap">
                   {m.membership_type === 'lifetime' ? 'Never' : m.expires_at ? format(new Date(m.expires_at), 'MMM d, yyyy') : '—'}
                 </td>
               </tr>
@@ -361,9 +413,13 @@ export default function MembershipRoster() {
       {editing && (
         <EditMemberModal
           member={editing}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null)
+            setHighlightId(null)
+          }}
           onSaved={() => {
             setEditing(null)
+            setHighlightId(null)
             loadMembers()
           }}
         />
@@ -475,6 +531,7 @@ function EditMemberModal({
   onClose: () => void
   onSaved: () => void
 }) {
+  const navigate = useNavigate()
   const [form, setForm] = useState({
     full_name: member.full_name,
     email: member.email ?? '',
@@ -491,6 +548,20 @@ function EditMemberModal({
   const [cancellingRenew, setCancellingRenew] = useState(false)
   const [autoRenew, setAutoRenew] = useState(member.auto_renew)
   const [showAddToFoundingTeam, setShowAddToFoundingTeam] = useState(false)
+  const [linkedAccount, setLinkedAccount] = useState<{ full_name: string; role: string } | null>(null)
+
+  // Surfaces the login/role side right here — without this, there'd be no
+  // way to know from the roster alone whether this person also has system
+  // access, let alone what kind, without a separate trip to User Management.
+  useEffect(() => {
+    if (!member.profile_id) return
+    supabase
+      .from('profiles')
+      .select('full_name, role')
+      .eq('id', member.profile_id)
+      .single()
+      .then(({ data }) => setLinkedAccount(data as { full_name: string; role: string } | null))
+  }, [member.profile_id])
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -596,6 +667,17 @@ function EditMemberModal({
     <Modal title={`Edit ${member.full_name}`} onClose={onClose}>
       <div className="space-y-3">
         <div className="font-mono text-xs text-gold">{member.membership_number ?? 'No number assigned'}</div>
+        {linkedAccount && (
+          <button
+            onClick={() => navigate(`/users?q=${encodeURIComponent(linkedAccount.full_name)}`)}
+            className="w-full text-left panel p-2.5 flex items-center justify-between hover:border-gold transition-colors"
+          >
+            <span className="text-xs text-muted">
+              Also has a login — <span className="text-ink">{linkedAccount.role.replaceAll('_', ' ')}</span>
+            </span>
+            <span className="text-xs text-gold">Manage in User Management →</span>
+          </button>
+        )}
         <input placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
           <input type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />

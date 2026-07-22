@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
-import type { Post, Profile, UserRole } from '@/lib/types'
-import { Search, UserPlus, Loader2 } from 'lucide-react'
+import type { Member, Post, Profile, UserRole } from '@/lib/types'
+import { Search, UserPlus, Loader2, Trash2 } from 'lucide-react'
 
 const ROLES: { value: UserRole; label: string }[] = [
   { value: 'national_commander', label: 'National Commander' },
@@ -18,25 +19,38 @@ const ROLES: { value: UserRole; label: string }[] = [
 ]
 
 export default function UserManagement() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [posts, setPosts] = useState<Record<string, string>>({})
   const [allPosts, setAllPosts] = useState<Post[]>([])
-  const [query, setQuery] = useState('')
+  const [membershipByProfile, setMembershipByProfile] = useState<Record<string, Member>>({})
+  const [query, setQuery] = useState(searchParams.get('q') ?? '')
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [showInvite, setShowInvite] = useState(false)
 
   async function load() {
     setLoading(true)
-    const [profilesRes, postsRes] = await Promise.all([
+    const [profilesRes, postsRes, membersRes] = await Promise.all([
       supabase.from('profiles').select('*').order('full_name'),
       supabase.from('posts').select('id, name'),
+      // Cross-referencing membership status right on this page means you
+      // never have to guess whether someone's info lives in "accounts"
+      // world or "membership" world — this pulls both together.
+      supabase.from('members').select('*').not('profile_id', 'is', null),
     ])
     setProfiles((profilesRes.data ?? []) as Profile[])
     const map: Record<string, string> = {}
     for (const p of (postsRes.data ?? []) as any[]) map[p.id] = p.name
     setPosts(map)
     setAllPosts((postsRes.data ?? []) as Post[])
+    const memberMap: Record<string, Member> = {}
+    for (const m of (membersRes.data ?? []) as Member[]) {
+      if (m.profile_id) memberMap[m.profile_id] = m
+    }
+    setMembershipByProfile(memberMap)
     setLoading(false)
   }
 
@@ -58,6 +72,21 @@ export default function UserManagement() {
     setSavingId(null)
   }
 
+  async function deleteAccount(profile: Profile) {
+    const confirmed = window.confirm(
+      `Permanently delete ${profile.full_name}'s account (${profile.email})? This removes their login entirely — they'd need a brand new invite to come back. Any separate membership/dues record is untouched. This cannot be undone.`
+    )
+    if (!confirmed) return
+    setDeletingId(profile.id)
+    const { data, error } = await supabase.functions.invoke('delete-user', { body: { user_id: profile.id } })
+    setDeletingId(null)
+    if (error || data?.error) {
+      window.alert(data?.error ?? error?.message ?? 'Could not delete this account.')
+      return
+    }
+    load()
+  }
+
   const filtered = profiles.filter((p) => {
     if (!query.trim()) return true
     const q = query.toLowerCase()
@@ -76,8 +105,10 @@ export default function UserManagement() {
         }
       />
       <p className="text-sm text-muted mb-6 max-w-2xl">
-        Every account and what it can access. This is how you grant someone National Staff (NCC) access, fix a
-        post assignment, or correct a role — the only other way any of this happens is direct database access.
+        Every login account and what it can access — separate from Membership Roster, which tracks dues/payment
+        status. Someone can have one without the other (National staff don't pay dues; some members never
+        create an account). This is how you grant National Staff (NCC) access, fix a post assignment, correct a
+        role, or fully remove an account.
       </p>
 
       <div className="relative mb-4">
@@ -95,7 +126,7 @@ export default function UserManagement() {
       ) : filtered.length === 0 ? (
         <EmptyState title="No accounts found" />
       ) : (
-        <div className="panel overflow-hidden">
+        <div className="panel overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr>
@@ -103,44 +134,75 @@ export default function UserManagement() {
                 <th className="table-head">Email</th>
                 <th className="table-head">Role</th>
                 <th className="table-head">Post</th>
+                <th className="table-head">Membership</th>
+                <th className="table-head"></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p) => (
-                <tr key={p.id}>
-                  <td className="table-cell">{p.full_name}</td>
-                  <td className="table-cell text-xs text-muted font-mono">{p.email}</td>
-                  <td className="table-cell">
-                    <select
-                      className="input-field text-xs py-1"
-                      value={p.role}
-                      disabled={savingId === p.id}
-                      onChange={(e) => updateRole(p, e.target.value as UserRole)}
-                    >
-                      {ROLES.map((r) => (
-                        <option key={r.value} value={r.value}>
-                          {r.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="table-cell">
-                    <select
-                      className="input-field text-xs py-1"
-                      value={p.post_id ?? ''}
-                      disabled={savingId === p.id}
-                      onChange={(e) => updatePost(p, e.target.value)}
-                    >
-                      <option value="">No post (National-level)</option>
-                      {Object.entries(posts).map(([id, name]) => (
-                        <option key={id} value={id}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((p) => {
+                const membership = membershipByProfile[p.id]
+                return (
+                  <tr key={p.id}>
+                    <td className="table-cell">{p.full_name}</td>
+                    <td className="table-cell text-xs text-muted font-mono">{p.email}</td>
+                    <td className="table-cell">
+                      <select
+                        className="input-field text-xs py-1"
+                        value={p.role}
+                        disabled={savingId === p.id}
+                        onChange={(e) => updateRole(p, e.target.value as UserRole)}
+                      >
+                        {ROLES.map((r) => (
+                          <option key={r.value} value={r.value}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="table-cell">
+                      <select
+                        className="input-field text-xs py-1"
+                        value={p.post_id ?? ''}
+                        disabled={savingId === p.id}
+                        onChange={(e) => updatePost(p, e.target.value)}
+                      >
+                        <option value="">No post (National-level)</option>
+                        {Object.entries(posts).map(([id, name]) => (
+                          <option key={id} value={id}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="table-cell">
+                      {membership ? (
+                        <button
+                          onClick={() => navigate(`/members?highlight=${membership.id}`)}
+                          className="text-xs hover:text-gold"
+                          title="Open in Membership Roster"
+                        >
+                          <span className={membership.membership_status === 'active' ? 'text-status-active' : 'text-status-developing'}>
+                            {membership.membership_status.replaceAll('_', ' ')}
+                          </span>
+                          <span className="text-muted"> · {membership.post_id ? posts[membership.post_id] ?? 'a post' : 'Unassigned'}</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-muted">No membership record</span>
+                      )}
+                    </td>
+                    <td className="table-cell">
+                      <button
+                        onClick={() => deleteAccount(p)}
+                        disabled={deletingId === p.id}
+                        className="text-muted hover:text-status-attention disabled:opacity-50"
+                        title="Delete this account entirely"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
