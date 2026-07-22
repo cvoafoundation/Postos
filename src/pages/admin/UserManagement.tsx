@@ -7,6 +7,24 @@ import { supabase } from '@/lib/supabase'
 import type { Member, Post, Profile, UserRole } from '@/lib/types'
 import { Search, UserPlus, Loader2, Trash2 } from 'lucide-react'
 
+// supabase-js doesn't surface an Edge Function's own error message by
+// default — when a function returns any non-2xx status, `data` comes back
+// null and `error.message` is just a generic "non-2xx status code" string.
+// The actual { error: "..." } body we wrote is sitting one level deeper, on
+// error.context (the raw Response) — this reads it.
+async function extractFunctionError(error: any, data: any, fallback: string): Promise<string> {
+  if (data?.error) return data.error
+  if (error?.context && typeof error.context.json === 'function') {
+    try {
+      const body = await error.context.json()
+      if (body?.error) return body.error
+    } catch {
+      // context wasn't JSON — fall through to the generic message below
+    }
+  }
+  return error?.message ?? fallback
+}
+
 const ROLES: { value: UserRole; label: string }[] = [
   { value: 'national_commander', label: 'National Commander' },
   { value: 'national_staff', label: 'National Staff (NCC)' },
@@ -81,7 +99,7 @@ export default function UserManagement() {
     const { data, error } = await supabase.functions.invoke('delete-user', { body: { user_id: profile.id } })
     setDeletingId(null)
     if (error || data?.error) {
-      window.alert(data?.error ?? error?.message ?? 'Could not delete this account.')
+      window.alert(await extractFunctionError(error, data, 'Could not delete this account.'))
       return
     }
     load()
@@ -240,7 +258,7 @@ function InviteUserModal({ posts, onClose, onInvited }: { posts: Post[]; onClose
     })
     setSending(false)
     if (invokeError || data?.error) {
-      setError(data?.error ?? invokeError?.message ?? 'Could not send invite.')
+      setError(await extractFunctionError(invokeError, data, 'Could not send invite.'))
       return
     }
     onInvited()
