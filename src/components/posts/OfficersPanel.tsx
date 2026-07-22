@@ -14,11 +14,14 @@ function isStaleVerification(verifiedAt: string): boolean {
 const REQUIRED_POSITIONS = ['commander', 'vice_commander', 'adjutant', 'quartermaster', 'sergeant_at_arms']
 
 const ALL_POSITIONS: { value: string; label: string }[] = [
-  { value: 'commander', label: 'Commander' },
-  { value: 'vice_commander', label: 'Vice Commander' },
-  { value: 'adjutant', label: 'Adjutant' },
-  { value: 'quartermaster', label: 'Quartermaster' },
-  { value: 'sergeant_at_arms', label: 'Sergeant-at-Arms' },
+  { value: 'commander', label: 'Post Commander' },
+  { value: 'vice_commander', label: 'Post Vice Commander' },
+  { value: 'quartermaster', label: 'Post Quartermaster' },
+  { value: 'adjutant', label: 'Post Adjutant' },
+  { value: 'post_delegate', label: 'Post Delegate' },
+  { value: 'chaplain', label: 'Post Chaplain' },
+  { value: 'sergeant_at_arms', label: 'Sergeant at Arms' },
+  { value: 'associate_member', label: 'Associate Member (no voting rights)' },
   { value: 'member', label: 'Additional Member' },
 ]
 

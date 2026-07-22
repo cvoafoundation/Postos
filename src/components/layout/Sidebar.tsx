@@ -19,6 +19,8 @@ import {
   FileCheck2,
   LogOut,
   Settings as SettingsIcon,
+  ShieldAlert,
+  Gavel,
   X,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
@@ -117,6 +119,15 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     ...(profile?.role === 'post_commander' || isNational
       ? [{ to: '/role-applications', label: 'Role Applications', icon: UserCog, section: 'role_applications' as const }]
       : []),
+    // Every real member gets a way to reach the Tribunal directly — this is
+    // deliberately available regardless of role (except an unverified
+    // guest_applicant, who has no nav at all yet). The Tribunal inbox
+    // itself, below, is the opposite: visible to nobody except the
+    // Tribunal.
+    ...(profile?.role && profile.role !== 'guest_applicant'
+      ? [{ to: '/file-complaint', label: 'File a Complaint', icon: ShieldAlert }]
+      : []),
+    ...(profile?.role === 'ethics_tribunal' ? [{ to: '/ethics-tribunal', label: 'Ethics Tribunal', icon: Gavel }] : []),
   ]
 
   return (

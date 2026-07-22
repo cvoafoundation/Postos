@@ -42,6 +42,8 @@ import MemberHome from '@/pages/members/MemberHome'
 import PostHome from '@/pages/PostHome'
 import MyMembership from '@/pages/members/MyMembership'
 import Settings from '@/pages/settings/Settings'
+import FileComplaint from '@/pages/ethics/FileComplaint'
+import EthicsTribunalInbox from '@/pages/ethics/EthicsTribunalInbox'
 import VerifyMembership from '@/pages/members/VerifyMembership'
 import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
 import NCCDrive from '@/pages/drive/NCCDrive'
@@ -243,6 +245,15 @@ function AuthenticatedApp() {
         />
         <Route path="/my-membership" element={<MyMembership />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/file-complaint" element={<FileComplaint />} />
+        <Route
+          path="/ethics-tribunal"
+          element={
+            <RoleGuard roles={['ethics_tribunal']}>
+              <EthicsTribunalInbox />
+            </RoleGuard>
+          }
+        />
         <Route
           path="/membership-review"
           element={

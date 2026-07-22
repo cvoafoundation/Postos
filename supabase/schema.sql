@@ -2474,3 +2474,78 @@ begin
     where resolution_id = p_resolution_id and post_id = p_post_id;
 end;
 $$;
+
+-- ----------------------------------------------------------------------------
+-- MODULE: Ethics Tribunal (Article X)
+-- A genuinely independent judicial body — deliberately NOT visible to
+-- National, since the Tribunal's own bylaws give it jurisdiction to
+-- investigate National Command Council members themselves. The
+-- 'ethics_tribunal' role added to user_role is its own thing, checked
+-- separately from is_national_role() everywhere in this schema.
+--
+-- Enum additions like this must run as their own standalone statement
+-- (Postgres won't let a new enum value be used in the same transaction it
+-- was added in):
+--   alter type user_role add value 'ethics_tribunal';
+--   alter table profiles add column if not exists title text;
+--   alter type founding_position add value 'post_delegate';
+--   alter type founding_position add value 'chaplain';
+--   alter type founding_position add value 'associate_member';
+-- ----------------------------------------------------------------------------
+create or replace function is_ethics_tribunal_role()
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1 from profiles
+    where id = auth.uid()
+    and role = 'ethics_tribunal'
+  );
+$$;
+
+create type ethics_complaint_category as enum (
+  'ethical_misconduct',
+  'abuse_of_authority',
+  'bylaws_violation',
+  'gross_negligence',
+  'financial_impropriety',
+  'discrimination_harassment',
+  'retaliation',
+  'other'
+);
+
+create type ethics_complaint_status as enum (
+  'new',
+  'under_review',
+  'investigating',
+  'resolved',
+  'dismissed'
+);
+
+create table ethics_complaints (
+  id uuid primary key default uuid_generate_v4(),
+  complainant_id uuid references profiles(id) on delete set null,
+  filed_anonymously boolean not null default false,
+  respondent_name text not null,
+  respondent_context text,
+  category ethics_complaint_category not null,
+  description text not null,
+  status ethics_complaint_status not null default 'new',
+  assigned_to uuid references profiles(id) on delete set null,
+  tribunal_notes text,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table ethics_complaints enable row level security;
+
+create policy "ethics_complaints_insert_any_authenticated" on ethics_complaints
+  for insert with check (auth.uid() is not null);
+create policy "ethics_complaints_select_own_or_tribunal" on ethics_complaints
+  for select using (complainant_id = auth.uid() or is_ethics_tribunal_role());
+create policy "ethics_complaints_update_tribunal" on ethics_complaints
+  for update using (is_ethics_tribunal_role());
+create policy "ethics_complaints_delete_tribunal" on ethics_complaints
+  for delete using (is_ethics_tribunal_role());

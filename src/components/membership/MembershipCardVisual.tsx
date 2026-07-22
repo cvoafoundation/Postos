@@ -14,6 +14,8 @@ function roleLabel(role: UserRole | undefined): string {
       return 'National Command Council'
     case 'delegate':
       return 'Veterans Congress'
+    case 'ethics_tribunal':
+      return 'Ethics Tribunal'
     case 'post_officer':
       return 'Post Officer'
     case 'post_commander':

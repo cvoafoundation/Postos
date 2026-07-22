@@ -33,6 +33,7 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: 'post_officer', label: 'Post Officer' },
   { value: 'member', label: 'Member' },
   { value: 'delegate', label: 'Delegate' },
+  { value: 'ethics_tribunal', label: 'Ethics Tribunal' },
   { value: 'guest_applicant', label: 'Guest / Unverified' },
 ]
 
@@ -88,6 +89,11 @@ export default function UserManagement() {
     setProfiles((prev) => prev.map((p) => (p.id === profile.id ? { ...p, post_id: postId || null } : p)))
     await supabase.from('profiles').update({ post_id: postId || null }).eq('id', profile.id)
     setSavingId(null)
+  }
+
+  async function updateTitle(profile: Profile, title: string) {
+    setProfiles((prev) => prev.map((p) => (p.id === profile.id ? { ...p, title: title || null } : p)))
+    await supabase.from('profiles').update({ title: title || null }).eq('id', profile.id)
   }
 
   async function deleteAccount(profile: Profile) {
@@ -151,6 +157,7 @@ export default function UserManagement() {
                 <th className="table-head">Name</th>
                 <th className="table-head">Email</th>
                 <th className="table-head">Role</th>
+                <th className="table-head">Title</th>
                 <th className="table-head">Post</th>
                 <th className="table-head">Membership</th>
                 <th className="table-head"></th>
@@ -176,6 +183,15 @@ export default function UserManagement() {
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td className="table-cell">
+                      <input
+                        list="national-titles"
+                        className="input-field text-xs py-1 w-40"
+                        defaultValue={p.title ?? ''}
+                        placeholder="—"
+                        onBlur={(e) => e.target.value !== (p.title ?? '') && updateTitle(p, e.target.value)}
+                      />
                     </td>
                     <td className="table-cell">
                       <select
@@ -225,6 +241,15 @@ export default function UserManagement() {
           </table>
         </div>
       )}
+
+      <datalist id="national-titles">
+        <option value="National Commander" />
+        <option value="Vice National Commander" />
+        <option value="National Quartermaster" />
+        <option value="Adjutant General" />
+        <option value="National Sergeant at Arms" />
+        <option value="Director of Legislative Affairs" />
+      </datalist>
 
       {showInvite && (
         <InviteUserModal

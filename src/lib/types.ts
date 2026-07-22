@@ -6,6 +6,7 @@ export type UserRole =
   | 'post_officer'
   | 'member'
   | 'delegate'
+  | 'ethics_tribunal'
   | 'guest_applicant'
 
 export type PostStatus =
@@ -233,6 +234,7 @@ export interface Profile {
   role: UserRole
   post_id: string | null
   state: string | null
+  title: string | null
   created_at: string
 }
 
@@ -469,6 +471,33 @@ export interface ChecklistItem {
   is_complete: boolean
   completed_at: string | null
   auto_tracked: boolean
+  created_at: string
+}
+
+export type EthicsComplaintCategory =
+  | 'ethical_misconduct'
+  | 'abuse_of_authority'
+  | 'bylaws_violation'
+  | 'gross_negligence'
+  | 'financial_impropriety'
+  | 'discrimination_harassment'
+  | 'retaliation'
+  | 'other'
+
+export type EthicsComplaintStatus = 'new' | 'under_review' | 'investigating' | 'resolved' | 'dismissed'
+
+export interface EthicsComplaint {
+  id: string
+  complainant_id: string | null
+  filed_anonymously: boolean
+  respondent_name: string
+  respondent_context: string | null
+  category: EthicsComplaintCategory
+  description: string
+  status: EthicsComplaintStatus
+  assigned_to: string | null
+  tribunal_notes: string | null
+  resolved_at: string | null
   created_at: string
 }
 
