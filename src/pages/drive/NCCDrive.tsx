@@ -67,6 +67,10 @@ export default function NCCDrive() {
   const [allFolders, setAllFolders] = useState<DriveFolder[]>([])
   const [postPickerFor, setPostPickerFor] = useState<string | null>(null)
   const [postsForSharing, setPostsForSharing] = useState<{ id: string; name: string }[]>([])
+  const [previewFile, setPreviewFile] = useState<DriveFile | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<'name' | 'date' | 'size'>('name')
+  const [searchFolderResults, setSearchFolderResults] = useState<DriveFolder[]>([])
 
   async function load(folderId: string | null) {
     setLoading(true)
@@ -282,10 +286,48 @@ export default function NCCDrive() {
   async function runSearch() {
     if (!query.trim()) {
       setSearchResults(null)
+      setSearchFolderResults([])
       return
     }
-    const { data } = await supabase.from('drive_files').select('*').ilike('name', `%${query}%`).is('deleted_at', null).order('name')
-    setSearchResults((data ?? []) as DriveFile[])
+    const [filesRes, foldersRes] = await Promise.all([
+      supabase.from('drive_files').select('*').ilike('name', `%${query}%`).is('deleted_at', null).order('name'),
+      supabase.from('drive_folders').select('*').ilike('name', `%${query}%`).is('deleted_at', null).order('name'),
+    ])
+    setSearchResults((filesRes.data ?? []) as DriveFile[])
+    setSearchFolderResults((foldersRes.data ?? []) as DriveFolder[])
+  }
+
+  function sortFolders(list: DriveFolder[]): DriveFolder[] {
+    const sorted = [...list]
+    if (sortBy === 'date') sorted.sort((a, b) => b.created_at.localeCompare(a.created_at))
+    else sorted.sort((a, b) => a.name.localeCompare(b.name))
+    return sorted
+  }
+
+  function sortFiles(list: DriveFile[]): DriveFile[] {
+    const sorted = [...list]
+    if (sortBy === 'date') sorted.sort((a, b) => b.created_at.localeCompare(a.created_at))
+    else if (sortBy === 'size') sorted.sort((a, b) => (b.file_size ?? 0) - (a.file_size ?? 0))
+    else sorted.sort((a, b) => a.name.localeCompare(b.name))
+    return sorted
+  }
+
+  // Images and PDFs get a real inline preview; everything else (Word docs,
+  // spreadsheets, zips, etc.) falls back straight to download — there's no
+  // in-browser way to render those without pulling in a much heavier
+  // document-conversion dependency than this warrants right now.
+  function canPreview(mimeType: string | null): boolean {
+    return !!mimeType && (mimeType.startsWith('image/') || mimeType === 'application/pdf')
+  }
+
+  async function openPreview(file: DriveFile) {
+    if (!canPreview(file.mime_type)) {
+      downloadFile(file)
+      return
+    }
+    setPreviewFile(file)
+    const { data } = await supabase.storage.from('ncc-drive').createSignedUrl(file.storage_path, 300)
+    setPreviewUrl(data?.signedUrl ?? null)
   }
 
   return (
@@ -379,7 +421,7 @@ export default function NCCDrive() {
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
               <input
-                placeholder="Search every file in the drive by name…"
+                placeholder="Search every file and folder by name…"
                 className="input-field pl-9"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -390,10 +432,15 @@ export default function NCCDrive() {
               Search
             </button>
             {searchResults && (
-              <button onClick={() => { setQuery(''); setSearchResults(null) }} className="btn-ghost px-4">
+              <button onClick={() => { setQuery(''); setSearchResults(null); setSearchFolderResults([]) }} className="btn-ghost px-4">
                 Clear
               </button>
             )}
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className="input-field w-36">
+              <option value="name">Name (A–Z)</option>
+              <option value="date">Newest first</option>
+              <option value="size">Largest first</option>
+            </select>
           </div>
 
           {uploadMessage && (
@@ -423,15 +470,33 @@ export default function NCCDrive() {
 
             {searchResults ? (
               <div>
-                <div className="eyebrow mb-3">{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</div>
-                {searchResults.length === 0 ? (
-                  <EmptyState title="No files found" />
+                <div className="eyebrow mb-3">
+                  {searchFolderResults.length + searchResults.length} result{searchFolderResults.length + searchResults.length !== 1 ? 's' : ''}
+                </div>
+                {searchFolderResults.length === 0 && searchResults.length === 0 ? (
+                  <EmptyState title="No files or folders found" />
                 ) : (
                   <div className="space-y-1.5">
+                    {searchFolderResults.map((folder) => (
+                      <button
+                        key={folder.id}
+                        onClick={() => {
+                          setSearchResults(null)
+                          setSearchFolderResults([])
+                          setQuery('')
+                          setCurrentFolderId(folder.id)
+                        }}
+                        className="w-full panel p-3 flex items-center gap-3 hover:border-gold transition-colors text-left"
+                      >
+                        <Folder size={18} style={{ color: folder.color ?? '#C9A227' }} fill={folder.color ?? '#C9A227'} fillOpacity={0.15} />
+                        <span className="text-sm">{folder.name}</span>
+                      </button>
+                    ))}
                     {searchResults.map((f) => (
                       <FileRow
                         key={f.id}
                         file={f}
+                        onPreview={() => openPreview(f)}
                         onDownload={() => downloadFile(f)}
                         onRename={() => renameFile(f)}
                         onDelete={() => deleteFile(f)}
@@ -463,7 +528,7 @@ export default function NCCDrive() {
                   <EmptyState title="This folder is empty" hint="Create a folder or upload a file to get started." />
                 ) : (
                   <div className="space-y-1.5">
-                    {folders.map((folder) => (
+                    {sortFolders(folders).map((folder) => (
                       <div
                         key={folder.id}
                         className="panel p-3 flex items-center justify-between hover:border-gold transition-colors cursor-pointer relative"
@@ -552,10 +617,11 @@ export default function NCCDrive() {
                         )}
                       </div>
                     ))}
-                    {files.map((f) => (
+                    {sortFiles(files).map((f) => (
                       <FileRow
                         key={f.id}
                         file={f}
+                        onPreview={() => openPreview(f)}
                         onDownload={() => downloadFile(f)}
                         onRename={() => renameFile(f)}
                         onDelete={() => deleteFile(f)}
@@ -593,18 +659,43 @@ export default function NCCDrive() {
           </div>
         </Modal>
       )}
+
+      {previewFile && (
+        <Modal
+          title={previewFile.name}
+          onClose={() => {
+            setPreviewFile(null)
+            setPreviewUrl(null)
+          }}
+        >
+          <div className="mb-4">
+            {!previewUrl ? (
+              <p className="text-sm text-muted py-8 text-center">Loading preview…</p>
+            ) : previewFile.mime_type?.startsWith('image/') ? (
+              <img src={previewUrl} alt={previewFile.name} className="max-w-full max-h-[70vh] mx-auto rounded-sm" />
+            ) : (
+              <iframe src={previewUrl} title={previewFile.name} className="w-full h-[70vh] rounded-sm border border-hairline" />
+            )}
+          </div>
+          <button onClick={() => downloadFile(previewFile)} className="btn-gold flex items-center gap-2">
+            <Download size={16} /> Download
+          </button>
+        </Modal>
+      )}
     </div>
   )
 }
 
 function FileRow({
   file,
+  onPreview,
   onDownload,
   onRename,
   onDelete,
   onMove,
 }: {
   file: DriveFile
+  onPreview: () => void
   onDownload: () => void
   onRename: () => void
   onDelete: () => void
@@ -612,9 +703,9 @@ function FileRow({
 }) {
   return (
     <div
-      onClick={onDownload}
+      onClick={onPreview}
       className="panel p-3 flex items-center justify-between cursor-pointer hover:border-gold transition-colors"
-      title="Click to open"
+      title="Click to preview"
     >
       <div className="flex items-center gap-3 min-w-0">
         <FileText size={18} className="text-muted shrink-0" />

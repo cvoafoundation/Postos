@@ -100,11 +100,16 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     // member gets the small member set. A guest_applicant (not yet
     // verified/promoted) or any other unrecognized role gets neither —
     // an empty nav, matching the "Account Pending" screen they land on.
-    ...(isPlainMember ? MEMBER_ITEMS : isPostOfficer || isNational ? SHARED_ITEMS : []).map((item) =>
-      item.to === '/health' && !isNational && profile?.post_id
-        ? { ...item, to: `/health/${profile.post_id}` }
-        : item
-    ),
+    // National doesn't get a personal membership card — "My Membership" is
+    // dropped from their view of the shared toolset while everyone else
+    // (post officers/commanders, plain members) still sees it.
+    ...(isPlainMember ? MEMBER_ITEMS : isPostOfficer || isNational ? SHARED_ITEMS : [])
+      .filter((item) => !(isNational && item.to === '/my-membership'))
+      .map((item) =>
+        item.to === '/health' && !isNational && profile?.post_id
+          ? { ...item, to: `/health/${profile.post_id}` }
+          : item
+      ),
     // Only Commanders approve their post's Officers, and only National
     // approves Commanders — a plain Officer never sees this, even though
     // they otherwise share the same toolset.
