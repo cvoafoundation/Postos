@@ -37,21 +37,21 @@ const NATIONAL_ONLY_ITEMS: NavItem[] = [
 ]
 
 // Shared by post officers/commanders — everything a plain member sees,
-// plus the full toolset for running a post.
+// plus the full toolset for running a post. Officers, Members, and
+// Founding Team all live inside a specific post's own page now (under
+// "Posts") instead of being separate top-level items each reinventing
+// their own "which post am I looking at" logic.
 const SHARED_ITEMS: NavItem[] = [
   { to: '/my-membership', label: 'My Membership', icon: CreditCard },
   { to: '/shared-files', label: 'Post Drive', icon: HardDrive },
-  { to: '/post-officers', label: 'Post Officers', icon: Users },
-  { to: '/post-members', label: 'Post Members', icon: IdCard },
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
-  { to: '/founding-team', label: 'Founding Team', icon: Users },
   { to: '/meetings', label: 'Meetings', icon: CalendarCheck, section: 'meetings' },
   { to: '/members', label: 'Membership Roster', icon: IdCard, section: 'membership_roster' },
   { to: '/membership-review', label: 'Membership DD214 Review', icon: FileCheck2, section: 'dd214_review' },
   { to: '/toolkit', label: 'Post Toolkit', icon: FolderDown },
   { to: '/recruiting', label: 'Recruiting Engine', icon: Radar },
   { to: '/sponsors', label: 'Sponsorship CRM', icon: HandCoins },
-  { to: '/health', label: 'Post Health', icon: HeartPulse },
+  { to: '/health', label: 'Posts', icon: HeartPulse },
   { to: '/build-a-post', label: 'Build A Post', icon: Hammer },
 ]
 

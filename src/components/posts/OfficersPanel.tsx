@@ -1,12 +1,9 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Modal } from '@/components/ui/Modal'
-import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
-import type { FoundingTeamMember, Post } from '@/lib/types'
+import type { FoundingTeamMember } from '@/lib/types'
 import { Copy, Check, Trash2, FileText, Plus, Upload, Loader2 } from 'lucide-react'
 import { formatDistanceToNow, differenceInDays } from 'date-fns'
 
@@ -32,45 +29,26 @@ async function openDocument(path: string) {
   }
 }
 
-export default function FoundingTeamBuilder() {
-  const { postId: routePostId } = useParams<{ postId: string }>()
-  const navigate = useNavigate()
-  const { profile, isNational } = useAuth()
-  const [post, setPost] = useState<Post | null>(null)
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
+// This is what used to be two separate pages — the founding team builder
+// (full editing) and Post Officers (a read-only filtered view of the exact
+// same table). One post's leadership roster is one thing, not two.
+export function OfficersPanel({ postId, postName }: { postId: string; postName: string }) {
   const [members, setMembers] = useState<FoundingTeamMember[]>([])
+  const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
 
-  // National navigates here via the Founding Team list, arriving with a
-  // specific post already chosen in the URL. Post-scoped roles only ever
-  // have their own post, so they skip the list entirely.
-  useEffect(() => {
-    if (isNational) {
-      if (routePostId) {
-        setSelectedPostId(routePostId)
-      } else {
-        navigate('/founding-team', { replace: true })
-      }
-    } else if (profile?.post_id) {
-      setSelectedPostId(profile.post_id)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNational, profile?.post_id, routePostId])
-
-  useEffect(() => {
-    if (!selectedPostId) return
-    supabase.from('posts').select('*').eq('id', selectedPostId).single().then(({ data }: any) => setPost(data as Post))
-  }, [selectedPostId])
-
-  async function loadMembers(postId: string) {
+  async function loadMembers() {
+    setLoading(true)
     const { data } = await supabase.from('founding_team_members').select('*').eq('post_id', postId)
     setMembers((data ?? []) as FoundingTeamMember[])
+    setLoading(false)
   }
 
   useEffect(() => {
-    if (selectedPostId) loadMembers(selectedPostId)
-  }, [selectedPostId])
+    loadMembers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postId])
 
   async function toggleVerification(member: FoundingTeamMember, field: keyof FoundingTeamMember) {
     await supabase
@@ -80,14 +58,12 @@ export default function FoundingTeamBuilder() {
     // Re-fetch rather than update local state optimistically — verification_status
     // is computed server-side by a trigger based on all three checkboxes, so the
     // only way to reflect it correctly is to read back what the database decided.
-    if (selectedPostId) loadMembers(selectedPostId)
+    loadMembers()
   }
 
   async function changePosition(member: FoundingTeamMember, position: string) {
     await supabase.from('founding_team_members').update({ position }).eq('id', member.id)
-    // If they're already verified and their account is active, the database
-    // trigger re-syncs their actual role automatically — no extra step here.
-    if (selectedPostId) loadMembers(selectedPostId)
+    loadMembers()
   }
 
   async function removeMember(member: FoundingTeamMember) {
@@ -96,44 +72,25 @@ export default function FoundingTeamBuilder() {
   }
 
   function copyInviteLink() {
-    if (!selectedPostId) return
-    const link = `${window.location.origin}/join-founding-team/${selectedPostId}`
+    const link = `${window.location.origin}/join-founding-team/${postId}`
     navigator.clipboard.writeText(link)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
-  if (!selectedPostId) {
-    return (
-      <div>
-        <PageHeader eyebrow="Module 3" title="Founding Team Builder" />
-        <EmptyState
-          title="No post in formation yet"
-          hint="A post shows up here once an application is advanced to Founding Team Building from the Application Pipeline."
-        />
-      </div>
-    )
-  }
-
-  const selectedPost = post
   const filledPositions = new Set(members.map((m) => m.position))
   const missing = REQUIRED_POSITIONS.filter((p) => !filledPositions.has(p as any))
 
+  if (loading) return <p className="text-sm text-muted">Loading…</p>
+
   return (
     <div>
-      {isNational && (
-        <button onClick={() => navigate('/founding-team')} className="text-xs font-mono text-muted hover:text-gold mb-4">
-          ← Back to Founding Teams
-        </button>
-      )}
-      <PageHeader eyebrow="Module 3" title={selectedPost ? `${selectedPost.name} — Founding Team` : 'Founding Team Builder'} />
-
       <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
         <div>
           <div className="eyebrow mb-1">Invite Link</div>
           <p className="text-sm text-muted">
-            Share this with {selectedPost?.name ?? 'the founding commander'} — anyone who fills it out is added
-            here automatically. No staff data entry required.
+            Share this with {postName} — anyone who fills it out is added here automatically. No staff data entry
+            required.
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
@@ -185,7 +142,7 @@ export default function FoundingTeamBuilder() {
         </div>
       )}
 
-      <div className="panel overflow-hidden">
+      <div className="panel overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr>
@@ -208,11 +165,7 @@ export default function FoundingTeamBuilder() {
                   {m.email && <div className="text-[11px] text-muted font-mono">{m.email}</div>}
                 </td>
                 <td className="table-cell">
-                  <select
-                    className="input-field text-xs py-1"
-                    value={m.position}
-                    onChange={(e) => changePosition(m, e.target.value)}
-                  >
+                  <select className="input-field text-xs py-1" value={m.position} onChange={(e) => changePosition(m, e.target.value)}>
                     {ALL_POSITIONS.map((p) => (
                       <option key={p.value} value={p.value}>
                         {p.label}
@@ -231,10 +184,7 @@ export default function FoundingTeamBuilder() {
                 </td>
                 <td className="table-cell">
                   {m.dd214_storage_path ? (
-                    <button
-                      onClick={() => openDocument(m.dd214_storage_path!)}
-                      className="flex items-center gap-1 text-gold hover:text-gold-bright text-xs"
-                    >
+                    <button onClick={() => openDocument(m.dd214_storage_path!)} className="flex items-center gap-1 text-gold hover:text-gold-bright text-xs">
                       <FileText size={13} /> View
                     </button>
                   ) : (
@@ -242,36 +192,18 @@ export default function FoundingTeamBuilder() {
                   )}
                 </td>
                 <td className="table-cell">
-                  <input
-                    type="checkbox"
-                    checked={m.dd214_reviewed}
-                    onChange={() => toggleVerification(m, 'dd214_reviewed')}
-                  />
+                  <input type="checkbox" checked={m.dd214_reviewed} onChange={() => toggleVerification(m, 'dd214_reviewed')} />
                 </td>
                 <td className="table-cell">
-                  <input
-                    type="checkbox"
-                    checked={m.combat_service_verified}
-                    onChange={() => toggleVerification(m, 'combat_service_verified')}
-                  />
+                  <input type="checkbox" checked={m.combat_service_verified} onChange={() => toggleVerification(m, 'combat_service_verified')} />
                 </td>
                 <td className="table-cell">
-                  <input
-                    type="checkbox"
-                    checked={m.membership_approved}
-                    onChange={() => toggleVerification(m, 'membership_approved')}
-                  />
+                  <input type="checkbox" checked={m.membership_approved} onChange={() => toggleVerification(m, 'membership_approved')} />
                 </td>
                 <td className="table-cell">
                   <StatusBadge
                     label={m.verification_status}
-                    tone={
-                      m.verification_status === 'verified'
-                        ? 'active'
-                        : m.verification_status === 'rejected'
-                        ? 'attention'
-                        : 'developing'
-                    }
+                    tone={m.verification_status === 'verified' ? 'active' : m.verification_status === 'rejected' ? 'attention' : 'developing'}
                   />
                   {m.verification_status === 'verified' && m.verified_at && isStaleVerification(m.verified_at) && (
                     <div className="text-[10px] text-status-attention font-mono mt-1">
@@ -289,20 +221,17 @@ export default function FoundingTeamBuilder() {
           </tbody>
         </table>
         {members.length === 0 && (
-          <EmptyState
-            title="No founding team members yet"
-            hint="Share the invite link above, or add someone directly if they've already been in touch."
-          />
+          <EmptyState title="No officers yet" hint="Share the invite link above, or add someone directly if they've already been in touch." />
         )}
       </div>
 
-      {showAdd && selectedPostId && (
-        <AddFoundingMemberModal
-          postId={selectedPostId}
+      {showAdd && (
+        <AddOfficerModal
+          postId={postId}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false)
-            loadMembers(selectedPostId)
+            loadMembers()
           }}
         />
       )}
@@ -310,7 +239,7 @@ export default function FoundingTeamBuilder() {
   )
 }
 
-function AddFoundingMemberModal({ postId, onClose, onAdded }: { postId: string; onClose: () => void; onAdded: () => void }) {
+function AddOfficerModal({ postId, onClose, onAdded }: { postId: string; onClose: () => void; onAdded: () => void }) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', position: 'member', combat_status: 'Non-combat veteran' })
   const [docFile, setDocFile] = useState<File | null>(null)
   const [docPath, setDocPath] = useState<string | null>(null)
@@ -359,7 +288,7 @@ function AddFoundingMemberModal({ postId, onClose, onAdded }: { postId: string; 
   }
 
   return (
-    <Modal title="Add Founding Team Member" onClose={onClose}>
+    <Modal title="Add Officer" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <input required placeholder="Full name" className="input-field" value={form.name} onChange={(e) => update('name', e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
@@ -384,7 +313,7 @@ function AddFoundingMemberModal({ postId, onClose, onAdded }: { postId: string; 
         </label>
         {error && <p className="text-status-attention text-sm">{error}</p>}
         <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
-          {saving ? 'Adding…' : 'Add Member'}
+          {saving ? 'Adding…' : 'Add Officer'}
         </button>
       </form>
     </Modal>

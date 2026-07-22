@@ -80,13 +80,17 @@ export default function MembershipRoster() {
   // National lands on the full cross-post roster by default — not an
   // arbitrary specific post — since "which post happens to sort first" was
   // never a meaningful starting point. Post officers still land straight on
-  // their own post's roster, unchanged.
+  // their own post's roster, unchanged. A "?post=<id>" link (from a
+  // specific post's own page) jumps straight to that post instead.
   useEffect(() => {
     if (isNational) {
       supabase.from('posts').select('*').order('name').then(({ data }: any) => {
         const list = (data ?? []) as Post[]
         setPosts(list)
-        if (!selectedPostId) setSelectedPostId(ALL_POSTS)
+        if (!selectedPostId) {
+          const postParam = searchParams.get('post')
+          setSelectedPostId(postParam ?? ALL_POSTS)
+        }
       })
     } else if (profile?.post_id) {
       setSelectedPostId(profile.post_id)

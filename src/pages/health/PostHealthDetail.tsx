@@ -15,6 +15,8 @@ import type {
   Post,
 } from '@/lib/types'
 import { PostChecklistView } from '@/components/checklist/PostChecklistView'
+import { OfficersPanel } from '@/components/posts/OfficersPanel'
+import { MembersPanel } from '@/components/posts/MembersPanel'
 import { format } from 'date-fns'
 import { Plus, Scale, Landmark, HeartHandshake, FileCheck, Trash2, Copy, Check, ArrowRight } from 'lucide-react'
 
@@ -23,6 +25,34 @@ function toneFor(status: DimensionStatus) {
   if (status === 'yellow') return 'developing' as const
   if (status === 'red') return 'attention' as const
   return 'neutral' as const
+}
+
+type PostTab = 'main' | 'officers' | 'members'
+
+// Shared by both the active-post and still-forming views — Officers and
+// Members work the same regardless of stage; only the first tab's label
+// and content differ (Health once live, Checklist while forming).
+function PostTabBar({ tab, setTab, mainLabel }: { tab: PostTab; setTab: (t: PostTab) => void; mainLabel: string }) {
+  const tabs: { key: PostTab; label: string }[] = [
+    { key: 'main', label: mainLabel },
+    { key: 'officers', label: 'Officers' },
+    { key: 'members', label: 'Members' },
+  ]
+  return (
+    <div className="flex gap-1 mb-6 border-b border-hairline">
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          onClick={() => setTab(t.key)}
+          className={`px-4 py-2 text-sm font-mono uppercase tracking-wide border-b-2 -mb-px transition-colors ${
+            tab === t.key ? 'border-gold text-gold' : 'border-transparent text-muted hover:text-ink'
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 export default function PostHealthDetail() {
@@ -41,6 +71,7 @@ export default function PostHealthDetail() {
   const [showSignature, setShowSignature] = useState(false)
   const [showService, setShowService] = useState(false)
   const [showTransaction, setShowTransaction] = useState(false)
+  const [tab, setTab] = useState<'main' | 'officers' | 'members'>('main')
 
   // Forming-post view only
   const [checklistPct, setChecklistPct] = useState<number | null>(null)
@@ -200,57 +231,61 @@ export default function PostHealthDetail() {
     return (
       <div>
         <button onClick={() => navigate('/health')} className="text-xs font-mono text-muted hover:text-gold mb-4">
-          ← Back to Post Health
+          ← Back to Posts
         </button>
 
-        <PageHeader eyebrow={`${post.city ?? ''} ${post.state}`} title={post.name} />
-
-        <div className="panel p-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div>
-              <div className="eyebrow mb-1">Post Status</div>
-              <StatusBadge label={POST_STATUS_LABELS[post.status]} tone="developing" />
-            </div>
-            {checklistPct !== null && (
-              <div className="text-xs text-muted font-mono ml-4">
-                Checklist {checklistPct}% complete
-                {checklistPct < 100 && isNational && " — you can still advance manually if that's the right call"}
-              </div>
-            )}
-          </div>
+        <div className="flex items-center justify-between">
+          <PageHeader eyebrow={`${post.city ?? ''} ${post.state}`} title={post.name} />
           {isNational && (
-            <div className="flex items-center gap-4 shrink-0">
-              {nextStatus && (
+            <button onClick={deletePost} disabled={deleting} className="text-xs text-muted hover:text-status-attention flex items-center gap-1.5 mb-6 disabled:opacity-50">
+              <Trash2 size={13} /> {deleting ? 'Deleting…' : 'Delete Post'}
+            </button>
+          )}
+        </div>
+
+        <PostTabBar tab={tab} setTab={setTab} mainLabel="Checklist" />
+
+        {tab === 'main' && (
+          <>
+            <div className="panel p-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div>
+                  <div className="eyebrow mb-1">Post Status</div>
+                  <StatusBadge label={POST_STATUS_LABELS[post.status]} tone="developing" />
+                </div>
+                {checklistPct !== null && (
+                  <div className="text-xs text-muted font-mono ml-4">
+                    Checklist {checklistPct}% complete
+                    {checklistPct < 100 && isNational && " — you can still advance manually if that's the right call"}
+                  </div>
+                )}
+              </div>
+              {isNational && nextStatus && (
                 <button onClick={() => advanceStatus(nextStatus)} disabled={advancing} className="btn-gold flex items-center gap-2 disabled:opacity-50">
                   {advancing ? 'Advancing…' : `Advance to ${POST_STATUS_LABELS[nextStatus]}`} <ArrowRight size={14} />
                 </button>
               )}
-              <button
-                onClick={deletePost}
-                disabled={deleting}
-                className="text-xs text-muted hover:text-status-attention flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <Trash2 size={13} /> {deleting ? 'Deleting…' : 'Delete Post'}
+            </div>
+
+            <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
+              <div>
+                <div className="eyebrow mb-1">Shareable Link</div>
+                <p className="text-sm text-muted">
+                  Share this with {post.name} — they can view and check off items themselves, no login required.
+                  You'll both always be looking at the same live checklist.
+                </p>
+              </div>
+              <button onClick={copyShareLink} className="btn-gold flex items-center gap-2 shrink-0">
+                {copied ? <Check size={16} /> : <Copy size={16} />}
+                {copied ? 'Copied!' : 'Copy Link'}
               </button>
             </div>
-          )}
-        </div>
 
-        <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
-          <div>
-            <div className="eyebrow mb-1">Shareable Link</div>
-            <p className="text-sm text-muted">
-              Share this with {post.name} — they can view and check off items themselves, no login required.
-              You'll both always be looking at the same live checklist.
-            </p>
-          </div>
-          <button onClick={copyShareLink} className="btn-gold flex items-center gap-2 shrink-0">
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-            {copied ? 'Copied!' : 'Copy Link'}
-          </button>
-        </div>
-
-        <PostChecklistView postId={post.id} />
+            <PostChecklistView postId={post.id} />
+          </>
+        )}
+        {tab === 'officers' && <OfficersPanel postId={post.id} postName={post.name} />}
+        {tab === 'members' && <MembersPanel postId={post.id} />}
       </div>
     )
   }
@@ -260,7 +295,7 @@ export default function PostHealthDetail() {
   return (
     <div>
       <button onClick={() => navigate('/health')} className="text-xs font-mono text-muted hover:text-gold mb-4">
-        ← Back to Post Health
+        ← Back to Posts
       </button>
 
       <div className="flex items-center justify-between">
@@ -272,7 +307,11 @@ export default function PostHealthDetail() {
         )}
       </div>
 
-      <div className="panel p-6 mb-6 flex items-center gap-6">
+      <PostTabBar tab={tab} setTab={setTab} mainLabel="Health" />
+
+      {tab === 'main' && (
+        <>
+          <div className="panel p-6 mb-6 flex items-center gap-6">
         <div className="text-center">
           <div className={`font-display text-6xl ${result.overall === 'green' ? 'text-status-active' : result.overall === 'yellow' ? 'text-status-developing' : 'text-status-attention'}`}>
             {result.score}
@@ -414,6 +453,10 @@ export default function PostHealthDetail() {
           )}
         </div>
       </div>
+        </>
+      )}
+      {tab === 'officers' && <OfficersPanel postId={post.id} postName={post.name} />}
+      {tab === 'members' && <MembersPanel postId={post.id} />}
 
       {showSignature && (
         <LogSignatureModal postId={post.id} recordedBy={profile?.id ?? null} onClose={() => setShowSignature(false)} onSaved={() => { setShowSignature(false); load() }} />

@@ -6,8 +6,6 @@ import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import ApplicationsPipeline from '@/pages/applications/ApplicationsPipeline'
 import VettingBoard from '@/pages/vetting/VettingBoard'
-import FoundingTeamBuilder from '@/pages/founding-team/FoundingTeamBuilder'
-import FoundingTeamList from '@/pages/founding-team/FoundingTeamList'
 import JoinFoundingTeam from '@/pages/founding-team/JoinFoundingTeam'
 import PublicChecklist from '@/pages/checklist/PublicChecklist'
 import PublicRecruitSignup from '@/pages/recruiting/PublicRecruitSignup'
@@ -100,22 +98,6 @@ function AuthenticatedApp() {
           element={
             <RoleGuard roles={[]}>
               <VettingBoard />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/founding-team"
-          element={
-            <RoleGuard roles={['post_commander', 'post_officer']}>
-              <FoundingTeamRoute />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/founding-team/:postId"
-          element={
-            <RoleGuard roles={['post_commander', 'post_officer']}>
-              <FoundingTeamBuilder />
             </RoleGuard>
           }
         />
@@ -310,11 +292,6 @@ function AuthenticatedApp() {
 function CongressRoute() {
   const { isNational } = useAuth()
   return isNational ? <VeteransCongress /> : <CongressMemberView />
-}
-
-function FoundingTeamRoute() {
-  const { isNational } = useAuth()
-  return isNational ? <FoundingTeamList /> : <FoundingTeamBuilder />
 }
 
 function HomeRoute() {
