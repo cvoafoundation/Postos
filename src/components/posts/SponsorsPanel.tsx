@@ -4,19 +4,20 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import type { Sponsor } from '@/lib/types'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Plus } from 'lucide-react'
+import { RecordPaymentModal } from '@/pages/sponsors/SponsorDetail'
 
 // This post's own private sponsor list — National's Sponsorship CRM (its
 // own sidebar item) additionally rolls this up across every post, so
 // National can see what everyone's doing without losing each post's own
-// private working view here. Payment collection (card or manual) is a
-// separate, still-to-come piece of this tool — noted for later.
+// private working view here.
 export function SponsorsPanel({ postId }: { postId: string }) {
   const navigate = useNavigate()
   const [sponsors, setSponsors] = useState<Sponsor[]>([])
   const [loading, setLoading] = useState(true)
+  const [showDonation, setShowDonation] = useState(false)
 
-  useEffect(() => {
+  function load() {
     setLoading(true)
     supabase
       .from('sponsors')
@@ -27,7 +28,9 @@ export function SponsorsPanel({ postId }: { postId: string }) {
         setSponsors((data ?? []) as Sponsor[])
         setLoading(false)
       })
-  }, [postId])
+  }
+
+  useEffect(load, [postId])
 
   if (loading) return <p className="text-sm text-muted">Loading…</p>
 
@@ -39,9 +42,14 @@ export function SponsorsPanel({ postId }: { postId: string }) {
         <p className="text-sm text-muted">
           {sponsors.length} sponsor{sponsors.length !== 1 ? 's' : ''} tracked · ${wonValue.toLocaleString()} won
         </p>
-        <button onClick={() => navigate(`/sponsors?post=${postId}`)} className="btn-ghost flex items-center gap-2 text-sm shrink-0">
-          Open Full Sponsorship CRM <ArrowRight size={14} />
-        </button>
+        <div className="flex gap-2 shrink-0">
+          <button onClick={() => setShowDonation(true)} className="btn-ghost flex items-center gap-2 text-sm">
+            <Plus size={14} /> Log a Donation
+          </button>
+          <button onClick={() => navigate(`/sponsors?post=${postId}`)} className="btn-ghost flex items-center gap-2 text-sm">
+            Open Full Sponsorship CRM <ArrowRight size={14} />
+          </button>
+        </div>
       </div>
 
       {sponsors.length === 0 ? (
@@ -61,6 +69,10 @@ export function SponsorsPanel({ postId }: { postId: string }) {
             </div>
           ))}
         </div>
+      )}
+
+      {showDonation && (
+        <RecordPaymentModal postId={postId} sponsorId={null} onClose={() => setShowDonation(false)} onSaved={() => setShowDonation(false)} />
       )}
     </div>
   )

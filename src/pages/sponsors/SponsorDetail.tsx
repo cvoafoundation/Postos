@@ -3,9 +3,9 @@ import { Modal } from '@/components/ui/Modal'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import type { Sponsor, SponsorNote, SponsorTier } from '@/lib/types'
+import type { Sponsor, SponsorNote, SponsorPayment, SponsorTier } from '@/lib/types'
 import { format, formatDistanceToNow } from 'date-fns'
-import { Upload, FileText, Loader2, Trash2 } from 'lucide-react'
+import { Upload, FileText, Loader2, Trash2, Plus } from 'lucide-react'
 
 export function SponsorDetailModal({
   sponsor,
@@ -30,6 +30,8 @@ export function SponsorDetailModal({
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [category, setCategory] = useState(sponsor.category ?? '')
+  const [payments, setPayments] = useState<SponsorPayment[]>([])
+  const [showRecordPayment, setShowRecordPayment] = useState(false)
 
   const SPONSOR_CATEGORIES = [
     'Restaurant/Food Service',
@@ -54,6 +56,15 @@ export function SponsorDetailModal({
     onUpdated()
   }
 
+  function loadPayments() {
+    supabase
+      .from('sponsor_payments')
+      .select('*')
+      .eq('sponsor_id', sponsor.id)
+      .order('payment_date', { ascending: false })
+      .then(({ data }) => setPayments((data ?? []) as SponsorPayment[]))
+  }
+
   useEffect(() => {
     if (sponsor.tier_id) {
       supabase.from('sponsor_tiers').select('*').eq('id', sponsor.tier_id).single().then(({ data }: any) => {
@@ -66,6 +77,7 @@ export function SponsorDetailModal({
       .eq('sponsor_id', sponsor.id)
       .order('created_at', { ascending: false })
       .then(({ data }: any) => setNotes((data ?? []) as SponsorNote[]))
+    loadPayments()
   }, [sponsor.id, sponsor.tier_id])
 
   async function addNote() {
@@ -136,7 +148,10 @@ export function SponsorDetailModal({
       <div className="space-y-5">
         <div className="flex items-center justify-between">
           <StatusBadge label={sponsor.stage.replaceAll('_', ' ')} tone="developing" />
-          <span className="font-mono text-gold text-lg">${Number(sponsor.sponsorship_value).toLocaleString()}</span>
+          <div className="text-right">
+            <span className="font-mono text-gold text-lg">${Number(sponsor.sponsorship_value).toLocaleString()}</span>
+            <div className="text-[11px] text-muted font-mono">agreed</div>
+          </div>
         </div>
 
         {tier && (
@@ -185,6 +200,35 @@ export function SponsorDetailModal({
             <p className="text-sm text-muted">{sponsor.notes}</p>
           </div>
         )}
+
+        <div className="border-t border-hairline pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="eyebrow">
+              Payments — ${payments.reduce((sum, p) => sum + Number(p.amount), 0).toLocaleString()} collected
+            </div>
+            <button
+              onClick={() => setShowRecordPayment(true)}
+              className="text-xs text-gold hover:text-gold-bright flex items-center gap-1"
+            >
+              <Plus size={12} /> Record Payment
+            </button>
+          </div>
+          {payments.length === 0 ? (
+            <p className="text-xs text-muted">No payments recorded yet.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {payments.map((p) => (
+                <div key={p.id} className="flex justify-between text-xs">
+                  <span className="capitalize">{p.payment_method}{p.notes ? ` — ${p.notes}` : ''}</span>
+                  <span className="flex items-center gap-2 shrink-0">
+                    <span className="text-muted font-mono">{format(new Date(p.payment_date), 'MMM d, yyyy')}</span>
+                    <span className="font-mono text-status-active">${Number(p.amount).toLocaleString()}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="border-t border-hairline pt-4">
           <div className="eyebrow mb-2">Agreement Period</div>
@@ -286,6 +330,130 @@ export function SponsorDetailModal({
           )}
         </div>
       </div>
+
+      {showRecordPayment && (
+        <RecordPaymentModal
+          postId={sponsor.post_id}
+          sponsorId={sponsor.id}
+          onClose={() => setShowRecordPayment(false)}
+          onSaved={() => {
+            setShowRecordPayment(false)
+            loadPayments()
+          }}
+        />
+      )}
+    </Modal>
+  )
+}
+
+export function RecordPaymentModal({
+  postId,
+  sponsorId,
+  donorNameDefault,
+  onClose,
+  onSaved,
+}: {
+  postId: string | null
+  sponsorId: string | null
+  donorNameDefault?: string
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState({
+    donor_name: donorNameDefault ?? '',
+    amount: '',
+    payment_method: 'check' as SponsorPayment['payment_method'],
+    payment_date: new Date().toISOString().slice(0, 10),
+    notes: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.amount || Number(form.amount) <= 0) {
+      setError('Enter an amount greater than $0.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    const { error } = await supabase.from('sponsor_payments').insert({
+      post_id: postId,
+      sponsor_id: sponsorId,
+      donor_name: sponsorId ? null : form.donor_name || null,
+      amount: Number(form.amount),
+      payment_method: form.payment_method,
+      payment_date: form.payment_date,
+      notes: form.notes || null,
+    })
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    onSaved()
+  }
+
+  return (
+    <Modal title="Record a Payment" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {!sponsorId && (
+          <input
+            required
+            placeholder="Donor name"
+            className="input-field"
+            value={form.donor_name}
+            onChange={(e) => update('donor_name', e.target.value)}
+          />
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm">$</span>
+            <input
+              required
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="Amount"
+              className="input-field pl-6"
+              value={form.amount}
+              onChange={(e) => update('amount', e.target.value)}
+            />
+          </div>
+          <input
+            required
+            type="date"
+            className="input-field"
+            value={form.payment_date}
+            onChange={(e) => update('payment_date', e.target.value)}
+          />
+        </div>
+        <select
+          className="input-field"
+          value={form.payment_method}
+          onChange={(e) => update('payment_method', e.target.value as SponsorPayment['payment_method'])}
+        >
+          <option value="check">Check</option>
+          <option value="cash">Cash</option>
+          <option value="wire">Wire Transfer</option>
+          <option value="card">Card (entered manually)</option>
+          <option value="other">Other</option>
+        </select>
+        <input
+          placeholder="Notes (optional)"
+          className="input-field"
+          value={form.notes}
+          onChange={(e) => update('notes', e.target.value)}
+        />
+        {error && <p className="text-status-attention text-sm">{error}</p>}
+        <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
+          {saving ? 'Recording…' : 'Record Payment'}
+        </button>
+      </form>
     </Modal>
   )
 }

@@ -2385,3 +2385,34 @@ $$;
 --     nullable first, to allow the same SET NULL treatment as everything else.
 -- See the one-time migration that applied this for the full list of tables.
 -- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- MODULE: Sponsor & Donation Payments
+-- A sponsor deal's `sponsorship_value` is the agreed total — this table is
+-- the actual money that's come in against it, one entry per payment. Also
+-- doubles as a place to log a plain donation that isn't tied to any sponsor
+-- deal at all (sponsor_id left null, donor_name used instead). Manual entry
+-- (cash/check/wire) for now; a real card-payment option is a planned
+-- follow-up, not built yet.
+-- ----------------------------------------------------------------------------
+create table sponsor_payments (
+  id uuid primary key default uuid_generate_v4(),
+  post_id uuid references posts(id) on delete set null,
+  sponsor_id uuid references sponsors(id) on delete set null, -- null = a standalone donation, not tied to a sponsor deal
+  donor_name text, -- used when sponsor_id is null
+  amount numeric(10,2) not null,
+  payment_method text not null default 'manual', -- 'cash' | 'check' | 'wire' | 'other' | 'card' (card reserved for the future Stripe integration)
+  payment_date date not null default current_date,
+  notes text,
+  recorded_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table sponsor_payments enable row level security;
+
+create policy "sponsor_payments_select_post_or_national" on sponsor_payments
+  for select using (is_national_role() or post_id = current_post_id());
+create policy "sponsor_payments_insert_post_or_national" on sponsor_payments
+  for insert with check (is_national_role() or post_id = current_post_id());
+create policy "sponsor_payments_delete_national" on sponsor_payments
+  for delete using (is_national_role());

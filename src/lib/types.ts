@@ -309,6 +309,21 @@ export interface Sponsor {
   updated_at: string
 }
 
+export type SponsorPaymentMethod = 'cash' | 'check' | 'wire' | 'card' | 'other'
+
+export interface SponsorPayment {
+  id: string
+  post_id: string | null
+  sponsor_id: string | null
+  donor_name: string | null
+  amount: number
+  payment_method: SponsorPaymentMethod
+  payment_date: string
+  notes: string | null
+  recorded_by: string | null
+  created_at: string
+}
+
 export interface SponsorTier {
   id: string
   name: string

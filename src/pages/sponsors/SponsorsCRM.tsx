@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import type { Post, Sponsor, SponsorStage, SponsorTier } from '@/lib/types'
 import { Copy, Check, Plus, AlertTriangle } from 'lucide-react'
-import { SponsorDetailModal } from './SponsorDetail'
+import { SponsorDetailModal, RecordPaymentModal } from './SponsorDetail'
 
 const STAGES: { key: SponsorStage; label: string }[] = [
   { key: 'identified', label: 'Identified' },
@@ -33,6 +33,7 @@ export default function SponsorsCRM() {
   const [sponsors, setSponsors] = useState<Sponsor[]>([])
   const [tiers, setTiers] = useState<SponsorTier[]>([])
   const [showAdd, setShowAdd] = useState(false)
+  const [showDonation, setShowDonation] = useState(false)
   const [viewing, setViewing] = useState<Sponsor | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -147,6 +148,13 @@ export default function SponsorsCRM() {
             <Plus size={16} /> Add Manually
           </button>
           <button
+            onClick={() => setShowDonation(true)}
+            disabled={selectedPostId === 'all'}
+            className="btn-ghost flex items-center gap-2 disabled:opacity-40"
+          >
+            <Plus size={16} /> Log a Donation
+          </button>
+          <button
             onClick={copySponsorLink}
             disabled={selectedPostId === 'all'}
             className="btn-gold flex items-center gap-2 disabled:opacity-40"
@@ -173,6 +181,15 @@ export default function SponsorsCRM() {
             setShowAdd(false)
             loadSponsors()
           }}
+        />
+      )}
+
+      {showDonation && selectedPostId && selectedPostId !== 'all' && (
+        <RecordPaymentModal
+          postId={selectedPostId}
+          sponsorId={null}
+          onClose={() => setShowDonation(false)}
+          onSaved={() => setShowDonation(false)}
         />
       )}
 
