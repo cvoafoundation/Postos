@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { KanbanBoard, type KanbanColumn } from '@/components/ui/Kanban'
 import { StatCard } from '@/components/ui/StatCard'
@@ -26,8 +27,9 @@ function isRenewalSoon(sponsor: Sponsor): boolean {
 
 export default function SponsorsCRM() {
   const { profile, isNational } = useAuth()
+  const [searchParams] = useSearchParams()
   const [posts, setPosts] = useState<Post[]>([])
-  const [selectedPostId, setSelectedPostId] = useState<string | 'all' | null>('all')
+  const [selectedPostId, setSelectedPostId] = useState<string | 'all' | null>(searchParams.get('post') ?? 'all')
   const [sponsors, setSponsors] = useState<Sponsor[]>([])
   const [tiers, setTiers] = useState<SponsorTier[]>([])
   const [showAdd, setShowAdd] = useState(false)

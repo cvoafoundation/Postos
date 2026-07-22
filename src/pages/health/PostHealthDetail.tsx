@@ -18,7 +18,7 @@ import { PostChecklistView } from '@/components/checklist/PostChecklistView'
 import { OfficersPanel } from '@/components/posts/OfficersPanel'
 import { MembersPanel } from '@/components/posts/MembersPanel'
 import { format } from 'date-fns'
-import { Plus, Scale, Landmark, HeartHandshake, FileCheck, Trash2, Copy, Check, ArrowRight } from 'lucide-react'
+import { Plus, Scale, FileCheck, Trash2, Copy, Check, ArrowRight } from 'lucide-react'
 
 function toneFor(status: DimensionStatus) {
   if (status === 'green') return 'active' as const
@@ -72,6 +72,7 @@ export default function PostHealthDetail() {
   const [showService, setShowService] = useState(false)
   const [showTransaction, setShowTransaction] = useState(false)
   const [tab, setTab] = useState<'main' | 'officers' | 'members'>('main')
+  const [healthView, setHealthView] = useState<'overview' | 'governance' | 'annual_review' | 'community_service' | 'financial'>('overview')
 
   // Forming-post view only
   const [checklistPct, setChecklistPct] = useState<number | null>(null)
@@ -327,22 +328,54 @@ export default function PostHealthDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-        {result.dimensions.map((d) => (
-          <div key={d.key} className="panel p-4 flex items-center justify-between gap-4">
-            <div>
-              <div className="text-sm font-medium text-ink">{d.label}</div>
-              <div className="text-xs text-muted mt-0.5">{d.detail}</div>
-            </div>
-            <StatusBadge label={d.status} tone={toneFor(d.status)} />
-          </div>
-        ))}
-      </div>
+      {healthView === 'overview' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+          {result.dimensions.map((d) => {
+            const action: (() => void) | null =
+              d.key === 'officers'
+                ? () => setTab('officers')
+                : d.key === 'membership'
+                ? () => setTab('members')
+                : d.key === 'governance'
+                ? () => setHealthView('governance')
+                : d.key === 'annual_review'
+                ? () => setHealthView('annual_review')
+                : d.key === 'community_service'
+                ? () => setHealthView('community_service')
+                : d.key === 'financial'
+                ? () => setHealthView('financial')
+                : d.key === 'sponsors'
+                ? () => navigate(`/sponsors?post=${post.id}`)
+                : d.key === 'meetings'
+                ? () => navigate(`/meetings?post=${post.id}`)
+                : null // congress participation — not wired up yet
+            return (
+              <button
+                key={d.key}
+                onClick={action ?? undefined}
+                disabled={!action}
+                className={`panel p-4 flex items-center justify-between gap-4 text-left ${action ? 'hover:border-gold transition-colors cursor-pointer' : 'cursor-default'}`}
+              >
+                <div>
+                  <div className="text-sm font-medium text-ink">{d.label}</div>
+                  <div className="text-xs text-muted mt-0.5">{d.detail}</div>
+                </div>
+                <StatusBadge label={d.status} tone={toneFor(d.status)} />
+              </button>
+            )
+          })}
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Governance */}
+      {healthView !== 'overview' && (
+        <button onClick={() => setHealthView('overview')} className="text-xs font-mono text-muted hover:text-gold mb-4">
+          ← Back to Health Overview
+        </button>
+      )}
+
+      {healthView === 'governance' && (
         <div className="panel p-5">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-4">
             <div className="eyebrow flex items-center gap-2">
               <FileCheck size={14} /> Governance Sign-offs
             </div>
@@ -351,25 +384,33 @@ export default function PostHealthDetail() {
             </button>
           </div>
           {signatures.length === 0 ? (
-            <p className="text-xs text-muted">No signatures on file.</p>
+            <p className="text-sm text-muted">No signatures on file.</p>
           ) : (
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
-              {signatures.map((s) => (
-                <div key={s.id} className="flex justify-between text-xs">
-                  <span>{s.signer_name} — {s.form_type.replaceAll('_', ' ')}</span>
-                  <span className="text-muted font-mono">{format(new Date(s.signed_at), 'MMM d, yyyy')}</span>
+            <div className="space-y-2">
+              {[...signatures].sort((a, b) => b.signed_at.localeCompare(a.signed_at)).map((s) => (
+                <div key={s.id} className="flex justify-between items-center text-sm border-b border-hairline/60 pb-2">
+                  <div>
+                    <div className="text-ink">{s.signer_name}</div>
+                    <div className="text-xs text-muted">{s.form_type.replaceAll('_', ' ')}</div>
+                  </div>
+                  <span className="text-muted font-mono text-xs">{format(new Date(s.signed_at), 'MMM d, yyyy')}</span>
                 </div>
               ))}
             </div>
           )}
         </div>
+      )}
 
-        {/* Annual Review */}
-        <div className="panel p-5">
-          <div className="eyebrow mb-3 flex items-center gap-2">
+      {healthView === 'annual_review' && (
+        <div className="panel p-6 max-w-lg">
+          <div className="eyebrow mb-4 flex items-center gap-2">
             <Scale size={14} /> {new Date().getFullYear()} Annual Review
           </div>
-          <div className="space-y-2">
+          <p className="text-sm text-muted mb-4">
+            A once-a-year check that the basics are still in order — bylaws, finances, officer roster, and
+            required filings.
+          </p>
+          <div className="space-y-3">
             {([
               ['bylaws_reviewed', 'Bylaws reviewed'],
               ['financial_audit_complete', 'Financial audit complete'],
@@ -377,86 +418,102 @@ export default function PostHealthDetail() {
               ['required_filings_current', 'Required filings current'],
             ] as [keyof AnnualReview, string][]).map(([field, label]) => (
               <label key={field} className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!annualReview?.[field]}
-                  onChange={() => toggleReviewItem(field)}
-                />
+                <input type="checkbox" checked={!!annualReview?.[field]} onChange={() => toggleReviewItem(field)} />
                 {label}
               </label>
             ))}
           </div>
           {annualReview && !annualReview.completed_at && (
-            <button onClick={markReviewComplete} className="btn-gold text-xs mt-3 px-3 py-1.5">
-              Mark Review Complete
+            <button onClick={markReviewComplete} className="btn-gold text-sm mt-5 px-4 py-2">
+              Mark {new Date().getFullYear()} Review Complete
             </button>
           )}
           {annualReview?.completed_at && (
-            <p className="text-xs text-status-active mt-3">Completed {format(new Date(annualReview.completed_at), 'MMM d, yyyy')}</p>
+            <p className="text-sm text-status-active mt-5">
+              {new Date().getFullYear()} review completed {format(new Date(annualReview.completed_at), 'MMM d, yyyy')}
+            </p>
           )}
         </div>
+      )}
 
-        {/* Community Service */}
-        <div className="panel p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="eyebrow flex items-center gap-2">
-              <HeartHandshake size={14} /> Community Service Log
-            </div>
-            <button onClick={() => setShowService(true)} className="text-xs text-gold hover:text-gold-bright flex items-center gap-1">
-              <Plus size={12} /> Log Event
+      {healthView === 'community_service' && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-muted">Every logged community service event for this post, most recent first.</p>
+            <button onClick={() => setShowService(true)} className="btn-gold flex items-center gap-2 text-sm shrink-0">
+              <Plus size={14} /> Log Event
             </button>
           </div>
           {serviceEvents.length === 0 ? (
-            <p className="text-xs text-muted">No events logged.</p>
+            <p className="text-sm text-muted">No events logged yet.</p>
           ) : (
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            <div className="space-y-3">
               {[...serviceEvents].sort((a, b) => b.event_date.localeCompare(a.event_date)).map((e) => (
-                <div key={e.id} className="flex justify-between text-xs">
-                  <span>{e.title} ({e.category})</span>
-                  <span className="text-muted font-mono">{format(new Date(e.event_date), 'MMM d, yyyy')}</span>
+                <div key={e.id} className="panel p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-sm font-medium text-ink">{e.title}</div>
+                    <span className="text-xs text-muted font-mono">{format(new Date(e.event_date), 'MMM d, yyyy')}</span>
+                  </div>
+                  <div className="text-xs text-gold mb-2">{e.category}</div>
+                  <div className="flex gap-4 text-xs text-muted mb-2">
+                    {e.attendees_count !== null && <span>{e.attendees_count} attendee{e.attendees_count !== 1 ? 's' : ''}</span>}
+                    {e.hours_contributed !== null && <span>{e.hours_contributed} hour{e.hours_contributed !== 1 ? 's' : ''} contributed</span>}
+                  </div>
+                  {e.description && <p className="text-sm text-muted">{e.description}</p>}
                 </div>
               ))}
             </div>
           )}
         </div>
+      )}
 
-        {/* Financial Ledger */}
-        <div className="panel p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="eyebrow flex items-center gap-2">
-              <Landmark size={14} /> Financial Ledger
+      {healthView === 'financial' && (
+        <div>
+          <div className="panel p-5 mb-4 flex items-center justify-between">
+            <div className="flex gap-6 text-sm">
+              <span className="text-status-active">In: ${income.toLocaleString()}</span>
+              <span className="text-status-attention">Out: ${expense.toLocaleString()}</span>
+              <span className="font-medium text-ink">Balance: ${(income - expense).toLocaleString()}</span>
             </div>
-            <button onClick={() => setShowTransaction(true)} className="text-xs text-gold hover:text-gold-bright flex items-center gap-1">
-              <Plus size={12} /> Log Transaction
+            <button onClick={() => setShowTransaction(true)} className="btn-gold flex items-center gap-2 text-sm shrink-0">
+              <Plus size={14} /> Log Transaction
             </button>
           </div>
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-status-active">In: ${income.toLocaleString()}</span>
-            <span className="text-status-attention">Out: ${expense.toLocaleString()}</span>
-            <span className="font-medium">Balance: ${(income - expense).toLocaleString()}</span>
-          </div>
           {transactions.length === 0 ? (
-            <p className="text-xs text-muted">No transactions logged.</p>
+            <p className="text-sm text-muted">No transactions logged yet.</p>
           ) : (
-            <div className="space-y-1.5 max-h-32 overflow-y-auto">
-              {[...transactions].sort((a, b) => b.transaction_date.localeCompare(a.transaction_date)).map((t) => (
-                <div key={t.id} className="flex justify-between text-xs">
-                  <span className={t.transaction_type === 'income' ? 'text-status-active' : 'text-status-attention'}>
-                    {t.category}
-                  </span>
-                  <span className="font-mono">
-                    {t.transaction_type === 'income' ? '+' : '-'}${Number(t.amount).toLocaleString()}
-                  </span>
-                </div>
-              ))}
+            <div className="panel overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className="table-head">Date</th>
+                    <th className="table-head">Category</th>
+                    <th className="table-head">Description</th>
+                    <th className="table-head">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...transactions].sort((a, b) => b.transaction_date.localeCompare(a.transaction_date)).map((t) => (
+                    <tr key={t.id}>
+                      <td className="table-cell text-muted text-xs whitespace-nowrap">{format(new Date(t.transaction_date), 'MMM d, yyyy')}</td>
+                      <td className="table-cell whitespace-nowrap">{t.category}</td>
+                      <td className="table-cell text-muted">{t.description ?? '—'}</td>
+                      <td className={`table-cell font-mono whitespace-nowrap ${t.transaction_type === 'income' ? 'text-status-active' : 'text-status-attention'}`}>
+                        {t.transaction_type === 'income' ? '+' : '-'}${Number(t.amount).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
-      </div>
+      )}
         </>
       )}
       {tab === 'officers' && <OfficersPanel postId={post.id} postName={post.name} />}
       {tab === 'members' && <MembersPanel postId={post.id} />}
+
 
       {showSignature && (
         <LogSignatureModal postId={post.id} recordedBy={profile?.id ?? null} onClose={() => setShowSignature(false)} onSaved={() => { setShowSignature(false); load() }} />

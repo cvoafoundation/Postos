@@ -74,7 +74,7 @@ export default function PostHealth() {
 
   return (
     <div>
-      <PageHeader eyebrow="Module 9" title="Post Health System" />
+      <PageHeader eyebrow="Module 9" title="Posts" />
 
       {/* One page owns every post regardless of stage — Health for posts
           already live, Forming for everything still working through the

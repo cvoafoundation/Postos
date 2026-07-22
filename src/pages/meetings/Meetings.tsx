@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext'
 import type { MeetingRecord, Post } from '@/lib/types'
 import { Search, Plus, FileText, Upload, AlertTriangle, CalendarCheck, ClipboardList, BarChart3, CheckSquare } from 'lucide-react'
 import { format, differenceInDays, isSameMonth } from 'date-fns'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { UroMeeting } from '@/lib/types'
 
 const OVERDUE_YELLOW_DAYS = 30
@@ -33,6 +33,7 @@ function complianceStatus(lastDate: string | null): 'green' | 'yellow' | 'red' {
 export default function Meetings() {
   useMarkNotificationViewed('meetings')
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { profile, isNational } = useAuth()
   const [posts, setPosts] = useState<Record<string, string>>({})
   const [allPosts, setAllPosts] = useState<Post[]>([])
@@ -59,7 +60,10 @@ export default function Meetings() {
       supabase.from('posts').select('*').then(({ data }: any) => {
         const list = (data ?? []) as Post[]
         setAllPosts(list)
-        if (list.length > 0 && !selectedPostForMeeting) setSelectedPostForMeeting(list[0].id)
+        if (list.length > 0 && !selectedPostForMeeting) {
+          const postParam = searchParams.get('post')
+          setSelectedPostForMeeting(postParam ?? list[0].id)
+        }
       })
     }
     if (profile?.post_id) loadMyRecords(profile.post_id)

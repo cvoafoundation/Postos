@@ -195,24 +195,6 @@ export function computePostHealth(inputs: PostHealthInputs): PostHealthResult {
     })
   }
 
-  // 10. Membership Retention — this used to be a proxy (record staleness)
-  // because there was no real membership data. Now that the Membership
-  // Roster exists, this is a real signal: what fraction of the roster has
-  // actually lapsed, not a guess based on when a record was last touched.
-  const rosterTotal = members.filter((m) => m.membership_status !== 'pending_payment').length
-  const lapsed = members.filter((m) => m.membership_status === 'lapsed').length
-  if (rosterTotal === 0) {
-    dimensions.push({ key: 'engagement', label: 'Membership Retention', status: 'neutral', detail: 'No members on the roster yet' })
-  } else {
-    const pct = lapsed / rosterTotal
-    dimensions.push({
-      key: 'engagement',
-      label: 'Membership Retention',
-      status: pct <= 0.1 ? 'green' : pct <= 0.3 ? 'yellow' : 'red',
-      detail: `${lapsed}/${rosterTotal} members lapsed`,
-    })
-  }
-
   const scored = dimensions.filter((d) => d.status !== 'neutral')
   const points = { green: 100, yellow: 50, red: 0 } as const
   const score = scored.length > 0 ? Math.round(scored.reduce((sum, d) => sum + points[d.status as 'green' | 'yellow' | 'red'], 0) / scored.length) : 50
