@@ -2372,3 +2372,16 @@ as $$
   select 'membership_roster', count(*) from members
     where created_at > coalesce((select last_viewed_at from admin_notification_views where user_id = auth.uid() and section = 'membership_roster'), 'epoch'::timestamptz)
 $$;
+
+-- ----------------------------------------------------------------------------
+-- Account deletion safety net: every "who did this" reference to profiles(id)
+-- across the schema now resolves to ON DELETE SET NULL — deleting someone's
+-- account preserves the historical record it's attached to (a meeting note,
+-- a DD214 review, a vote, an uploaded document) but blanks out who did it,
+-- instead of silently blocking the deletion entirely. Two exceptions:
+--   - application_signoffs.profile_id is CASCADE — a sign-off is meaningless
+--     without knowing who signed it, so it's removed along with the account.
+--   - uro_secretary_notes.author_id was NOT NULL and had to be loosened to
+--     nullable first, to allow the same SET NULL treatment as everything else.
+-- See the one-time migration that applied this for the full list of tables.
+-- ----------------------------------------------------------------------------
