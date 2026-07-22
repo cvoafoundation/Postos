@@ -452,9 +452,11 @@ function AddMemberModal({
     military_branch: '',
     membership_type: 'annual' as MembershipType,
     mark_paid: true,
+    send_invite: true,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [inviteWarning, setInviteWarning] = useState<string | null>(null)
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -464,26 +466,56 @@ function AddMemberModal({
     e.preventDefault()
     setSaving(true)
     setError(null)
-    const { error } = await supabase.from('members').insert({
-      post_id: postId,
-      full_name: form.full_name,
-      email: form.email || null,
-      phone: form.phone || null,
-      address: form.address || null,
-      state: form.state || null,
-      military_branch: form.military_branch || null,
-      membership_type: form.membership_type,
-      membership_status: form.mark_paid ? 'active' : 'pending_payment',
-      joined_at: form.mark_paid ? new Date().toISOString().slice(0, 10) : null,
-      expires_at: form.mark_paid && form.membership_type === 'annual'
-        ? new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().slice(0, 10)
-        : null,
-    })
-    setSaving(false)
+    setInviteWarning(null)
+
+    // The membership number itself is assigned automatically by a database
+    // trigger the moment this row is created — nothing to set here.
+    const { data: newMember, error } = await supabase
+      .from('members')
+      .insert({
+        post_id: postId,
+        full_name: form.full_name,
+        email: form.email || null,
+        phone: form.phone || null,
+        address: form.address || null,
+        state: form.state || null,
+        military_branch: form.military_branch || null,
+        membership_type: form.membership_type,
+        membership_status: form.mark_paid ? 'active' : 'pending_payment',
+        joined_at: form.mark_paid ? new Date().toISOString().slice(0, 10) : null,
+        expires_at:
+          form.mark_paid && form.membership_type === 'annual'
+            ? new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().slice(0, 10)
+            : null,
+      })
+      .select()
+      .single()
+
     if (error) {
+      setSaving(false)
       setError(error.message)
       return
     }
+
+    // One action, not two — the member is created and, if requested, sent
+    // their account invite in the same step. All they'll ever have to do
+    // is open the email and set a password; their card and status are
+    // already sitting there waiting, tied to this exact record.
+    if (form.send_invite && form.email) {
+      const { data, error: inviteError } = await supabase.functions.invoke('invite-member', {
+        body: { member_id: newMember.id },
+      })
+      if (inviteError || data?.error) {
+        setInviteWarning(
+          `Member added, but the invite email failed to send (${data?.error ?? inviteError?.message ?? 'unknown error'}). You can retry it from their entry in the roster.`
+        )
+        setSaving(false)
+        setTimeout(onAdded, 1800)
+        return
+      }
+    }
+
+    setSaving(false)
     onAdded()
   }
 
@@ -515,11 +547,24 @@ function AddMemberModal({
           <input type="checkbox" checked={form.mark_paid} onChange={(e) => update('mark_paid', e.target.checked)} />
           Mark as paid now (e.g. cash or check received in person)
         </label>
+        <label className={`flex items-center gap-2 text-sm cursor-pointer ${form.email ? 'text-muted' : 'text-muted/50'}`}>
+          <input
+            type="checkbox"
+            checked={form.send_invite}
+            disabled={!form.email}
+            onChange={(e) => update('send_invite', e.target.checked)}
+          />
+          Send them an account invite email now
+        </label>
+        {form.send_invite && !form.email && (
+          <p className="text-[11px] text-muted -mt-2">Add an email above to enable this.</p>
+        )}
 
         {error && <p className="text-status-attention text-sm">{error}</p>}
+        {inviteWarning && <p className="text-status-developing text-sm">{inviteWarning}</p>}
 
         <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
-          {saving ? 'Adding…' : 'Add Member'}
+          {saving ? (form.send_invite && form.email ? 'Adding & Sending Invite…' : 'Adding…') : 'Add Member'}
         </button>
       </form>
     </Modal>
