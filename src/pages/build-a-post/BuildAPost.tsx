@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAuth } from '@/context/AuthContext'
@@ -8,10 +8,11 @@ import type { BuildAPostModule, Post, PostFacilityProject } from '@/lib/types'
 
 export default function BuildAPost() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { profile, isNational } = useAuth()
   const [modules, setModules] = useState<BuildAPostModule[]>([])
   const [posts, setPosts] = useState<Post[]>([])
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(searchParams.get('post'))
   const [projects, setProjects] = useState<PostFacilityProject[]>([])
   const [loading, setLoading] = useState(true)
 

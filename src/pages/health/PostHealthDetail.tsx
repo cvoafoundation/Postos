@@ -17,6 +17,10 @@ import type {
 import { PostChecklistView } from '@/components/checklist/PostChecklistView'
 import { OfficersPanel } from '@/components/posts/OfficersPanel'
 import { MembersPanel } from '@/components/posts/MembersPanel'
+import { MeetingsPanel } from '@/components/posts/MeetingsPanel'
+import { RecruitingPanel } from '@/components/posts/RecruitingPanel'
+import { SponsorsPanel } from '@/components/posts/SponsorsPanel'
+import { BuildAPostPanel } from '@/components/posts/BuildAPostPanel'
 import { format } from 'date-fns'
 import { Plus, Scale, FileCheck, Trash2, Copy, Check, ArrowRight } from 'lucide-react'
 
@@ -27,19 +31,24 @@ function toneFor(status: DimensionStatus) {
   return 'neutral' as const
 }
 
-type PostTab = 'main' | 'officers' | 'members'
+type PostTab = 'main' | 'officers' | 'members' | 'meetings' | 'recruiting' | 'sponsors' | 'build_a_post'
 
-// Shared by both the active-post and still-forming views — Officers and
-// Members work the same regardless of stage; only the first tab's label
-// and content differ (Health once live, Checklist while forming).
+// Shared by both the active-post and still-forming views — Officers,
+// Members, Meetings, Recruiting, Sponsors, and Build A Post all work the
+// same regardless of stage; only the first tab's label and content differ
+// (Health once live, Checklist while forming).
 function PostTabBar({ tab, setTab, mainLabel }: { tab: PostTab; setTab: (t: PostTab) => void; mainLabel: string }) {
   const tabs: { key: PostTab; label: string }[] = [
     { key: 'main', label: mainLabel },
     { key: 'officers', label: 'Officers' },
     { key: 'members', label: 'Members' },
+    { key: 'meetings', label: 'Meetings' },
+    { key: 'recruiting', label: 'Recruiting' },
+    { key: 'sponsors', label: 'Sponsors' },
+    { key: 'build_a_post', label: 'Build A Post' },
   ]
   return (
-    <div className="flex gap-1 mb-6 border-b border-hairline">
+    <div className="flex gap-1 mb-6 border-b border-hairline flex-wrap">
       {tabs.map((t) => (
         <button
           key={t.key}
@@ -71,7 +80,7 @@ export default function PostHealthDetail() {
   const [showSignature, setShowSignature] = useState(false)
   const [showService, setShowService] = useState(false)
   const [showTransaction, setShowTransaction] = useState(false)
-  const [tab, setTab] = useState<'main' | 'officers' | 'members'>('main')
+  const [tab, setTab] = useState<PostTab>('main')
   const [healthView, setHealthView] = useState<'overview' | 'governance' | 'annual_review' | 'community_service' | 'financial'>('overview')
 
   // Forming-post view only
@@ -287,6 +296,10 @@ export default function PostHealthDetail() {
         )}
         {tab === 'officers' && <OfficersPanel postId={post.id} postName={post.name} />}
         {tab === 'members' && <MembersPanel postId={post.id} />}
+        {tab === 'meetings' && <MeetingsPanel postId={post.id} />}
+        {tab === 'recruiting' && <RecruitingPanel postId={post.id} />}
+        {tab === 'sponsors' && <SponsorsPanel postId={post.id} />}
+        {tab === 'build_a_post' && <BuildAPostPanel postId={post.id} />}
       </div>
     )
   }
@@ -345,9 +358,9 @@ export default function PostHealthDetail() {
                 : d.key === 'financial'
                 ? () => setHealthView('financial')
                 : d.key === 'sponsors'
-                ? () => navigate(`/sponsors?post=${post.id}`)
+                ? () => setTab('sponsors')
                 : d.key === 'meetings'
-                ? () => navigate(`/meetings?post=${post.id}`)
+                ? () => setTab('meetings')
                 : null // congress participation — not wired up yet
             return (
               <button
@@ -513,7 +526,10 @@ export default function PostHealthDetail() {
       )}
       {tab === 'officers' && <OfficersPanel postId={post.id} postName={post.name} />}
       {tab === 'members' && <MembersPanel postId={post.id} />}
-
+      {tab === 'meetings' && <MeetingsPanel postId={post.id} />}
+      {tab === 'recruiting' && <RecruitingPanel postId={post.id} />}
+      {tab === 'sponsors' && <SponsorsPanel postId={post.id} />}
+      {tab === 'build_a_post' && <BuildAPostPanel postId={post.id} />}
 
       {showSignature && (
         <LogSignatureModal postId={post.id} recordedBy={profile?.id ?? null} onClose={() => setShowSignature(false)} onSaved={() => { setShowSignature(false); load() }} />

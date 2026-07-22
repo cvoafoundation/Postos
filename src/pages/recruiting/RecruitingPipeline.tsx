@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { KanbanBoard, type KanbanColumn } from '@/components/ui/Kanban'
 import { StatCard } from '@/components/ui/StatCard'
@@ -34,6 +35,7 @@ function isStale(recruit: Recruit): boolean {
 
 export default function RecruitingPipeline() {
   const { profile, isNational } = useAuth()
+  const [searchParams] = useSearchParams()
   const [posts, setPosts] = useState<Post[]>([])
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [recruits, setRecruits] = useState<Recruit[]>([])
@@ -48,7 +50,10 @@ export default function RecruitingPipeline() {
         .then(({ data }: any) => {
           const list = (data ?? []) as Post[]
           setPosts(list)
-          if (list.length > 0 && !selectedPostId) setSelectedPostId(list[0].id)
+          if (list.length > 0 && !selectedPostId) {
+            const postParam = searchParams.get('post')
+            setSelectedPostId(postParam ?? list[0].id)
+          }
         })
     } else if (profile?.post_id) {
       setSelectedPostId(profile.post_id)
