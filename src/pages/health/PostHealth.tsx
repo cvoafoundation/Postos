@@ -5,7 +5,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { computePostHealth, type PostHealthResult } from '@/lib/postHealth'
-import type { Post } from '@/lib/types'
+import { POST_STATUS_LABELS, type Post } from '@/lib/types'
 
 interface ScoredPost {
   post: Post
@@ -14,13 +14,17 @@ interface ScoredPost {
 
 export default function PostHealth() {
   const navigate = useNavigate()
+  const [tab, setTab] = useState<'health' | 'forming'>('health')
   const [scored, setScored] = useState<ScoredPost[]>([])
+  const [formingPosts, setFormingPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
-      const { data: postsData } = await supabase.from('posts').select('*').eq('status', 'active_post')
-      const posts = (postsData ?? []) as Post[]
+      const { data: postsData } = await supabase.from('posts').select('*')
+      const allPosts = (postsData ?? []) as Post[]
+      const posts = allPosts.filter((p) => p.status === 'active_post')
+      setFormingPosts(allPosts.filter((p) => p.status !== 'active_post'))
 
       const results = await Promise.all(
         posts.map(async (post) => {
@@ -72,58 +76,116 @@ export default function PostHealth() {
     <div>
       <PageHeader eyebrow="Module 9" title="Post Health System" />
 
-      {loading ? (
-        <p className="text-sm text-muted">Computing health scores…</p>
-      ) : scored.length === 0 ? (
-        <EmptyState
-          title="No active posts yet"
-          hint="A real composite score — officers, sponsors, meetings, membership, Congress participation, governance, community service, and finances — rolls up here once posts go active."
-        />
-      ) : (
-        <>
-          {struggling.length > 0 && (
-            <div className="panel p-4 mb-6">
-              <div className="eyebrow mb-2 text-status-attention">Needs Immediate Attention</div>
-              <div className="flex gap-2 flex-wrap">
-                {struggling.map(({ post, result }) => (
-                  <button key={post.id} onClick={() => navigate(`/health/${post.id}`)}>
-                    <StatusBadge label={`${post.name} — ${result.score}`} tone="attention" />
-                  </button>
-                ))}
-              </div>
-            </div>
+      {/* One page owns every post regardless of stage — Health for posts
+          already live, Forming for everything still working through the
+          launch checklist. Whichever post you click, in either tab, lands
+          on the same per-post page, which shows the right view for that
+          post's actual stage. */}
+      <div className="flex gap-1 mb-6 border-b border-hairline">
+        <button
+          onClick={() => setTab('health')}
+          className={`px-4 py-2 text-sm font-mono uppercase tracking-wide border-b-2 -mb-px transition-colors ${
+            tab === 'health' ? 'border-gold text-gold' : 'border-transparent text-muted hover:text-ink'
+          }`}
+        >
+          Health
+        </button>
+        <button
+          onClick={() => setTab('forming')}
+          className={`px-4 py-2 text-sm font-mono uppercase tracking-wide border-b-2 -mb-px transition-colors flex items-center gap-2 ${
+            tab === 'forming' ? 'border-gold text-gold' : 'border-transparent text-muted hover:text-ink'
+          }`}
+        >
+          Forming
+          {formingPosts.length > 0 && (
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-gold text-base text-[10px] font-mono font-medium flex items-center justify-center">
+              {formingPosts.length}
+            </span>
           )}
+        </button>
+      </div>
 
-          <div className="panel overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <th className="table-head">Post</th>
-                  <th className="table-head">State</th>
-                  <th className="table-head">Score</th>
-                  <th className="table-head">Status</th>
-                  <th className="table-head">Charter Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scored.map(({ post, result }) => (
-                  <tr key={post.id} onClick={() => navigate(`/health/${post.id}`)} className="cursor-pointer hover:bg-surface/60">
-                    <td className="table-cell">{post.name}</td>
-                    <td className="table-cell font-mono">{post.state}</td>
-                    <td className="table-cell font-mono text-gold">{result.score}</td>
-                    <td className="table-cell">
-                      <StatusBadge
-                        label={result.overall}
-                        tone={result.overall === 'green' ? 'active' : result.overall === 'yellow' ? 'developing' : 'attention'}
-                      />
-                    </td>
-                    <td className="table-cell text-muted">{post.charter_date ?? '—'}</td>
+      {tab === 'health' ? (
+        loading ? (
+          <p className="text-sm text-muted">Computing health scores…</p>
+        ) : scored.length === 0 ? (
+          <EmptyState
+            title="No active posts yet"
+            hint="A real composite score — officers, sponsors, meetings, membership, Congress participation, governance, community service, and finances — rolls up here once posts go active."
+          />
+        ) : (
+          <>
+            {struggling.length > 0 && (
+              <div className="panel p-4 mb-6">
+                <div className="eyebrow mb-2 text-status-attention">Needs Immediate Attention</div>
+                <div className="flex gap-2 flex-wrap">
+                  {struggling.map(({ post, result }) => (
+                    <button key={post.id} onClick={() => navigate(`/health/${post.id}`)}>
+                      <StatusBadge label={`${post.name} — ${result.score}`} tone="attention" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="panel overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className="table-head">Post</th>
+                    <th className="table-head">State</th>
+                    <th className="table-head">Score</th>
+                    <th className="table-head">Status</th>
+                    <th className="table-head">Charter Date</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+                </thead>
+                <tbody>
+                  {scored.map(({ post, result }) => (
+                    <tr key={post.id} onClick={() => navigate(`/health/${post.id}`)} className="cursor-pointer hover:bg-surface/60">
+                      <td className="table-cell">{post.name}</td>
+                      <td className="table-cell font-mono">{post.state}</td>
+                      <td className="table-cell font-mono text-gold">{result.score}</td>
+                      <td className="table-cell">
+                        <StatusBadge
+                          label={result.overall}
+                          tone={result.overall === 'green' ? 'active' : result.overall === 'yellow' ? 'developing' : 'attention'}
+                        />
+                      </td>
+                      <td className="table-cell text-muted">{post.charter_date ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )
+      ) : formingPosts.length === 0 ? (
+        <EmptyState title="Nothing forming right now" hint="Posts show up here once an application advances to Founding Team Building." />
+      ) : (
+        <div className="panel overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className="table-head">Name</th>
+                <th className="table-head">State</th>
+                <th className="table-head">Status</th>
+                <th className="table-head">Charter Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {formingPosts.map((post) => (
+                <tr key={post.id} onClick={() => navigate(`/health/${post.id}`)} className="cursor-pointer hover:bg-surface/60">
+                  <td className="table-cell">{post.name}</td>
+                  <td className="table-cell font-mono">{post.state}</td>
+                  <td className="table-cell">
+                    <StatusBadge label={POST_STATUS_LABELS[post.status]} tone="developing" />
+                  </td>
+                  <td className="table-cell text-muted">{post.charter_date ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

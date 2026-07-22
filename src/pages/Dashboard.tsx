@@ -170,7 +170,7 @@ export default function Dashboard() {
           <Link to="/vetting" className="block h-full">
             <StatCard label="In Vetting" value={metrics?.inVetting ?? '—'} accent="gold" />
           </Link>
-          <Link to="/checklist" className="block h-full">
+          <Link to="/health" className="block h-full">
             <StatCard label="In Development" value={metrics?.developingPosts ?? '—'} accent="gold" />
           </Link>
           <div className="h-full">

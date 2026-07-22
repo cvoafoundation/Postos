@@ -5,7 +5,6 @@ import {
   GitBranch,
   ClipboardCheck,
   Users,
-  ListChecks,
   CalendarCheck,
   FolderDown,
   Radar,
@@ -16,7 +15,6 @@ import {
   IdCard,
   HardDrive,
   UserCog,
-  Building2,
   CreditCard,
   FileCheck2,
   LogOut,
@@ -34,7 +32,6 @@ type NavItem = { to: string; label: string; icon: typeof GitBranch; end?: boolea
 const NATIONAL_ONLY_ITEMS: NavItem[] = [
   { to: '/applications', label: 'Application Pipeline', icon: GitBranch, section: 'applications' },
   { to: '/vetting', label: 'Vetting System', icon: ClipboardCheck },
-  { to: '/posts', label: 'Posts Management', icon: Building2 },
   { to: '/users', label: 'User Management', icon: UserCog },
   { to: '/drive', label: 'NCC Drive', icon: HardDrive },
 ]
@@ -48,7 +45,6 @@ const SHARED_ITEMS: NavItem[] = [
   { to: '/post-members', label: 'Post Members', icon: IdCard },
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
   { to: '/founding-team', label: 'Founding Team', icon: Users },
-  { to: '/checklist', label: 'Launch Checklist', icon: ListChecks },
   { to: '/meetings', label: 'Meetings', icon: CalendarCheck, section: 'meetings' },
   { to: '/members', label: 'Membership Roster', icon: IdCard, section: 'membership_roster' },
   { to: '/membership-review', label: 'Membership DD214 Review', icon: FileCheck2, section: 'dd214_review' },

@@ -121,7 +121,7 @@ export default function PostHome() {
             <div className="eyebrow mt-1">Post Health</div>
           </button>
         ) : (
-          <button onClick={() => navigate('/checklist')} className="panel p-4 text-left hover:border-gold transition-colors">
+          <button onClick={() => navigate(`/health/${post.id}`)} className="panel p-4 text-left hover:border-gold transition-colors">
             <Users className="text-gold mb-2" size={18} />
             <div className="font-display text-2xl">{checklistPct ?? '—'}%</div>
             <div className="eyebrow mt-1">Launch Checklist</div>

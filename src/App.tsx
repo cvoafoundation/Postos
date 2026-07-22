@@ -12,7 +12,6 @@ import JoinFoundingTeam from '@/pages/founding-team/JoinFoundingTeam'
 import PublicChecklist from '@/pages/checklist/PublicChecklist'
 import PublicRecruitSignup from '@/pages/recruiting/PublicRecruitSignup'
 import BecomeASponsor from '@/pages/sponsors/BecomeASponsor'
-import LaunchChecklist from '@/pages/checklist/LaunchChecklist'
 import Toolkit from '@/pages/toolkit/Toolkit'
 import Meetings from '@/pages/meetings/Meetings'
 import UroMeetingWizard from '@/pages/meetings/uro/UroMeetingWizard'
@@ -48,7 +47,6 @@ import VerifyMembership from '@/pages/members/VerifyMembership'
 import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
 import NCCDrive from '@/pages/drive/NCCDrive'
 import SharedDriveView from '@/pages/drive/SharedDriveView'
-import PostsManagement from '@/pages/admin/PostsManagement'
 import UserManagement from '@/pages/admin/UserManagement'
 
 export default function App() {
@@ -118,14 +116,6 @@ function AuthenticatedApp() {
           element={
             <RoleGuard roles={['post_commander', 'post_officer']}>
               <FoundingTeamBuilder />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/checklist"
-          element={
-            <RoleGuard roles={['post_commander', 'post_officer']}>
-              <LaunchChecklist />
             </RoleGuard>
           }
         />
@@ -300,14 +290,6 @@ function AuthenticatedApp() {
           element={
             <RoleGuard roles={['post_commander', 'post_officer']}>
               <SharedDriveView />
-            </RoleGuard>
-          }
-        />
-        <Route
-          path="/posts"
-          element={
-            <RoleGuard roles={[]}>
-              <PostsManagement />
             </RoleGuard>
           }
         />

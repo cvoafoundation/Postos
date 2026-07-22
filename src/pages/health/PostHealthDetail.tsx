@@ -5,6 +5,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { computePostHealth, type PostHealthResult, type DimensionStatus } from '@/lib/postHealth'
+import { POST_STATUS_LABELS, POST_STATUS_ORDER, type PostStatus } from '@/lib/types'
 import type {
   AnnualReview,
   CommunityServiceEvent,
@@ -13,8 +14,9 @@ import type {
   GovernanceSignature,
   Post,
 } from '@/lib/types'
+import { PostChecklistView } from '@/components/checklist/PostChecklistView'
 import { format } from 'date-fns'
-import { Plus, Scale, Landmark, HeartHandshake, FileCheck, Trash2 } from 'lucide-react'
+import { Plus, Scale, Landmark, HeartHandshake, FileCheck, Trash2, Copy, Check, ArrowRight } from 'lucide-react'
 
 function toneFor(status: DimensionStatus) {
   if (status === 'green') return 'active' as const
@@ -39,6 +41,12 @@ export default function PostHealthDetail() {
   const [showSignature, setShowSignature] = useState(false)
   const [showService, setShowService] = useState(false)
   const [showTransaction, setShowTransaction] = useState(false)
+
+  // Forming-post view only
+  const [checklistPct, setChecklistPct] = useState<number | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [advancing, setAdvancing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   async function load() {
     if (!postId) return
@@ -104,6 +112,58 @@ export default function PostHealthDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId])
 
+  useEffect(() => {
+    if (!postId) return
+    supabase
+      .from('checklist_items')
+      .select('is_complete')
+      .eq('post_id', postId)
+      .then(({ data }: any) => {
+        const items = data ?? []
+        setChecklistPct(items.length > 0 ? Math.round((items.filter((i: any) => i.is_complete).length / items.length) * 100) : null)
+      })
+  }, [postId])
+
+  function copyShareLink() {
+    if (!postId) return
+    const link = `${window.location.origin}/post-checklist/${postId}`
+    navigator.clipboard.writeText(link)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // The one place a post's status actually advances. Moving to Active also
+  // strips a leftover "(Forming)" from the auto-generated name — without
+  // this, a post could go fully active while its name still says otherwise,
+  // which is exactly what was confusing before this page existed.
+  async function advanceStatus(next: PostStatus) {
+    if (!postId || !post) return
+    setAdvancing(true)
+    const patch: { status: PostStatus; name?: string } = { status: next }
+    if (next === 'active_post' && post.name.endsWith(' (Forming)')) {
+      patch.name = post.name.slice(0, -' (Forming)'.length)
+    }
+    await supabase.from('posts').update(patch).eq('id', postId)
+    setAdvancing(false)
+    load()
+  }
+
+  async function deletePost() {
+    if (!postId || !post) return
+    const stageNote = post.status === 'active_post' ? 'This is an ACTIVE post — this' : 'This'
+    const confirmed = window.confirm(
+      `Permanently delete "${post.name}"? ${stageNote} removes it and everything tied to it — members, sponsors, meetings, finances, checklist, everything. This cannot be undone.`
+    )
+    if (!confirmed) return
+    setDeleting(true)
+    const { error } = await supabase.from('posts').delete().eq('id', postId)
+    setDeleting(false)
+    if (error) {
+      window.alert(`Couldn't delete: ${error.message}`)
+      return
+    }
+    navigate('/health')
+  }
   async function toggleReviewItem(field: keyof AnnualReview) {
     if (!postId) return
     const currentYear = new Date().getFullYear()
@@ -125,24 +185,77 @@ export default function PostHealthDetail() {
     load()
   }
 
-  async function deletePost() {
-    if (!postId || !post) return
-    const confirmed = window.confirm(
-      `Permanently delete "${post.name}"? This is an ACTIVE post — this removes it and everything tied to it: members, sponsors, meetings, finances, everything. This cannot be undone.`
-    )
-    if (!confirmed) return
-    const { error } = await supabase.from('posts').delete().eq('id', postId)
-    if (error) {
-      window.alert(`Couldn't delete: ${error.message}`)
-      return
-    }
-    navigate('/health')
-  }
-
-  if (loading || !post || !result) return <p className="text-sm text-muted">Loading…</p>
+  if (loading || !post) return <p className="text-sm text-muted">Loading…</p>
 
   const income = transactions.filter((t) => t.transaction_type === 'income').reduce((s, t) => s + Number(t.amount), 0)
   const expense = transactions.filter((t) => t.transaction_type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
+
+  // A post that hasn't gone active yet doesn't have a meaningful health
+  // score — there's nothing to measure. It needs a checklist and a way to
+  // advance, not a composite score built mostly from empty signals.
+  if (post.status !== 'active_post') {
+    const currentIndex = POST_STATUS_ORDER.indexOf(post.status)
+    const nextStatus = POST_STATUS_ORDER[currentIndex + 1]
+
+    return (
+      <div>
+        <button onClick={() => navigate('/health')} className="text-xs font-mono text-muted hover:text-gold mb-4">
+          ← Back to Post Health
+        </button>
+
+        <PageHeader eyebrow={`${post.city ?? ''} ${post.state}`} title={post.name} />
+
+        <div className="panel p-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div>
+              <div className="eyebrow mb-1">Post Status</div>
+              <StatusBadge label={POST_STATUS_LABELS[post.status]} tone="developing" />
+            </div>
+            {checklistPct !== null && (
+              <div className="text-xs text-muted font-mono ml-4">
+                Checklist {checklistPct}% complete
+                {checklistPct < 100 && isNational && " — you can still advance manually if that's the right call"}
+              </div>
+            )}
+          </div>
+          {isNational && (
+            <div className="flex items-center gap-4 shrink-0">
+              {nextStatus && (
+                <button onClick={() => advanceStatus(nextStatus)} disabled={advancing} className="btn-gold flex items-center gap-2 disabled:opacity-50">
+                  {advancing ? 'Advancing…' : `Advance to ${POST_STATUS_LABELS[nextStatus]}`} <ArrowRight size={14} />
+                </button>
+              )}
+              <button
+                onClick={deletePost}
+                disabled={deleting}
+                className="text-xs text-muted hover:text-status-attention flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 size={13} /> {deleting ? 'Deleting…' : 'Delete Post'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
+          <div>
+            <div className="eyebrow mb-1">Shareable Link</div>
+            <p className="text-sm text-muted">
+              Share this with {post.name} — they can view and check off items themselves, no login required.
+              You'll both always be looking at the same live checklist.
+            </p>
+          </div>
+          <button onClick={copyShareLink} className="btn-gold flex items-center gap-2 shrink-0">
+            {copied ? <Check size={16} /> : <Copy size={16} />}
+            {copied ? 'Copied!' : 'Copy Link'}
+          </button>
+        </div>
+
+        <PostChecklistView postId={post.id} />
+      </div>
+    )
+  }
+
+  if (!result) return <p className="text-sm text-muted">Loading…</p>
 
   return (
     <div>
