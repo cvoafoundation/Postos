@@ -5,30 +5,51 @@
 // created directly in the Supabase Auth dashboard — that only creates the
 // login, never the profile this app actually reads permissions from.
 //
-// Uses Supabase's built-in invite email — the person gets a link, clicks
-// it, sets their own password, and is logged straight in with the role
-// you assigned here already active. No separate signup step, no gap where
-// they exist but can't do anything.
+// Sends the invite through CVOA's own Google Workspace account (same
+// mechanism as the membership notification emails), not Supabase's default
+// email sender — generateLink() creates the account and hands back a
+// magic-link URL without emailing anyone itself; we send that link
+// ourselves via Gmail SMTP.
 //
-// DEPLOYING THIS (one-time setup):
-//   1. Supabase Dashboard -> Authentication -> URL Configuration -> make
-//      sure "Site URL" is set to your deployed app
-//      (e.g. https://postos-nine.vercel.app) — this is where the invite
-//      link sends them.
-//   2. Deploy: `supabase functions deploy invite-user`
-//      (uses the SUPABASE_SERVICE_ROLE_KEY that's already available to
-//      every Edge Function automatically — nothing new to configure)
+// DEPLOYING THIS (one-time setup): Deploy: `supabase functions deploy invite-user`
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
+import nodemailer from 'npm:nodemailer@6.9.16'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const SITE_URL = Deno.env.get('SITE_URL')!
+const WORKSPACE_EMAIL = Deno.env.get('WORKSPACE_EMAIL')
+const WORKSPACE_APP_PASSWORD = Deno.env.get('WORKSPACE_APP_PASSWORD')
 
 interface RequestBody {
   email: string
   full_name: string
   role: string
   post_id: string | null
+}
+
+async function sendInviteEmail(email: string, fullName: string, actionLink: string) {
+  if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
+    console.warn('WORKSPACE_EMAIL/WORKSPACE_APP_PASSWORD not set — skipping invite email (dry run):', email, actionLink)
+    return
+  }
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: { user: WORKSPACE_EMAIL, pass: WORKSPACE_APP_PASSWORD },
+  })
+  await transporter.sendMail({
+    from: `CVOA.ONE SYSTEM (COS) <${WORKSPACE_EMAIL}>`,
+    to: email,
+    subject: `You're invited to CVOA.ONE SYSTEM (COS)`,
+    text: `Hi ${fullName},\n\nYou've been invited to create your account. Open this link to set your password and get started:\n\n${actionLink}\n\nIf you weren't expecting this, you can safely ignore this email.`,
+    html: `<p>Hi ${fullName},</p>
+           <p>You've been invited to create your account. Click below to set your password and get started:</p>
+           <p><a href="${actionLink}">Set your password &amp; log in</a></p>
+           <p>If you weren't expecting this, you can safely ignore this email.</p>`,
+  })
 }
 
 Deno.serve(async (req) => {
@@ -70,27 +91,42 @@ Deno.serve(async (req) => {
     })
   }
 
-  const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(body.email)
-  if (inviteError || !inviteData.user) {
-    return new Response(JSON.stringify({ error: inviteError?.message ?? 'Could not create the invite.' }), {
+  // generateLink (type: 'invite') creates the auth user and hands back a
+  // magic-link URL, but — unlike inviteUserByEmail — never sends any email
+  // itself. That's the whole point: it lets us send our own email instead.
+  const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+    type: 'invite',
+    email: body.email,
+    options: { redirectTo: `${SITE_URL}/login` },
+  })
+  if (linkError || !linkData?.user) {
+    return new Response(JSON.stringify({ error: linkError?.message ?? 'Could not create the invite.' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
   const { error: profileError } = await supabase.from('profiles').insert({
-    id: inviteData.user.id,
+    id: linkData.user.id,
     full_name: body.full_name,
     email: body.email,
     role: body.role,
     post_id: body.post_id,
   })
-
   if (profileError) {
-    return new Response(JSON.stringify({ error: `Invite sent, but profile creation failed: ${profileError.message}` }), {
+    return new Response(JSON.stringify({ error: `Invite created, but profile creation failed: ${profileError.message}` }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
+  }
+
+  try {
+    await sendInviteEmail(body.email, body.full_name, linkData.properties.action_link)
+  } catch (emailError) {
+    return new Response(
+      JSON.stringify({ error: `Account created, but the invite email failed to send: ${(emailError as Error).message}` }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
 
   return new Response(JSON.stringify({ success: true }), {
