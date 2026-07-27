@@ -455,11 +455,13 @@ function AddMemberModal({
     military_branch: '',
     membership_type: 'annual' as MembershipType,
     mark_paid: true,
-    send_invite: true,
+    account_method: 'email' as 'none' | 'email' | 'manual',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [inviteWarning, setInviteWarning] = useState<string | null>(null)
+  const [tempPassword, setTempPassword] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -500,20 +502,25 @@ function AddMemberModal({
       return
     }
 
-    // One action, not two — the member is created and, if requested, sent
-    // their account invite in the same step. All they'll ever have to do
-    // is open the email and set a password; their card and status are
-    // already sitting there waiting, tied to this exact record.
-    if (form.send_invite && form.email) {
+    // One action, not two — the member is created and, if requested, their
+    // account is created in the same step, either by email invite or by
+    // generating a real password on the spot when email isn't the right
+    // call (e.g. email delivery itself isn't working yet).
+    if (form.account_method !== 'none' && form.email) {
       const { data, error: inviteError } = await supabase.functions.invoke('invite-member', {
-        body: { member_id: newMember.id },
+        body: { member_id: newMember.id, method: form.account_method },
       })
       if (inviteError || data?.error) {
         setInviteWarning(
-          `Member added, but the invite email failed to send (${data?.error ?? inviteError?.message ?? 'unknown error'}). You can retry it from their entry in the roster.`
+          `Member added, but account creation failed (${data?.error ?? inviteError?.message ?? 'unknown error'}). You can retry it from their entry in the roster.`
         )
         setSaving(false)
         setTimeout(onAdded, 1800)
+        return
+      }
+      if (form.account_method === 'manual' && data?.temp_password) {
+        setSaving(false)
+        setTempPassword(data.temp_password)
         return
       }
     }
@@ -524,52 +531,91 @@ function AddMemberModal({
 
   return (
     <Modal title={`Add Member${postName ? ` — ${postName}` : ''}`} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <input required placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
-        <div className="grid grid-cols-2 gap-3">
-          <input type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
-          <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
+      {tempPassword ? (
+        <div className="space-y-4">
+          <p className="text-sm text-status-active">Account created. Share this password with them any way you'd like — it's shown only once.</p>
+          <div className="flex items-center gap-2">
+            <input readOnly value={tempPassword} className="input-field flex-1 font-mono text-lg text-center" onFocus={(e) => e.target.select()} />
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(tempPassword)
+                setCopied(true)
+                setTimeout(() => setCopied(false), 2000)
+              }}
+              className="btn-gold px-4 py-2 shrink-0"
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <p className="text-xs text-muted">
+            They can log in with their email and this password right away — their card and status are already
+            waiting for them. They can change it later from Settings.
+          </p>
+          <button onClick={onAdded} className="btn-ghost w-full">
+            Done
+          </button>
         </div>
-        <input placeholder="Address" className="input-field" value={form.address} onChange={(e) => update('address', e.target.value)} />
-        <div className="grid grid-cols-2 gap-3">
-          <select className="input-field" value={form.state} onChange={(e) => update('state', e.target.value)}>
-            <option value="">State (for membership #)</option>
-            {US_STATES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input required placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <input type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
+            <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
+          </div>
+          <input placeholder="Address" className="input-field" value={form.address} onChange={(e) => update('address', e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <select className="input-field" value={form.state} onChange={(e) => update('state', e.target.value)}>
+              <option value="">State (for membership #)</option>
+              {US_STATES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <input placeholder="Branch" className="input-field" value={form.military_branch} onChange={(e) => update('military_branch', e.target.value)} />
+          </div>
+          <select className="input-field" value={form.membership_type} onChange={(e) => update('membership_type', e.target.value as MembershipType)}>
+            <option value="annual">Annual ($49.99)</option>
+            <option value="lifetime">Lifetime ($499.99)</option>
           </select>
-          <input placeholder="Branch" className="input-field" value={form.military_branch} onChange={(e) => update('military_branch', e.target.value)} />
-        </div>
-        <select className="input-field" value={form.membership_type} onChange={(e) => update('membership_type', e.target.value as MembershipType)}>
-          <option value="annual">Annual ($49.99)</option>
-          <option value="lifetime">Lifetime ($499.99)</option>
-        </select>
-        <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-          <input type="checkbox" checked={form.mark_paid} onChange={(e) => update('mark_paid', e.target.checked)} />
-          Mark as paid now (e.g. cash or check received in person)
-        </label>
-        <label className={`flex items-center gap-2 text-sm cursor-pointer ${form.email ? 'text-muted' : 'text-muted/50'}`}>
-          <input
-            type="checkbox"
-            checked={form.send_invite}
-            disabled={!form.email}
-            onChange={(e) => update('send_invite', e.target.checked)}
-          />
-          Send them an account invite email now
-        </label>
-        {form.send_invite && !form.email && (
-          <p className="text-[11px] text-muted -mt-2">Add an email above to enable this.</p>
-        )}
+          <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+            <input type="checkbox" checked={form.mark_paid} onChange={(e) => update('mark_paid', e.target.checked)} />
+            Mark as paid now (e.g. cash or check received in person)
+          </label>
 
-        {error && <p className="text-status-attention text-sm">{error}</p>}
-        {inviteWarning && <p className="text-status-developing text-sm">{inviteWarning}</p>}
+          <div className={form.email ? '' : 'opacity-50 pointer-events-none'}>
+            <div className="text-xs text-muted mb-1.5">Account for this member</div>
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="radio" name="account_method" checked={form.account_method === 'none'} onChange={() => update('account_method', 'none')} />
+                Don't create one yet
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="radio" name="account_method" checked={form.account_method === 'email'} onChange={() => update('account_method', 'email')} />
+                Email them an invite link to set their own password
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="radio" name="account_method" checked={form.account_method === 'manual'} onChange={() => update('account_method', 'manual')} />
+                Generate a temporary password now (no email needed)
+              </label>
+            </div>
+            {!form.email && <p className="text-[11px] text-muted mt-1">Add an email above to enable this.</p>}
+          </div>
 
-        <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
-          {saving ? (form.send_invite && form.email ? 'Adding & Sending Invite…' : 'Adding…') : 'Add Member'}
-        </button>
-      </form>
+          {error && <p className="text-status-attention text-sm">{error}</p>}
+          {inviteWarning && <p className="text-status-developing text-sm">{inviteWarning}</p>}
+
+          <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
+            {saving
+              ? form.account_method === 'manual' && form.email
+                ? 'Adding & Generating Password…'
+                : form.account_method === 'email' && form.email
+                ? 'Adding & Sending Invite…'
+                : 'Adding…'
+              : 'Add Member'}
+          </button>
+        </form>
+      )}
     </Modal>
   )
 }
@@ -604,17 +650,23 @@ function EditMemberModal({
   const [invitingAccount, setInvitingAccount] = useState(false)
   const [inviteSent, setInviteSent] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
+  const [tempPassword, setTempPassword] = useState<string | null>(null)
+  const [copiedPassword, setCopiedPassword] = useState(false)
 
-  async function sendInvite() {
+  async function sendInvite(method: 'email' | 'manual') {
     setInvitingAccount(true)
     setInviteError(null)
-    const { data, error } = await supabase.functions.invoke('invite-member', { body: { member_id: member.id } })
+    const { data, error } = await supabase.functions.invoke('invite-member', { body: { member_id: member.id, method } })
     setInvitingAccount(false)
     if (error || data?.error) {
-      setInviteError(data?.error ?? error?.message ?? 'Could not send the invite.')
+      setInviteError(data?.error ?? error?.message ?? 'Could not create the account.')
       return
     }
-    setInviteSent(true)
+    if (method === 'manual' && data?.temp_password) {
+      setTempPassword(data.temp_password)
+    } else {
+      setInviteSent(true)
+    }
   }
 
   // Surfaces the login/role side right here — without this, there'd be no
@@ -747,14 +799,36 @@ function EditMemberModal({
         )}
         {!linkedAccount && (
           <div className="panel p-2.5">
-            {inviteSent ? (
+            {tempPassword ? (
+              <div className="space-y-2">
+                <p className="text-xs text-status-active">Account created — this password is shown only once, copy it now.</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={tempPassword} className="input-field flex-1 font-mono text-sm py-1" onFocus={(e) => e.target.select()} />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(tempPassword)
+                      setCopiedPassword(true)
+                      setTimeout(() => setCopiedPassword(false), 2000)
+                    }}
+                    className="text-xs text-gold hover:text-gold-bright shrink-0"
+                  >
+                    {copiedPassword ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+            ) : inviteSent ? (
               <p className="text-xs text-status-active">Invite sent to {member.email} — they'll set their own password and see their card immediately.</p>
             ) : member.email ? (
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs text-muted">No account yet — already paid, just no login.</span>
-                <button onClick={sendInvite} disabled={invitingAccount} className="text-xs text-gold hover:text-gold-bright shrink-0 disabled:opacity-50">
-                  {invitingAccount ? 'Sending…' : 'Send Invite to Create Account'}
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button onClick={() => sendInvite('manual')} disabled={invitingAccount} className="text-xs text-gold hover:text-gold-bright disabled:opacity-50">
+                    {invitingAccount ? 'Working…' : 'Generate Password'}
+                  </button>
+                  <button onClick={() => sendInvite('email')} disabled={invitingAccount} className="text-xs text-gold hover:text-gold-bright disabled:opacity-50">
+                    {invitingAccount ? 'Sending…' : 'Send Invite Email'}
+                  </button>
+                </div>
               </div>
             ) : (
               <p className="text-xs text-muted">No email on file — add one above to send an account invite.</p>

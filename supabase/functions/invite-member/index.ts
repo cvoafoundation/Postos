@@ -1,12 +1,17 @@
 // supabase/functions/invite-member/index.ts
 //
 // For a member who already exists on the roster (imported, added by hand,
-// or paid before this system existed) but has no login yet. Sends them
-// the invite through CVOA's own Google Workspace account (same mechanism
-// as invite-user and the membership notification emails) — creates their
-// profile as a plain 'member', and links it straight back to their
-// existing members row so their card and status show up immediately on
-// first login — no waiting on the email-matching auto-link to catch up.
+// or paid before this system existed) but has no login yet. Two ways to
+// get them one:
+//   - 'email' (default): sends the invite through CVOA's own Google
+//     Workspace account, with a magic link to set their own password.
+//   - 'manual': skips email entirely and generates a real temporary
+//     password on the spot, handed back to whoever's running this so they
+//     can share it however they want (in person, text, etc.) — useful
+//     whenever email delivery itself isn't working.
+// Either way, their profile is created as a plain 'member' and linked
+// straight back to their existing members row so their card and status
+// show up immediately on first login.
 //
 // DEPLOYING THIS (one-time setup): Deploy: `supabase functions deploy invite-member`
 
@@ -21,6 +26,17 @@ const WORKSPACE_APP_PASSWORD = Deno.env.get('WORKSPACE_APP_PASSWORD')
 
 interface RequestBody {
   member_id: string
+  method?: 'email' | 'manual'
+}
+
+// Easy to read off a screen and hand to someone, or type from a sticky
+// note — still a real, unguessable password (a word + 4 digits + symbol),
+// not something trivially weak.
+function generateTempPassword(): string {
+  const words = ['Falcon', 'Harbor', 'Granite', 'Beacon', 'Anchor', 'Compass', 'Ember', 'Ridge', 'Talon', 'Summit', 'Rally', 'Cedar']
+  const word = words[Math.floor(Math.random() * words.length)]
+  const digits = Math.floor(1000 + Math.random() * 9000)
+  return `${word}${digits}!`
 }
 
 async function sendInviteEmail(email: string, fullName: string, actionLink: string) {
@@ -55,6 +71,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = (await req.json()) as RequestBody
+  const method = body.method ?? 'email'
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
   const authHeader = req.headers.get('Authorization')
@@ -112,44 +129,77 @@ Deno.serve(async (req) => {
     })
   }
 
-  const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-    type: 'invite',
-    email: member.email,
-    options: { redirectTo: `${SITE_URL}/login` },
-  })
-  if (linkError || !linkData?.user) {
-    return new Response(JSON.stringify({ error: linkError?.message ?? 'Could not create the invite.' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  let newUserId: string
+  let tempPassword: string | null = null
+
+  if (method === 'manual') {
+    // Creates a fully active, already-confirmed account with a real
+    // password right now — no email step involved at all.
+    tempPassword = generateTempPassword()
+    const { data: created, error: createError } = await supabase.auth.admin.createUser({
+      email: member.email,
+      password: tempPassword,
+      email_confirm: true,
     })
+    if (createError || !created.user) {
+      return new Response(JSON.stringify({ error: createError?.message ?? 'Could not create the account.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    newUserId = created.user.id
+  } else {
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: 'invite',
+      email: member.email,
+      options: { redirectTo: `${SITE_URL}/login` },
+    })
+    if (linkError || !linkData?.user) {
+      return new Response(JSON.stringify({ error: linkError?.message ?? 'Could not create the invite.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    newUserId = linkData.user.id
+
+    try {
+      await sendInviteEmail(member.email, member.full_name, linkData.properties.action_link)
+    } catch (emailError) {
+      // Still finish linking the account below even if the email failed —
+      // National can retry sharing the link/password another way rather
+      // than being left with a half-created account.
+      const { error: profileError } = await supabase.from('profiles').insert({
+        id: newUserId,
+        full_name: member.full_name,
+        email: member.email,
+        role: 'member',
+        post_id: member.post_id,
+      })
+      if (!profileError) await supabase.from('members').update({ profile_id: newUserId }).eq('id', body.member_id)
+      return new Response(
+        JSON.stringify({ error: `Account created, but the invite email failed to send: ${(emailError as Error).message}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
   }
 
   const { error: profileError } = await supabase.from('profiles').insert({
-    id: linkData.user.id,
+    id: newUserId,
     full_name: member.full_name,
     email: member.email,
     role: 'member',
     post_id: member.post_id,
   })
   if (profileError) {
-    return new Response(JSON.stringify({ error: `Invite created, but profile setup failed: ${profileError.message}` }), {
+    return new Response(JSON.stringify({ error: `Account created, but profile setup failed: ${profileError.message}` }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
-  await supabase.from('members').update({ profile_id: linkData.user.id }).eq('id', body.member_id)
+  await supabase.from('members').update({ profile_id: newUserId }).eq('id', body.member_id)
 
-  try {
-    await sendInviteEmail(member.email, member.full_name, linkData.properties.action_link)
-  } catch (emailError) {
-    return new Response(
-      JSON.stringify({ error: `Account linked, but the invite email failed to send: ${(emailError as Error).message}` }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
-  }
-
-  return new Response(JSON.stringify({ success: true }), {
+  return new Response(JSON.stringify({ success: true, temp_password: tempPassword }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 })

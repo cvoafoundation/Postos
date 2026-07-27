@@ -23,12 +23,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isDelegate, setIsDelegate] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      if (!data.session) setLoading(false)
-    })
+    console.log('[CVOA init] restoring session…')
+    supabase
+      .auth.getSession()
+      .then(({ data }: any) => {
+        console.log('[CVOA init] session restoration complete:', data.session ? 'session found' : 'no session')
+        setSession(data.session)
+        if (!data.session) setLoading(false)
+      })
+      .catch((err: unknown) => {
+        // Without this, a rejected promise here (storage failure, network
+        // hiccup, anything) leaves `loading` stuck at true forever — and
+        // since the whole app, including the public login screen, is
+        // gated behind that flag below, the result is an infinite loading
+        // state instead of a blank crash. Same failure mode, different
+        // shape — this closes it off entirely.
+        console.error('[CVOA init] session restoration failed — proceeding as signed out:', err)
+        setSession(null)
+        setLoading(false)
+      })
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((_event: string, newSession: Session | null) => {
       setSession(newSession)
       if (!newSession) {
         setProfile(null)
@@ -140,6 +155,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
+        setProfile(null)
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        // Same principle as the session-restoration catch above — a
+        // rejection anywhere in this chain (any of the several awaited
+        // Supabase calls) must never leave loading stuck at true forever.
+        console.error('[CVOA init] profile resolution failed — proceeding without a profile:', err)
         setProfile(null)
         setLoading(false)
       })

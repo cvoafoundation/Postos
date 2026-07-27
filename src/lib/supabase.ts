@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { mockSupabase } from './mockClient'
+import { createSafeStorage } from './safeStorage'
+
+console.log('[CVOA init] application initialization starting')
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -18,5 +21,36 @@ if (isDemoMode) {
   )
 }
 
-export const supabase: any = isDemoMode ? mockSupabase : createClient(url, anonKey)
+// createClient() reads storage synchronously during its own construction.
+// If that throws (Safari, cross-origin sandboxed iframe, storage blocked)
+// and this isn't guarded, the whole module fails to evaluate — which,
+// since main.tsx imports this before React ever renders, means a
+// completely blank page with no error visible anywhere. Everything below
+// exists so that can never happen: real client if possible, safe fallback
+// storage if not, and if construction still somehow fails, demo mode
+// rather than a dead app.
+function createSupabaseClient(): any {
+  if (isDemoMode) return mockSupabase
+
+  try {
+    const { storage, diagnostics } = createSafeStorage()
+    console.log('[CVOA init] storage diagnostics:', diagnostics)
+
+    const client = createClient(url, anonKey, {
+      auth: {
+        storage,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    })
+    console.log('[CVOA init] Supabase client created successfully')
+    return client
+  } catch (err) {
+    console.error('[CVOA init] Supabase client creation failed — falling back to demo mode so the app can still render:', err)
+    return mockSupabase
+  }
+}
+
+export const supabase: any = createSupabaseClient()
 
