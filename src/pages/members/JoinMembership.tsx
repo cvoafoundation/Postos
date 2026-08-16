@@ -84,61 +84,77 @@ export default function JoinMembership() {
     setSubmitting(true)
     setError(null)
 
-    const memberId = crypto.randomUUID()
+    try {
+      const memberId = crypto.randomUUID()
 
-    const { error: memberError } = await supabase.from('members').insert({
-      id: memberId,
-      post_id: postId,
-      full_name: form.full_name,
-      email: form.email || null,
-      phone: form.phone || null,
-      address: form.address || null,
-      state: form.state || null,
-      military_branch: form.military_branch || null,
-      membership_type: form.membership_type,
-      membership_status: 'pending_payment',
-      dd214_storage_path: docPath,
-    })
-
-    if (memberError) {
-      setSubmitting(false)
-      setError(memberError.message)
-      return
-    }
-
-    if (wantsAccount && form.password) {
-      await supabase.from('pending_profile_signups').insert({
-        email: form.email,
+      const { error: memberError } = await supabase.from('members').insert({
+        id: memberId,
+        post_id: postId,
         full_name: form.full_name,
-        post_id: postId,
-        role: 'member',
-      })
-      const { error: signUpError } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-        options: { data: { full_name: form.full_name } },
-      })
-      if (signUpError) {
-        console.error('Account creation failed:', signUpError.message)
-      }
-    }
-
-    const { data, error: checkoutError } = await supabase.functions.invoke('create-membership-checkout', {
-      body: {
-        member_id: memberId,
-        post_id: postId,
+        email: form.email || null,
+        phone: form.phone || null,
+        address: form.address || null,
+        state: form.state || null,
+        military_branch: form.military_branch || null,
         membership_type: form.membership_type,
-        auto_renew: form.membership_type === 'annual' ? form.auto_renew : false,
-      },
-    })
+        membership_status: 'pending_payment',
+        dd214_storage_path: docPath,
+      })
 
-    setSubmitting(false)
-    if (checkoutError || data?.error) {
-      setError(data?.error ?? checkoutError?.message ?? 'Could not start checkout.')
-      return
+      if (memberError) {
+        setError(memberError.message)
+        return
+      }
+
+      // A failure anywhere in here (account creation is a nice-to-have
+      // alongside the membership itself, not something that should ever be
+      // allowed to block or silently kill the actual payment step below) is
+      // logged but never stops the flow from reaching checkout.
+      if (wantsAccount && form.password) {
+        try {
+          await supabase.from('pending_profile_signups').insert({
+            email: form.email,
+            full_name: form.full_name,
+            post_id: postId,
+            role: 'member',
+          })
+          const { error: signUpError } = await supabase.auth.signUp({
+            email: form.email,
+            password: form.password,
+            options: { data: { full_name: form.full_name } },
+          })
+          if (signUpError) {
+            console.error('Account creation failed:', signUpError.message)
+          }
+        } catch (accountErr) {
+          console.error('Account creation threw unexpectedly — continuing to checkout regardless:', accountErr)
+        }
+      }
+
+      const { data, error: checkoutError } = await supabase.functions.invoke('create-membership-checkout', {
+        body: {
+          member_id: memberId,
+          post_id: postId,
+          membership_type: form.membership_type,
+          auto_renew: form.membership_type === 'annual' ? form.auto_renew : false,
+        },
+      })
+
+      if (checkoutError || data?.error) {
+        setError(data?.error ?? checkoutError?.message ?? 'Could not start checkout.')
+        return
+      }
+
+      window.location.href = data.url
+    } catch (err) {
+      // The actual point of this whole wrapper — nothing above should ever
+      // be able to leave someone stuck on a frozen form with no
+      // explanation and a membership record nobody knows exists.
+      console.error('Join flow failed unexpectedly:', err)
+      setError(err instanceof Error ? err.message : 'Something went wrong — please try again, or contact your post if this keeps happening.')
+    } finally {
+      setSubmitting(false)
     }
-
-    window.location.href = data.url
   }
 
   const canFillOutRest = !!docPath

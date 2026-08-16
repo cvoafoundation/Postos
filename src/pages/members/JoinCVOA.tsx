@@ -70,77 +70,93 @@ export function MembershipForm({ mode, posts }: { mode: 'join_existing' | 'membe
     setSubmitting(true)
     setError(null)
 
-    // Generated here rather than read back after insert — reading a row
-    // back is governed by the SELECT policy (National or your own post),
-    // which an anonymous visitor signing up doesn't satisfy. Providing the
-    // id ourselves means we never need to ask for it back.
-    const memberId = crypto.randomUUID()
+    try {
+      // Generated here rather than read back after insert — reading a row
+      // back is governed by the SELECT policy (National or your own post),
+      // which an anonymous visitor signing up doesn't satisfy. Providing the
+      // id ourselves means we never need to ask for it back.
+      const memberId = crypto.randomUUID()
 
-    const { error: memberError } = await supabase.from('members').insert({
-      id: memberId,
-      post_id: mode === 'join_existing' ? form.post_id || null : null,
-      full_name: form.full_name,
-      email: form.email || null,
-      phone: form.phone || null,
-      address: form.address || null,
-      state: form.state || null,
-      military_branch: form.military_branch || null,
-      membership_type: form.membership_type,
-      membership_status: 'pending_payment',
-      dd214_storage_path: docPath,
-    })
-
-    if (memberError) {
-      setSubmitting(false)
-      setError(memberError.message)
-      return
-    }
-
-    // Plain membership never touches this — it's fully automatic on
-    // payment. Applying as an Officer or Commander creates a real approval
-    // request instead: Officer needs that post's own Commander to sign
-    // off; Commander needs National. Their membership itself still
-    // activates normally either way — this is a separate, additional gate
-    // only on the elevated role, not on becoming a member at all.
-    if (mode === 'join_existing' && form.post_id && form.requested_role !== 'member') {
-      await supabase.from('post_role_applications').insert({
-        member_id: memberId,
-        post_id: form.post_id,
-        requested_role: form.requested_role,
-      })
-    }
-
-    if (wantsAccount && form.password) {
-      await supabase.from('pending_profile_signups').insert({
-        email: form.email,
+      const { error: memberError } = await supabase.from('members').insert({
+        id: memberId,
+        post_id: mode === 'join_existing' ? form.post_id || null : null,
         full_name: form.full_name,
-        post_id: mode === 'join_existing' ? form.post_id || null : null,
-        role: 'member',
-      })
-      const { error: signUpError } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-        options: { data: { full_name: form.full_name } },
-      })
-      if (signUpError) console.error('Account creation failed:', signUpError.message)
-    }
-
-    const { data, error: checkoutError } = await supabase.functions.invoke('create-membership-checkout', {
-      body: {
-        member_id: memberId,
-        post_id: mode === 'join_existing' ? form.post_id || null : null,
+        email: form.email || null,
+        phone: form.phone || null,
+        address: form.address || null,
+        state: form.state || null,
+        military_branch: form.military_branch || null,
         membership_type: form.membership_type,
-        auto_renew: form.membership_type === 'annual' ? form.auto_renew : false,
-      },
-    })
+        membership_status: 'pending_payment',
+        dd214_storage_path: docPath,
+      })
 
-    setSubmitting(false)
-    if (checkoutError || data?.error) {
-      setError(data?.error ?? checkoutError?.message ?? 'Could not start checkout.')
-      return
+      if (memberError) {
+        setError(memberError.message)
+        return
+      }
+
+      // Plain membership never touches this — it's fully automatic on
+      // payment. Applying as an Officer or Commander creates a real approval
+      // request instead: Officer needs that post's own Commander to sign
+      // off; Commander needs National. Their membership itself still
+      // activates normally either way — this is a separate, additional gate
+      // only on the elevated role, not on becoming a member at all.
+      if (mode === 'join_existing' && form.post_id && form.requested_role !== 'member') {
+        await supabase.from('post_role_applications').insert({
+          member_id: memberId,
+          post_id: form.post_id,
+          requested_role: form.requested_role,
+        })
+      }
+
+      // A failure anywhere in here (account creation is a nice-to-have
+      // alongside the membership itself, not something that should ever be
+      // allowed to block or silently kill the actual payment step below) is
+      // logged but never stops the flow from reaching checkout.
+      if (wantsAccount && form.password) {
+        try {
+          await supabase.from('pending_profile_signups').insert({
+            email: form.email,
+            full_name: form.full_name,
+            post_id: mode === 'join_existing' ? form.post_id || null : null,
+            role: 'member',
+          })
+          const { error: signUpError } = await supabase.auth.signUp({
+            email: form.email,
+            password: form.password,
+            options: { data: { full_name: form.full_name } },
+          })
+          if (signUpError) console.error('Account creation failed:', signUpError.message)
+        } catch (accountErr) {
+          console.error('Account creation threw unexpectedly — continuing to checkout regardless:', accountErr)
+        }
+      }
+
+      const { data, error: checkoutError } = await supabase.functions.invoke('create-membership-checkout', {
+        body: {
+          member_id: memberId,
+          post_id: mode === 'join_existing' ? form.post_id || null : null,
+          membership_type: form.membership_type,
+          auto_renew: form.membership_type === 'annual' ? form.auto_renew : false,
+        },
+      })
+
+      if (checkoutError || data?.error) {
+        setError(data?.error ?? checkoutError?.message ?? 'Could not start checkout.')
+        return
+      }
+
+      window.location.href = data.url
+    } catch (err) {
+      // The actual point of this whole wrapper — nothing above should ever
+      // be able to leave someone stuck on a frozen form with no
+      // explanation and a membership record nobody knows exists.
+      console.error('Join flow failed unexpectedly:', err)
+      setError(err instanceof Error ? err.message : 'Something went wrong — please try again, or contact your post if this keeps happening.')
+    } finally {
+      setSubmitting(false)
     }
-
-    window.location.href = data.url
   }
 
   const canFillOutRest = !!docPath
