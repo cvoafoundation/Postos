@@ -46,6 +46,7 @@ export default function Dashboard() {
   const [activity, setActivity] = useState<ActivityFeedItem[]>([])
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -54,7 +55,7 @@ export default function Dashboard() {
       const [
         postsRes,
         activityRes,
-        profilesCountRes,
+        membersCountRes,
         sponsorsRes,
         meetingRecordsRes,
         applicationsRes,
@@ -65,7 +66,7 @@ export default function Dashboard() {
       ] = await Promise.all([
         supabase.from('posts').select('*'),
         supabase.from('activity_feed').select('*').order('created_at', { ascending: false }).limit(8),
-        supabase.from('profiles').select('id', { count: 'exact', head: true }),
+        supabase.from('members').select('id', { count: 'exact', head: true }),
         supabase.from('sponsors').select('sponsorship_value, stage, agreement_start_date, created_at'),
         supabase.from('meeting_records').select('post_id, meeting_date'),
         supabase.from('post_applications').select('status'),
@@ -77,6 +78,8 @@ export default function Dashboard() {
 
       if (cancelled) return
 
+      const failed = [postsRes, activityRes, membersCountRes, sponsorsRes, meetingRecordsRes, applicationsRes, recruitsRes, resolutionsRes, facilityProjectsRes, membershipPaymentsRes].find((result) => result.error)
+      if (failed?.error) throw new Error(failed.error.message)
       const allPosts = (postsRes.data ?? []) as Post[]
       setPosts(allPosts)
       setActivity((activityRes.data ?? []) as ActivityFeedItem[])
@@ -132,7 +135,7 @@ export default function Dashboard() {
         developingPosts: allPosts.filter((p) => p.status !== 'active_post').length,
         charterReady: allPosts.filter((p) => p.status === 'charter_ready').length,
         activePosts: activePostList.length,
-        totalMembers: profilesCountRes.count ?? 0,
+        totalMembers: membersCountRes.count ?? 0,
         totalSponsorRevenue: sponsors.filter((s) => s.stage === 'won').reduce((sum, s) => sum + (s.sponsorship_value ?? 0), 0),
         sponsorPipeline: sponsors.filter((s) => !['won', 'lost'].includes(s.stage)).length,
         recruitingPipeline: recruits.filter((r) => RECRUIT_ACTIVE_STAGES.includes(r.stage)).length,
@@ -145,7 +148,11 @@ export default function Dashboard() {
       setLoading(false)
     }
 
-    load()
+    load().catch((error) => {
+      if (cancelled) return
+      setError(error instanceof Error ? error.message : 'Could not load dashboard metrics.')
+      setLoading(false)
+    })
     return () => {
       cancelled = true
     }
@@ -159,6 +166,7 @@ export default function Dashboard() {
 
   return (
     <div>
+      {error && <p role="alert" className="panel p-3 mb-4 text-status-attention text-sm">Dashboard data could not be loaded: {error} <button onClick={() => window.location.reload()} className="underline">Reload</button></p>}
       <PageHeader eyebrow="National Command" title="Global Dashboard" />
 
       <div className="mb-6">

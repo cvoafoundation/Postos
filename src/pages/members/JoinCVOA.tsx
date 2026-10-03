@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { getFunctionError } from '@/lib/functionErrors'
 import { MEMBERSHIP_PRICES, type MembershipType, type Post } from '@/lib/types'
 import { Loader2, KeyRound, Upload, FileCheck } from 'lucide-react'
 
@@ -143,7 +144,7 @@ export function MembershipForm({ mode, posts }: { mode: 'join_existing' | 'membe
       })
 
       if (checkoutError || data?.error) {
-        setError(data?.error ?? checkoutError?.message ?? 'Could not start checkout.')
+        setError(await getFunctionError(checkoutError, data))
         return
       }
 

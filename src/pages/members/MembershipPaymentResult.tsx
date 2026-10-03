@@ -14,10 +14,10 @@ export default function MembershipPaymentResult() {
           {success ? (
             <>
               <CheckCircle2 className="mx-auto mb-4 text-status-active" size={44} />
-              <div className="font-display text-2xl tracking-wide mb-2">Payment Received</div>
+              <div className="font-display text-2xl tracking-wide mb-2">Checkout Complete</div>
               <p className="text-sm text-muted mb-6">
-                Your membership is active. If you created an account, log in now to see your digital membership
-                card.
+                Membership activation follows Stripe's payment confirmation and may take a moment.
+                If you created an account, log in to check your membership status and digital card.
               </p>
               <button onClick={() => navigate('/?login=true')} className="btn-gold w-full">
                 Log In to Your Account

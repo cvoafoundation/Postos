@@ -1,55 +1,56 @@
+import { lazy, Suspense } from 'react'
 import { Route, Routes, Navigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { AppShell } from '@/components/layout/AppShell'
 import { RoleGuard } from '@/components/layout/RoleGuard'
-import Login from '@/pages/Login'
-import SetPassword from '@/pages/SetPassword'
-import Dashboard from '@/pages/Dashboard'
-import ApplicationsPipeline from '@/pages/applications/ApplicationsPipeline'
-import VettingBoard from '@/pages/vetting/VettingBoard'
-import JoinFoundingTeam from '@/pages/founding-team/JoinFoundingTeam'
-import PublicChecklist from '@/pages/checklist/PublicChecklist'
-import PublicRecruitSignup from '@/pages/recruiting/PublicRecruitSignup'
-import BecomeASponsor from '@/pages/sponsors/BecomeASponsor'
-import Toolkit from '@/pages/toolkit/Toolkit'
-import Meetings from '@/pages/meetings/Meetings'
-import UroMeetingWizard from '@/pages/meetings/uro/UroMeetingWizard'
-import UroMeetingView from '@/pages/meetings/uro/UroMeetingView'
-import UroComplianceDashboard from '@/pages/meetings/uro/UroComplianceDashboard'
-import UroMotionSearch from '@/pages/meetings/uro/UroMotionSearch'
-import UroActionItemReport from '@/pages/meetings/uro/UroActionItemReport'
-import RecruitingPipeline from '@/pages/recruiting/RecruitingPipeline'
-import SponsorsCRM from '@/pages/sponsors/SponsorsCRM'
-import VeteransCongress from '@/pages/congress/VeteransCongress'
-import CongressMemberView from '@/pages/congress/CongressMemberView'
-import ResolutionDetail from '@/pages/congress/ResolutionDetail'
-import Committees from '@/pages/congress/Committees'
-import Delegates from '@/pages/congress/Delegates'
-import LegislativeTracker from '@/pages/congress/LegislativeTracker'
-import CongressCalendar from '@/pages/congress/CongressCalendar'
-import TransparencyPortal from '@/pages/congress/TransparencyPortal'
-import PostHealth from '@/pages/health/PostHealth'
-import PostHealthDetail from '@/pages/health/PostHealthDetail'
-import BuildAPost from '@/pages/build-a-post/BuildAPost'
-import BuildAPostDetail from '@/pages/build-a-post/BuildAPostDetail'
-import MembershipRoster from '@/pages/members/MembershipRoster'
-import MembershipReview from '@/pages/members/MembershipReview'
-import PostOfficersDirectory from '@/pages/founding-team/PostOfficersDirectory'
-import PostMembersDirectory from '@/pages/members/PostMembersDirectory'
-import RoleApplications from '@/pages/members/RoleApplications'
-import JoinMembership from '@/pages/members/JoinMembership'
-import JoinCVOA from '@/pages/members/JoinCVOA'
-import MemberHome from '@/pages/members/MemberHome'
-import PostHome from '@/pages/PostHome'
-import MyMembership from '@/pages/members/MyMembership'
-import Settings from '@/pages/settings/Settings'
-import FileComplaint from '@/pages/ethics/FileComplaint'
-import EthicsTribunalInbox from '@/pages/ethics/EthicsTribunalInbox'
-import VerifyMembership from '@/pages/members/VerifyMembership'
-import MembershipPaymentResult from '@/pages/members/MembershipPaymentResult'
-import NCCDrive from '@/pages/drive/NCCDrive'
-import SharedDriveView from '@/pages/drive/SharedDriveView'
-import UserManagement from '@/pages/admin/UserManagement'
+const Login = lazy(() => import('@/pages/Login'))
+const SetPassword = lazy(() => import('@/pages/SetPassword'))
+const Dashboard = lazy(() => import('@/pages/Dashboard'))
+const ApplicationsPipeline = lazy(() => import('@/pages/applications/ApplicationsPipeline'))
+const VettingBoard = lazy(() => import('@/pages/vetting/VettingBoard'))
+const JoinFoundingTeam = lazy(() => import('@/pages/founding-team/JoinFoundingTeam'))
+const PublicChecklist = lazy(() => import('@/pages/checklist/PublicChecklist'))
+const PublicRecruitSignup = lazy(() => import('@/pages/recruiting/PublicRecruitSignup'))
+const BecomeASponsor = lazy(() => import('@/pages/sponsors/BecomeASponsor'))
+const Toolkit = lazy(() => import('@/pages/toolkit/Toolkit'))
+const Meetings = lazy(() => import('@/pages/meetings/Meetings'))
+const UroMeetingWizard = lazy(() => import('@/pages/meetings/uro/UroMeetingWizard'))
+const UroMeetingView = lazy(() => import('@/pages/meetings/uro/UroMeetingView'))
+const UroComplianceDashboard = lazy(() => import('@/pages/meetings/uro/UroComplianceDashboard'))
+const UroMotionSearch = lazy(() => import('@/pages/meetings/uro/UroMotionSearch'))
+const UroActionItemReport = lazy(() => import('@/pages/meetings/uro/UroActionItemReport'))
+const RecruitingPipeline = lazy(() => import('@/pages/recruiting/RecruitingPipeline'))
+const SponsorsCRM = lazy(() => import('@/pages/sponsors/SponsorsCRM'))
+const VeteransCongress = lazy(() => import('@/pages/congress/VeteransCongress'))
+const CongressMemberView = lazy(() => import('@/pages/congress/CongressMemberView'))
+const ResolutionDetail = lazy(() => import('@/pages/congress/ResolutionDetail'))
+const Committees = lazy(() => import('@/pages/congress/Committees'))
+const Delegates = lazy(() => import('@/pages/congress/Delegates'))
+const LegislativeTracker = lazy(() => import('@/pages/congress/LegislativeTracker'))
+const CongressCalendar = lazy(() => import('@/pages/congress/CongressCalendar'))
+const TransparencyPortal = lazy(() => import('@/pages/congress/TransparencyPortal'))
+const PostHealth = lazy(() => import('@/pages/health/PostHealth'))
+const PostHealthDetail = lazy(() => import('@/pages/health/PostHealthDetail'))
+const BuildAPost = lazy(() => import('@/pages/build-a-post/BuildAPost'))
+const BuildAPostDetail = lazy(() => import('@/pages/build-a-post/BuildAPostDetail'))
+const MembershipRoster = lazy(() => import('@/pages/members/MembershipRoster'))
+const MembershipReview = lazy(() => import('@/pages/members/MembershipReview'))
+const PostOfficersDirectory = lazy(() => import('@/pages/founding-team/PostOfficersDirectory'))
+const PostMembersDirectory = lazy(() => import('@/pages/members/PostMembersDirectory'))
+const RoleApplications = lazy(() => import('@/pages/members/RoleApplications'))
+const JoinMembership = lazy(() => import('@/pages/members/JoinMembership'))
+const JoinCVOA = lazy(() => import('@/pages/members/JoinCVOA'))
+const MemberHome = lazy(() => import('@/pages/members/MemberHome'))
+const PostHome = lazy(() => import('@/pages/PostHome'))
+const MyMembership = lazy(() => import('@/pages/members/MyMembership'))
+const Settings = lazy(() => import('@/pages/settings/Settings'))
+const FileComplaint = lazy(() => import('@/pages/ethics/FileComplaint'))
+const EthicsTribunalInbox = lazy(() => import('@/pages/ethics/EthicsTribunalInbox'))
+const VerifyMembership = lazy(() => import('@/pages/members/VerifyMembership'))
+const MembershipPaymentResult = lazy(() => import('@/pages/members/MembershipPaymentResult'))
+const NCCDrive = lazy(() => import('@/pages/drive/NCCDrive'))
+const SharedDriveView = lazy(() => import('@/pages/drive/SharedDriveView'))
+const UserManagement = lazy(() => import('@/pages/admin/UserManagement'))
 
 // Preserve older invitation emails that redirected to /login.
 const legacySetupHash = window.location.pathname === '/login' &&
@@ -58,6 +59,7 @@ const legacySetupHash = window.location.pathname === '/login' &&
 
 export default function App() {
   return (
+    <Suspense fallback={<div role="status" className="p-8 text-sm text-muted">Loading page…</div>}>
     <Routes>
       <Route path="/set-password" element={<SetPassword />} />
       {legacySetupHash && <Route path="/login" element={<Navigate to={`/set-password${legacySetupHash}`} replace />} />}
@@ -74,6 +76,7 @@ export default function App() {
       {/* Everything else is gated behind auth */}
       <Route path="/*" element={<AuthenticatedApp />} />
     </Routes>
+    </Suspense>
   )
 }
 
@@ -94,6 +97,7 @@ function AuthenticatedApp() {
 
   return (
     <AppShell>
+      <Suspense fallback={<div role="status" className="p-8 text-sm text-muted">Loading page…</div>}>
       <Routes>
         <Route path="/" element={<HomeRoute />} />
         <Route
@@ -257,7 +261,7 @@ function AuthenticatedApp() {
         <Route
           path="/ethics-tribunal"
           element={
-            <RoleGuard roles={['ethics_tribunal']}>
+            <RoleGuard roles={['ethics_tribunal']} allowNational={false}>
               <EthicsTribunalInbox />
             </RoleGuard>
           }
@@ -291,7 +295,7 @@ function AuthenticatedApp() {
         <Route
           path="/shared-files"
           element={
-            <RoleGuard roles={['post_commander', 'post_officer']}>
+            <RoleGuard roles={['member', 'post_commander', 'post_officer']}>
               <SharedDriveView />
             </RoleGuard>
           }
@@ -306,6 +310,7 @@ function AuthenticatedApp() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </AppShell>
   )
 }

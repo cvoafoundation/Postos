@@ -22,7 +22,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 import Stripe from 'npm:stripe@14.21.0'
 
-const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')
+const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY') ?? Deno.env.get('STRIPE_KEY')
 const SITE_URL = Deno.env.get('SITE_URL') ?? 'http://localhost:5173'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -43,9 +43,13 @@ Deno.serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
   }
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
+  if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Use POST to start checkout.' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
+  try {
   if (!STRIPE_SECRET_KEY) {
     return new Response(JSON.stringify({ error: 'STRIPE_SECRET_KEY is not configured for this project.' }), {
       status: 500,
@@ -53,7 +57,11 @@ Deno.serve(async (req) => {
     })
   }
 
-  const body = (await req.json()) as RequestBody
+  let body: RequestBody
+  try { body = await req.json() } catch { return new Response(JSON.stringify({ error: 'Invalid checkout request.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }) }
+  if (!body || typeof body.member_id !== 'string' || !body.member_id || !['annual', 'lifetime'].includes(body.membership_type)) {
+    return new Response(JSON.stringify({ error: 'A member ID and valid membership type are required.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
   const amountCents = PRICES[body.membership_type]
   if (!amountCents) {
     return new Response(JSON.stringify({ error: 'Invalid membership type.' }), {
@@ -68,6 +76,17 @@ Deno.serve(async (req) => {
 
   const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+
+  const { data: member, error: memberError } = await supabase.from('members').select('id, post_id, membership_type').eq('id', body.member_id).single()
+  if (memberError || !member) return new Response(JSON.stringify({ error: 'Membership record not found. Please contact CVOA.' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  if (member.membership_type !== body.membership_type || (member.post_id ?? null) !== (body.post_id ?? null)) {
+    return new Response(JSON.stringify({ error: 'Checkout details do not match the saved membership.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+  // Prices are set here on the server; browser-supplied amounts are ignored.
+  const site = new URL(SITE_URL)
+  if (!['https:', 'http:'].includes(site.protocol) || site.hostname === 'localhost') {
+    return new Response(JSON.stringify({ error: 'Set SITE_URL to https://cvoa.one before accepting payments.' }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
 
   const commonMetadata = {
     member_id: body.member_id,
@@ -115,7 +134,7 @@ Deno.serve(async (req) => {
         cancel_url: `${SITE_URL}/membership-payment-result?status=cancelled`,
       })
 
-  await supabase.from('membership_payments').insert({
+  const { error: paymentError } = await supabase.from('membership_payments').insert({
     member_id: body.member_id,
     post_id: body.post_id ?? null,
     membership_type: body.membership_type,
@@ -124,11 +143,23 @@ Deno.serve(async (req) => {
     status: 'pending',
   })
 
+  if (paymentError) {
+    await stripe.checkout.sessions.expire(session.id)
+    return new Response(JSON.stringify({ error: 'Could not record the checkout. Please retry; no payment has been taken.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
   if (isAutoRenew) {
-    await supabase.from('members').update({ auto_renew: true }).eq('id', body.member_id)
+    const { error } = await supabase.from('members').update({ auto_renew: true }).eq('id', body.member_id)
+    if (error) {
+      await stripe.checkout.sessions.expire(session.id)
+      return new Response(JSON.stringify({ error: 'Could not save auto-renew settings. Please retry.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
   }
 
   return new Response(JSON.stringify({ url: session.url }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
+  } catch {
+    return new Response(JSON.stringify({ error: 'Could not start checkout. Please retry or contact CVOA.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
 })

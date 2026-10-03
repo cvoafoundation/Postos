@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import Papa from 'papaparse'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -8,6 +8,8 @@ import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { getFunctionError } from '@/lib/functionErrors'
+import { readAllRows } from '@/lib/readAllRows'
+import { ListPagination, LIST_PAGE_SIZE } from '@/components/ui/ListPagination'
 import { useMarkNotificationViewed } from '@/lib/notifications'
 import type { Member, MembershipType, Post } from '@/lib/types'
 import { Plus, Upload, Copy, Check, Search, Mail } from 'lucide-react'
@@ -47,6 +49,11 @@ export default function MembershipRoster() {
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [listError, setListError] = useState<string | null>(null)
+  const [loadingMembers, setLoadingMembers] = useState(false)
+  const [page, setPage] = useState(0)
+  const searchSequence = useRef(0)
+  const loadSequence = useRef(0)
   const [importSummary, setImportSummary] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -57,21 +64,29 @@ export default function MembershipRoster() {
   // making them impossible to find even though they were never actually
   // lost.
   async function searchGlobally(q: string) {
-    if (!q.trim() || !isNational) {
+    const sequence = ++searchSequence.current
+    // PostgREST's OR expression uses punctuation as syntax. Keep user input out of that grammar.
+    const term = q.replace(/[(),"\\%_]/g, ' ').trim()
+    if (!term || !isNational) {
       setGlobalResults(null)
+      setSearchingGlobal(false)
       return
     }
     setSearchingGlobal(true)
-    const { data } = await supabase
-      .from('members')
-      .select('*')
-      .or(`full_name.ilike.%${q}%,email.ilike.%${q}%,membership_number.ilike.%${q}%`)
+    const { data, error } = await supabase.from('members').select('*')
+      .or(`full_name.ilike.%${term}%,email.ilike.%${term}%,membership_number.ilike.%${term}%`)
+      .order('id').limit(100)
+    if (sequence !== searchSequence.current) return
+    if (error) setListError(error.message)
     setGlobalResults((data ?? []) as Member[])
     setSearchingGlobal(false)
   }
 
   useEffect(() => {
     if (isNational) {
+      searchSequence.current++
+      setGlobalResults(null)
+      setSearchingGlobal(!!query.trim())
       const timeout = setTimeout(() => searchGlobally(query), 350)
       return () => clearTimeout(timeout)
     }
@@ -124,14 +139,24 @@ export default function MembershipRoster() {
 
   async function loadMembers() {
     if (!selectedPostId) return
-    const query =
-      selectedPostId === ALL_POSTS
-        ? supabase.from('members').select('*').order('membership_number')
-        : selectedPostId === UNASSIGNED
-        ? supabase.from('members').select('*').is('post_id', null).order('membership_number')
-        : supabase.from('members').select('*').eq('post_id', selectedPostId).order('membership_number')
-    const { data } = await query
-    setMembers((data ?? []) as Member[])
+    const sequence = ++loadSequence.current
+    setLoadingMembers(true)
+    setListError(null)
+    try {
+      const rows = await readAllRows<Member>(() => {
+        let request = supabase.from('members').select('*').order('id')
+        if (selectedPostId === UNASSIGNED) request = request.is('post_id', null)
+        else if (selectedPostId !== ALL_POSTS) request = request.eq('post_id', selectedPostId)
+        return request
+      })
+      if (sequence !== loadSequence.current) return
+      setMembers(rows.sort((a, b) => (a.membership_number ?? '').localeCompare(b.membership_number ?? '')))
+      setPage(0)
+    } catch (error) {
+      if (sequence === loadSequence.current) setListError(error instanceof Error ? error.message : 'Could not load the roster.')
+    } finally {
+      if (sequence === loadSequence.current) setLoadingMembers(false)
+    }
   }
 
   useEffect(() => {
@@ -157,30 +182,44 @@ export default function MembershipRoster() {
     Papa.parse(file, {
       header: false,
       skipEmptyLines: true,
+      error: (error) => { setImporting(false); setImportSummary(`Could not read the CSV: ${error.message}`) },
       complete: async (results) => {
         // Matches the sheet layout: [active flag], Name, Email, Phone,
         // Membership #, Address, Branch — the leading flag column is
         // ignored; everything else maps directly.
         const rows = results.data as string[][]
-        let imported = 0
-        for (const row of rows) {
+        const records = rows.flatMap((row) => {
           const [, name, email, phone, membershipNumber, address, branch] = row
-          if (!name || !name.trim()) continue
-          await supabase.from('members').insert({
-            post_id: targetPostId,
-            full_name: name.trim(),
-            email: email?.trim() || null,
-            phone: phone?.trim() || null,
-            membership_number: membershipNumber?.trim() || null, // preserved as-is if present
-            address: address?.trim() || null,
-            military_branch: branch?.trim() || null,
-            membership_type: 'annual',
-            membership_status: 'active',
-          })
-          imported++
+          if (!name?.trim() || (name.trim().toLowerCase() === 'name' && email?.trim().toLowerCase() === 'email')) return []
+          return [{
+            post_id: targetPostId, full_name: name.trim(), email: email?.trim() || null,
+            phone: phone?.trim() || null, membership_number: membershipNumber?.trim() || null,
+            address: address?.trim() || null, military_branch: branch?.trim() || null,
+            membership_type: 'annual', membership_status: 'active',
+          }]
+        })
+        let imported = 0
+        let failed = 0
+        try {
+          for (let start = 0; start < records.length; start += 100) {
+            const batch = records.slice(start, start + 100)
+            const { error } = await supabase.from('members').insert(batch)
+            if (!error) imported += batch.length
+            else {
+              // A duplicate can reject an entire batch; retry its rows so valid entries still import.
+              for (const record of batch) {
+                const { error } = await supabase.from('members').insert(record)
+                if (error) failed++
+                else imported++
+              }
+            }
+          }
+          setImportSummary(`Imported ${imported} member${imported !== 1 ? 's' : ''}.${failed ? ` ${failed} could not be imported; check for duplicate membership numbers or invalid values.` : ''}`)
+        } catch (error) {
+          setImportSummary(`Imported ${imported} members before the import stopped. ${error instanceof Error ? error.message : 'Please check your connection.'}`)
+        } finally {
+          setImporting(false)
         }
-        setImporting(false)
-        setImportSummary(`Imported ${imported} member${imported !== 1 ? 's' : ''}.`)
         loadMembers()
         if (fileInputRef.current) fileInputRef.current.value = ''
       },
@@ -218,7 +257,7 @@ export default function MembershipRoster() {
         title="Membership Roster"
         action={
           isNational ? (
-            <select className="input-field w-64" value={selectedPostId} onChange={(e) => setSelectedPostId(e.target.value)}>
+            <select className="input-field w-64" value={selectedPostId} onChange={(e) => { setSelectedPostId(e.target.value); setMembers([]); setPage(0) }}>
               <option value={ALL_POSTS}>All Members (Every Post)</option>
               {posts.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -230,6 +269,8 @@ export default function MembershipRoster() {
           ) : undefined
         }
       />
+
+      <p className="text-sm text-muted mb-6">Manage membership records, dues, renewal dates, and activation emails. For login roles and system permissions, use {isNational ? <Link className="text-gold hover:underline" to="/users">Accounts &amp; Access</Link> : 'National Accounts & Access'}.</p>
 
       {renewalsDue.length > 0 && (
         <div className="panel p-3 mb-4 border-status-developing/40 text-sm text-status-developing">
@@ -294,19 +335,21 @@ export default function MembershipRoster() {
         <div className="panel p-3 mb-4 text-sm text-status-active">{importSummary}</div>
       )}
 
+      {listError && <p role="alert" className="text-sm text-status-attention mb-4">{listError} <button onClick={loadMembers} className="underline">Reload</button></p>}
+      {loadingMembers && <p role="status" className="text-sm text-muted mb-4">Loading members…</p>}
       <div className="relative mb-4">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
         <input
           placeholder="Search by name, email, or membership number…"
           className="input-field pl-9"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => { setQuery(e.target.value); setPage(0) }}
         />
       </div>
 
       {isNational && query.trim() && (
         <div className="panel p-4 mb-4">
-          <div className="eyebrow mb-2">Search Results — Every Post + Unassigned</div>
+          <div className="eyebrow mb-2">Search Results — Every Post + Unassigned (up to 100 matches)</div>
           {searchingGlobal ? (
             <p className="text-sm text-muted">Searching…</p>
           ) : !globalResults || globalResults.length === 0 ? (
@@ -353,7 +396,7 @@ export default function MembershipRoster() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((m) => (
+            {filtered.slice(page * LIST_PAGE_SIZE, (page + 1) * LIST_PAGE_SIZE).map((m) => (
               <tr
                 key={m.id}
                 onClick={() => setEditing(m)}
@@ -398,7 +441,9 @@ export default function MembershipRoster() {
             ))}
           </tbody>
         </table>
-        {filtered.length === 0 && (
+        <ListPagination page={page} total={filtered.length} onPageChange={setPage} />
+
+      {!loadingMembers && filtered.length === 0 && (
           <EmptyState
             title="No members yet"
             hint="Import your existing roster via CSV, add members manually, or share the join link above."
@@ -728,10 +773,21 @@ function EditMemberModal({
   }
 
   async function cancelAutoRenew() {
+    if (cancellingRenew) return
     setCancellingRenew(true)
-    await supabase.functions.invoke('cancel-membership-subscription', { body: { member_id: member.id } })
-    setAutoRenew(false)
-    setCancellingRenew(false)
+    setError(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-membership-subscription', { body: { member_id: member.id } })
+      if (error || data?.error) {
+        setError(await getFunctionError(error, data))
+        return
+      }
+      setAutoRenew(false)
+    } catch (error) {
+      setError(await getFunctionError(error))
+    } finally {
+      setCancellingRenew(false)
+    }
   }
 
   // For stuck test accounts, cash/check payments taken outside Stripe, or
@@ -803,7 +859,7 @@ function EditMemberModal({
             <span className="text-xs text-muted">
               Also has a login — <span className="text-ink">{linkedAccount.role.replaceAll('_', ' ')}</span>
             </span>
-            <span className="text-xs text-gold">Manage in User Management →</span>
+            <span className="text-xs text-gold">Manage Account & Access →</span>
           </button>
         )}
         <div className="panel p-2.5">

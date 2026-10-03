@@ -47,9 +47,10 @@ class QueryBuilder {
   private orderCol: string | null = null
   private orderAsc = true
   private limitN: number | null = null
+  private rangeStart = 0
   private wantSingle = false
   private op: 'select' | 'insert' | 'update' | 'delete' = 'select'
-  private payload: Row | null = null
+  private payload: Row | Row[] | null = null
   private countMode: 'exact' | null = null
   private headOnly = false
 
@@ -113,12 +114,18 @@ class QueryBuilder {
     return this
   }
 
+  range(start: number, end: number) {
+    this.rangeStart = start
+    this.limitN = end - start + 1
+    return this
+  }
+
   single() {
     this.wantSingle = true
     return this
   }
 
-  insert(payload: Row) {
+  insert(payload: Row | Row[]) {
     this.op = 'insert'
     this.payload = payload
     return this
@@ -139,10 +146,14 @@ class QueryBuilder {
     const store = seedData[this.table]
 
     if (this.op === 'insert') {
-      const row = { id: uid(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...this.payload }
-      if (this.table === 'sponsors') assignSponsorTier(row)
-      store.push(row)
-      return { data: [row], error: null, count: null }
+      const records = Array.isArray(this.payload) ? this.payload : [this.payload]
+      const rows = records.map((record) => {
+        const row = { id: uid(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...record }
+        if (this.table === 'sponsors') assignSponsorTier(row)
+        return row
+      })
+      store.push(...rows)
+      return { data: rows, error: null, count: null }
     }
 
     let rows = store.filter((r) => matches(r, this.filters))
@@ -185,7 +196,7 @@ class QueryBuilder {
       })
     }
 
-    if (this.limitN != null) rows = rows.slice(0, this.limitN)
+    if (this.limitN != null) rows = rows.slice(this.rangeStart, this.rangeStart + this.limitN)
 
     if (this.wantSingle) {
       return { data: rows[0] ?? null, error: null, count: null }
