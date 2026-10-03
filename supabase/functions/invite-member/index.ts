@@ -29,177 +29,141 @@ interface RequestBody {
   method?: 'email' | 'manual'
 }
 
-// Easy to read off a screen and hand to someone, or type from a sticky
-// note — still a real, unguessable password (a word + 4 digits + symbol),
-// not something trivially weak.
+// 128 bits of randomness; only returned once to the authorized administrator.
 function generateTempPassword(): string {
-  const words = ['Falcon', 'Harbor', 'Granite', 'Beacon', 'Anchor', 'Compass', 'Ember', 'Ridge', 'Talon', 'Summit', 'Rally', 'Cedar']
-  const word = words[Math.floor(Math.random() * words.length)]
-  const digits = Math.floor(1000 + Math.random() * 9000)
-  return `${word}${digits}!`
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return `Cvoa!${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }
 
 async function sendInviteEmail(email: string, fullName: string, actionLink: string) {
   if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
-    console.warn('WORKSPACE_EMAIL/WORKSPACE_APP_PASSWORD not set — skipping invite email (dry run):', email, actionLink)
-    return
+    throw new Error('Email delivery is not configured. Set WORKSPACE_EMAIL and WORKSPACE_APP_PASSWORD in Supabase Edge Function secrets.')
   }
   const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
     secure: true,
-    auth: { user: WORKSPACE_EMAIL, pass: WORKSPACE_APP_PASSWORD },
+    auth: { user: WORKSPACE_EMAIL, pass: WORKSPACE_APP_PASSWORD.replace(/\s/g, '') },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   })
   await transporter.sendMail({
     from: `CVOA.ONE SYSTEM (COS) <${WORKSPACE_EMAIL}>`,
     to: email,
     subject: `Create your CVOA account`,
-    text: `Hi ${fullName},\n\nYour CVOA membership is already active — just set a password to create your login and see your membership card:\n\n${actionLink}\n\nIf you weren't expecting this, you can safely ignore this email.`,
-    html: `<p>Hi ${fullName},</p>
-           <p>Your CVOA membership is already active — just set a password to create your login and see your
-           membership card:</p>
-           <p><a href="${actionLink}">Set your password &amp; log in</a></p>
+    text: `Hi ${fullName},\n\nYour CVOA membership record is ready. Set a password to access your membership screen:\n\n${actionLink}\n\nIf you weren't expecting this, you can safely ignore this email.`,
+    html: `<p>Hi ${escapeHtml(fullName)},</p>
+           <p>Your CVOA membership record is ready. Set a password to access your membership screen:</p>
+           <p><a href="${escapeHtml(actionLink)}">Set your password &amp; log in</a></p>
            <p>If you weren't expecting this, you can safely ignore this email.</p>`,
   })
 }
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+function reply(status: number, body: Record<string, unknown>) {
+  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+}
+
 Deno.serve(async (req) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  }
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method !== 'POST') return reply(405, { error: 'Use POST for member invitations.' })
+  try {
+    if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return reply(500, { error: 'The account service is not configured.' })
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+    const token = req.headers.get('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]
+    if (!token) return reply(401, { error: 'Please sign in again before sending an invitation.' })
+    // Validate with Auth itself, including projects using new JWT signing keys.
+    const { data: { user: caller }, error: authError } = await supabase.auth.getUser(token)
+    if (authError || !caller) return reply(401, { error: 'Your session has expired. Please sign in again.' })
+    const { data: callerProfile, error: callerError } = await supabase.from('profiles').select('role, post_id').eq('id', caller.id).single()
+    if (callerError) return reply(500, { error: 'Could not verify your account permissions.' })
+    const isNational = callerProfile && ['national_commander', 'national_staff'].includes(callerProfile.role)
+    const isPostOfficer = callerProfile && ['post_commander', 'post_officer'].includes(callerProfile.role)
+    if (!isNational && !isPostOfficer) return reply(403, { error: "You don't have permission to send member invites." })
 
-  const body = (await req.json()) as RequestBody
-  const method = body.method ?? 'email'
-  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
-
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-  const callerClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  })
-  const {
-    data: { user: caller },
-  } = await callerClient.auth.getUser()
-  if (!caller) {
-    return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-  const { data: callerProfile } = await supabase.from('profiles').select('role, post_id').eq('id', caller.id).single()
-  const isNational = callerProfile && ['national_commander', 'national_staff'].includes(callerProfile.role)
-  const isOwnPost = callerProfile && ['post_commander', 'post_officer'].includes(callerProfile.role)
-  if (!isNational && !isOwnPost) {
-    return new Response(JSON.stringify({ error: "You don't have permission to send member invites." }), {
-      status: 403,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
-  const { data: member, error: memberError } = await supabase.from('members').select('*').eq('id', body.member_id).single()
-  if (memberError || !member) {
-    return new Response(JSON.stringify({ error: 'Member not found.' }), {
-      status: 404,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-  if (!isNational && member.post_id !== callerProfile?.post_id) {
-    return new Response(JSON.stringify({ error: "You can only invite members from your own post." }), {
-      status: 403,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-  if (member.profile_id) {
-    return new Response(JSON.stringify({ error: 'This member already has an account.' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-  if (!member.email) {
-    return new Response(JSON.stringify({ error: 'This member has no email on file to invite.' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
-  let newUserId: string
-  let tempPassword: string | null = null
-
-  if (method === 'manual') {
-    // Creates a fully active, already-confirmed account with a real
-    // password right now — no email step involved at all.
-    tempPassword = generateTempPassword()
-    const { data: created, error: createError } = await supabase.auth.admin.createUser({
-      email: member.email,
-      password: tempPassword,
-      email_confirm: true,
-    })
-    if (createError || !created.user) {
-      return new Response(JSON.stringify({ error: createError?.message ?? 'Could not create the account.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    let body: RequestBody
+    try { body = await req.json() } catch { return reply(400, { error: 'Invalid invitation request.' }) }
+    if (!body || typeof body.member_id !== 'string' || !body.member_id) return reply(400, { error: 'A member ID is required.' })
+    const method = body.method ?? 'email'
+    if (!['email', 'manual'].includes(method)) return reply(400, { error: 'Choose email or manual account creation.' })
+    const { data: member, error: memberError } = await supabase.from('members').select('*').eq('id', body.member_id).single()
+    if (memberError || !member) return reply(404, { error: 'Member not found.' })
+    if (!isNational && (!callerProfile?.post_id || member.post_id !== callerProfile.post_id)) {
+      return reply(403, { error: 'You can only invite members from your own post.' })
     }
-    newUserId = created.user.id
-  } else {
-    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-      type: 'invite',
-      email: member.email,
-      options: { redirectTo: `${SITE_URL}/login` },
-    })
-    if (linkError || !linkData?.user) {
-      return new Response(JSON.stringify({ error: linkError?.message ?? 'Could not create the invite.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    if (!member.email) return reply(400, { error: 'Add and save an email address for this member first.' })
+    if (method === 'manual' && member.profile_id) return reply(409, { error: 'This member already has an account. Send a password setup email instead.' })
+    let redirectTo = ''
+    if (method === 'email') {
+      if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) return reply(503, { error: 'Email delivery is not configured. Set WORKSPACE_EMAIL and WORKSPACE_APP_PASSWORD in Supabase Edge Function secrets.' })
+      try {
+        const site = new URL(SITE_URL)
+        if (!['https:', 'http:'].includes(site.protocol)) throw new Error('Invalid protocol')
+        redirectTo = new URL('/set-password', site).href
+      } catch { return reply(503, { error: 'Set SITE_URL to https://cvoa.one in Supabase Edge Function secrets.' }) }
     }
-    newUserId = linkData.user.id
 
-    try {
-      await sendInviteEmail(member.email, member.full_name, linkData.properties.action_link)
-    } catch (emailError) {
-      // Still finish linking the account below even if the email failed —
-      // National can retry sharing the link/password another way rather
-      // than being left with a half-created account.
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: newUserId,
-        full_name: member.full_name,
-        email: member.email,
-        role: 'member',
-        post_id: member.post_id,
-      })
-      if (!profileError) await supabase.from('members').update({ profile_id: newUserId }).eq('id', body.member_id)
-      return new Response(
-        JSON.stringify({ error: `Account created, but the invite email failed to send: ${(emailError as Error).message}` }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    let userId: string
+    let actionLink: string | null = null
+    let tempPassword: string | null = null
+    if (method === 'manual') {
+      tempPassword = generateTempPassword()
+      const { data, error } = await supabase.auth.admin.createUser({ email: member.email, password: tempPassword, email_confirm: true })
+      if (error || !data?.user) return reply(400, { error: error?.message ?? 'Could not create the account.' })
+      userId = data.user.id
+    } else {
+      // A retry reuses the linked account; it never creates a second roster entry
+      // or changes an existing user's password or role.
+      let linkType: 'invite' | 'recovery' = 'invite'
+      if (member.profile_id) {
+        const { data, error } = await supabase.auth.admin.getUserById(member.profile_id)
+        if (error || !data?.user) return reply(409, { error: 'The linked login account could not be found.' })
+        if (data.user.email?.toLowerCase() !== member.email.trim().toLowerCase()) {
+          return reply(409, { error: 'The roster email differs from the linked login email. Correct it before sending a setup link.' })
+        }
+        if (data.user.email_confirmed_at) linkType = 'recovery'
+      }
+      const { data, error } = await supabase.auth.admin.generateLink({ type: linkType, email: member.email, options: { redirectTo } })
+      if (error || !data?.user || !data.properties?.action_link) return reply(400, { error: error?.message ?? 'Could not create the password setup link.' })
+      userId = data.user.id
+      if (member.profile_id && userId !== member.profile_id) return reply(409, { error: 'The invitation does not match the linked account.' })
+      actionLink = data.properties.action_link
     }
+
+    // Finish the membership linkage before emailing so the first login is ready.
+    // An existing profile can have staff privileges: preserve them on retries.
+    const { data: profile, error: lookupError } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle()
+    if (lookupError) return reply(500, { error: `Could not check the login profile: ${lookupError.message}` })
+    if (!profile) {
+      const { error } = await supabase.from('profiles').insert({ id: userId, full_name: member.full_name, email: member.email, role: 'member', post_id: member.post_id })
+      if (error) return reply(500, { error: `Account created, but profile setup failed: ${error.message}. Retry from this member's roster entry.` })
+    }
+    const { error: linkError } = await supabase.from('members').update({ profile_id: userId }).eq('id', body.member_id)
+    if (linkError) return reply(500, { error: `Account created, but membership linking failed: ${linkError.message}. Retry from this member's roster entry.` })
+    if (actionLink) {
+      try { await sendInviteEmail(member.email, member.full_name, actionLink) }
+      catch (err) {
+        const smtpError = err as Error & { code?: string; responseCode?: number }
+        const message = smtpError.code === 'EAUTH' || smtpError.responseCode === 535
+          ? 'Google rejected the email credentials. Create a new Google App Password for the sending account and update WORKSPACE_APP_PASSWORD in Supabase.'
+          : 'The email service could not send the invitation. Check the Google Workspace settings and Supabase function logs, then retry.'
+        // Never log invite tokens, credentials, or raw SMTP responses.
+        console.error('Member invitation delivery failed', { code: smtpError.code, responseCode: smtpError.responseCode })
+        return reply(502, { error: `Account created and linked, but email delivery failed. ${message}`, account_created: true })
+      }
+    }
+    return reply(200, { success: true, temp_password: tempPassword })
+  } catch {
+    console.error('Unexpected member invitation failure')
+    return reply(500, { error: 'The invitation service encountered an unexpected error. Check Supabase function logs and retry from the roster.' })
   }
-
-  const { error: profileError } = await supabase.from('profiles').insert({
-    id: newUserId,
-    full_name: member.full_name,
-    email: member.email,
-    role: 'member',
-    post_id: member.post_id,
-  })
-  if (profileError) {
-    return new Response(JSON.stringify({ error: `Account created, but profile setup failed: ${profileError.message}` }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
-  await supabase.from('members').update({ profile_id: newUserId }).eq('id', body.member_id)
-
-  return new Response(JSON.stringify({ success: true, temp_password: tempPassword }), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  })
 })
