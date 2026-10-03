@@ -22,11 +22,12 @@ Deno.serve(async (req) => {
     let body: { member_id?: string }
     try { body = await req.json() } catch { return reply(400, { error: 'Invalid cancellation request.' }) }
     if (!body || typeof body.member_id !== 'string' || !body.member_id) return reply(400, { error: 'A member ID is required.' })
-    const { data: member, error: memberError } = await supabase.from('members').select('post_id, stripe_subscription_id').eq('id', body.member_id).single()
+    const { data: member, error: memberError } = await supabase.from('members').select('post_id, stripe_subscription_id, profile_id').eq('id', body.member_id).single()
     if (memberError || !member) return reply(404, { error: 'Member not found.' })
     const isNational = ['national_commander', 'national_staff'].includes(caller.role)
     const ownPostOfficer = ['post_commander', 'post_officer'].includes(caller.role) && caller.post_id && member.post_id === caller.post_id
-    if (!isNational && !ownPostOfficer) return reply(403, { error: 'Only National or officers of this member’s post can cancel auto-renew.' })
+    const ownsMembership = member.profile_id === user.id
+    if (!isNational && !ownPostOfficer && !ownsMembership) return reply(403, { error: 'You can cancel billing for your own membership. Staff access is limited to the responsible post or National.' })
     if (member.stripe_subscription_id) {
       if (!STRIPE_SECRET_KEY) return reply(503, { error: 'Stripe is not configured. Auto-renew has not been changed.' })
       const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import type { Member, Post } from '@/lib/types'
@@ -39,6 +39,7 @@ export default function MemberHome() {
   const [selectedPostId, setSelectedPostId] = useState('')
   const [joinSubmitting, setJoinSubmitting] = useState(false)
   const [joinRequested, setJoinRequested] = useState(false)
+  const [joinError, setJoinError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!profile) return
@@ -67,16 +68,16 @@ export default function MemberHome() {
     e.preventDefault()
     if (!selectedPostId) return
     setJoinSubmitting(true)
-    await supabase.from('recruits').insert({
-      post_id: selectedPostId,
-      name: profile?.full_name ?? member?.full_name ?? '',
-      email: profile?.email ?? member?.email ?? null,
-      phone: member?.phone ?? null,
-      stage: 'prospect',
-      source: 'Member Portal',
-    })
-    setJoinSubmitting(false)
-    setJoinRequested(true)
+    setJoinError(null)
+    try {
+      if (!member) throw new Error('Link your membership before requesting a post affiliation.')
+      const { error } = await supabase.rpc('cvoa_request_post_change', {
+        p_member: member.id, p_post: selectedPostId, p_reason:'Request to join from the member portal.',
+      })
+      if (error) throw error
+      setJoinRequested(true)
+    } catch (e) { setJoinError((e as Error).message) }
+    finally { setJoinSubmitting(false) }
   }
 
   if (loading) return <p className="text-sm text-muted">Loading…</p>
@@ -128,6 +129,7 @@ export default function MemberHome() {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-4 mb-6 text-sm"><Link to="/my-membership" className="text-gold">Manage Membership →</Link><Link to="/my-applications" className="text-gold">Track My Post Applications →</Link></div>
       <div className="eyebrow mb-3">Get Involved</div>
       <p className="text-sm text-muted mb-6 max-w-2xl">
         Membership is a starting point, not a finish line. Here's how to actually get involved.
@@ -180,16 +182,17 @@ export default function MemberHome() {
         </div>
       </div>
 
+      {joinError && <p role="alert" className="text-status-attention mb-3">{joinError}</p>}
       <div id="join-a-post" className="panel p-5 max-w-lg">
         <div className="eyebrow mb-1">Join a Post</div>
         <p className="text-xs text-muted mb-4">
-          Pick an active post near you to request joining — a real person there will follow up.
+          Pick an active post near you. National reviews affiliation changes; your current membership stays in place until approval.
         </p>
         {posts.length === 0 ? (
           <p className="text-sm text-muted">No active posts yet — be the first to start one.</p>
         ) : joinRequested ? (
           <div className="text-sm text-status-active flex items-center gap-1.5">
-            <CheckCircle2 size={16} /> Request sent — someone from that post will reach out.
+            <CheckCircle2 size={16} /> Request sent — National will review your post affiliation. Track the decision in My Membership.
           </div>
         ) : (
           <form onSubmit={requestToJoin} className="flex flex-col sm:flex-row gap-3">

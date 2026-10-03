@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Modal } from '@/components/ui/Modal'
+import MemberRecord from '@/components/workspaces/MemberRecord'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { getFunctionError } from '@/lib/functionErrors'
@@ -693,7 +694,6 @@ function EditMemberModal({
   const [cancellingRenew, setCancellingRenew] = useState(false)
   const [autoRenew, setAutoRenew] = useState(member.auto_renew)
   const [showAddToFoundingTeam, setShowAddToFoundingTeam] = useState(false)
-  const [linkedAccount, setLinkedAccount] = useState<{ full_name: string; role: string } | null>(null)
   const [invitingAccount, setInvitingAccount] = useState(false)
   const [inviteSent, setInviteSent] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
@@ -722,19 +722,6 @@ function EditMemberModal({
       setInvitingAccount(false)
     }
   }
-
-  // Surfaces the login/role side right here — without this, there'd be no
-  // way to know from the roster alone whether this person also has system
-  // access, let alone what kind, without a separate trip to User Management.
-  useEffect(() => {
-    if (!member.profile_id) return
-    supabase
-      .from('profiles')
-      .select('full_name, role')
-      .eq('id', member.profile_id)
-      .single()
-      .then(({ data }) => setLinkedAccount(data as { full_name: string; role: string } | null))
-  }, [member.profile_id])
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -850,18 +837,8 @@ function EditMemberModal({
   return (
     <Modal title={`Edit ${member.full_name}`} onClose={onClose}>
       <div className="space-y-3">
+        <MemberRecord key={`${member.id}-${inviteSent}`} member={member} />
         <div className="font-mono text-xs text-gold">{member.membership_number ?? 'No number assigned'}</div>
-        {linkedAccount && (
-          <button
-            onClick={() => navigate(`/users?q=${encodeURIComponent(linkedAccount.full_name)}`)}
-            className="w-full text-left panel p-2.5 flex items-center justify-between hover:border-gold transition-colors"
-          >
-            <span className="text-xs text-muted">
-              Also has a login — <span className="text-ink">{linkedAccount.role.replaceAll('_', ' ')}</span>
-            </span>
-            <span className="text-xs text-gold">Manage Account & Access →</span>
-          </button>
-        )}
         <div className="panel p-2.5">
             {tempPassword ? (
               <div className="space-y-2">

@@ -51,6 +51,10 @@ const MembershipPaymentResult = lazy(() => import('@/pages/members/MembershipPay
 const NCCDrive = lazy(() => import('@/pages/drive/NCCDrive'))
 const SharedDriveView = lazy(() => import('@/pages/drive/SharedDriveView'))
 const UserManagement = lazy(() => import('@/pages/admin/UserManagement'))
+const StateHome = lazy(() => import('@/pages/StateHome'))
+const MyApplications = lazy(() => import('@/pages/members/MyApplications'))
+const MembershipRequests = lazy(() => import('@/pages/members/MembershipRequests'))
+const Fundraising = lazy(() => import('@/pages/fundraising/Fundraising'))
 
 // Preserve older invitation emails that redirected to /login.
 const legacySetupHash = window.location.pathname === '/login' &&
@@ -100,6 +104,11 @@ function AuthenticatedApp() {
       <Suspense fallback={<div role="status" className="p-8 text-sm text-muted">Loading page…</div>}>
       <Routes>
         <Route path="/" element={<HomeRoute />} />
+        <Route path="/member-home" element={<MemberHome />} />
+        <Route path="/my-applications" element={<MyApplications />} />
+        <Route path="/state" element={<RoleGuard roles={['state_commander']}><StateHome /></RoleGuard>} />
+        <Route path="/membership-requests" element={<RoleGuard roles={[]}><MembershipRequests /></RoleGuard>} />
+        <Route path="/fundraising" element={<RoleGuard roles={['state_commander','post_commander','post_officer']}><Fundraising /></RoleGuard>} />
         <Route
           path="/applications"
           element={
@@ -323,7 +332,9 @@ function CongressRoute() {
 function HomeRoute() {
   const { profile, isNational } = useAuth()
   if (isNational) return <Dashboard />
-  if (profile?.role === 'member') return <MemberHome />
+  if (profile?.role === 'state_commander') return <StateHome />
+  if (profile?.role === 'member' || profile?.role === 'delegate') return <MemberHome />
+  if (profile?.role === 'ethics_tribunal') return <EthicsTribunalInbox />
   if (profile?.role === 'post_commander' || profile?.role === 'post_officer') return <PostHome />
   // Anything else — guest_applicant (not yet verified/promoted), delegate, or
   // a role we don't recognize — must never fall through to the National
@@ -337,6 +348,10 @@ function HomeRoute() {
         Your account isn't fully active yet — this usually means a payment or verification step hasn't completed.
         If you believe this is a mistake, contact National.
       </p>
+      <div className="flex flex-wrap gap-3 justify-center mt-5">
+        <a className="btn-gold" href="/my-membership">Check Membership & Payment</a>
+        <a className="btn-ghost" href="/my-applications">Track Post Application</a>
+      </div>
     </div>
   )
 }

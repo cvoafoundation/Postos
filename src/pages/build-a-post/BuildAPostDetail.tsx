@@ -166,7 +166,7 @@ export default function BuildAPostDetail() {
   return (
     <div>
       <button onClick={() => navigate('/build-a-post')} className="text-xs font-mono text-muted hover:text-gold mb-4">
-        ← Back to Build A Post
+        ← Back to Facility Planning
       </button>
 
       <PageHeader eyebrow="Module 10" title={module.name} />
@@ -224,7 +224,7 @@ export default function BuildAPostDetail() {
         <div className="space-y-6">
           {!postId ? (
             <div className="panel p-5">
-              <p className="text-sm text-muted">Select a post from the Build A Post list to start tracking a real project here.</p>
+              <p className="text-sm text-muted">Select a post from the Facility Planning list to start tracking a real project here.</p>
             </div>
           ) : !project ? (
             <div className="panel p-5">

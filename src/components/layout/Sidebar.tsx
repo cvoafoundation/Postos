@@ -36,6 +36,8 @@ const NATIONAL_ONLY_ITEMS: NavItem[] = [
   { to: '/applications', label: 'Application Pipeline', icon: GitBranch, section: 'applications' },
   { to: '/vetting', label: 'Vetting System', icon: ClipboardCheck },
   { to: '/users', label: 'Accounts & Access', icon: UserCog },
+  { to: '/state', label: 'States & Posts', icon: HeartPulse },
+  { to: '/membership-requests', label: 'Affiliation Requests', icon: IdCard },
   { to: '/drive', label: 'NCC Drive', icon: HardDrive },
 ]
 
@@ -45,7 +47,6 @@ const NATIONAL_ONLY_ITEMS: NavItem[] = [
 // "Posts") instead of being separate top-level items each reinventing
 // their own "which post am I looking at" logic.
 const SHARED_ITEMS: NavItem[] = [
-  { to: '/my-membership', label: 'My Membership', icon: CreditCard },
   { to: '/shared-files', label: 'Post Drive', icon: HardDrive },
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
   { to: '/meetings', label: 'Meetings', icon: CalendarCheck, section: 'meetings' },
@@ -55,13 +56,13 @@ const SHARED_ITEMS: NavItem[] = [
   { to: '/recruiting', label: 'Recruiting Engine', icon: Radar },
   { to: '/sponsors', label: 'Sponsorship CRM', icon: HandCoins },
   { to: '/health', label: 'Posts', icon: HeartPulse },
-  { to: '/build-a-post', label: 'Build A Post', icon: Hammer },
+  { to: '/build-a-post', label: 'Facility Planning', icon: Hammer },
+  { to: '/fundraising', label: 'Fundraising', icon: HandCoins },
 ]
 
 // A plain paying member — their card, their post's own drive drop, who
 // their officers and fellow members are, and Veterans Congress.
 const MEMBER_ITEMS: NavItem[] = [
-  { to: '/my-membership', label: 'My Membership', icon: CreditCard },
   { to: '/shared-files', label: 'Post Drive', icon: HardDrive },
   { to: '/post-officers', label: 'Post Officers', icon: Users },
   { to: '/post-members', label: 'Post Members', icon: IdCard },
@@ -71,8 +72,9 @@ const MEMBER_ITEMS: NavItem[] = [
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { profile, isNational, signOut } = useAuth()
-  const isPlainMember = profile?.role === 'member'
+  const isPlainMember = profile?.role === 'member' || profile?.role === 'delegate'
   const isPostOfficer = profile?.role === 'post_commander' || profile?.role === 'post_officer'
+  const isState = profile?.role === 'state_commander'
   const canSeeBadges = !isPlainMember && (isPostOfficer || isNational)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const location = useLocation()
@@ -96,18 +98,16 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   useOnNotificationViewed(refetchCounts)
 
   const navItems = [
-    { to: '/', label: isNational ? 'Global Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
+    { to: '/', label: isNational ? 'National Dashboard' : isState ? 'State Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
+    ...(isState ? [{ to: '/fundraising', label: 'State Fundraising', icon: HandCoins }] : []),
     // National always gets the full toolset too, on top of their own-only
     // items above — they manage every post's modules directly. A plain
     // member gets the small member set. A guest_applicant (not yet
     // verified/promoted) or any other unrecognized role gets neither —
-    // an empty nav, matching the "Account Pending" screen they land on.
-    // National doesn't get a personal membership card — "My Membership" is
-    // dropped from their view of the shared toolset while everyone else
-    // (post officers/commanders, plain members) still sees it.
+    // personal membership and application actions remain available while pending.
+    // Appointments add workspaces; personal membership remains available.
     ...(isPlainMember ? MEMBER_ITEMS : isPostOfficer || isNational ? SHARED_ITEMS : [])
-      .filter((item) => !(isNational && item.to === '/my-membership'))
       .map((item) =>
         item.to === '/health' && !isNational && profile?.post_id
           ? { ...item, to: `/health/${profile.post_id}` }
@@ -119,6 +119,9 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     ...(profile?.role === 'post_commander' || isNational
       ? [{ to: '/role-applications', label: 'Role Applications', icon: UserCog, section: 'role_applications' as const }]
       : []),
+    { to: '/my-membership', label: 'My Membership', icon: CreditCard },
+    { to: '/member-home', label: 'Get Involved / Start a Post', icon: GitBranch },
+    { to: '/my-applications', label: 'My Post Applications', icon: ClipboardCheck },
     // Every real member gets a way to reach the Tribunal directly — this is
     // deliberately available regardless of role (except an unverified
     // guest_applicant, who has no nav at all yet). The Tribunal inbox
@@ -153,9 +156,9 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                 Demo Mode — local data
               </div>
             )}
-            {!isNational && profile?.post_id && (
+            {isPostOfficer && profile?.post_id && (
               <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-hairline text-muted font-mono text-[10px] uppercase tracking-wide">
-                Post Account
+                Post Staff Workspace
               </div>
             )}
           </div>
@@ -165,11 +168,14 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4">
-          {navItems.map(({ to, label, icon: Icon, end, section }) => {
+          {navItems.map(({ to, label, icon: Icon, end, section }, index) => {
+            const group = (path: string) => path === '/' ? 'Overview' : ['/my-membership','/member-home','/my-applications'].includes(path) ? 'Personal' : ['/file-complaint','/ethics-tribunal'].includes(path) ? 'Ethics' : NATIONAL_ONLY_ITEMS.some(item=>item.to===path) ? 'National' : isState ? 'State Oversight' : isPlainMember ? 'My Post & Congress' : 'Post Operations'
+            const sectionTitle = index === 0 || group(to) !== group(navItems[index-1].to) ? group(to) : null
             const count = section ? counts[section] ?? 0 : 0
             return (
+              <div key={label}>
+              {sectionTitle && <div className="eyebrow px-5 pt-4 pb-2">{sectionTitle}</div>}
               <NavLink
-                key={label}
                 to={to}
                 end={end}
                 onClick={onClose}
@@ -190,6 +196,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                   </span>
                 )}
               </NavLink>
+              </div>
             )
           })}
         </nav>
