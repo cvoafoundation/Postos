@@ -908,3 +908,46 @@ Roughly in the order they'll matter most as the first real post moves through th
 6. **PDF generation for the Toolkit** — the spec calls for PDF generation support for
    templates; that's a separate integration (e.g. a serverless function using a PDF library)
    once the base templates exist.
+
+### Member invitation repair: deployment and email credentials
+
+The roster saves a membership record separately from its login account. Email
+invitations are sent by `supabase/functions/invite-member` using Google Workspace
+SMTP, not by Vercel or Supabase Auth's default email sender.
+
+Deploy the updated frontend and deploy the backend separately:
+
+```sh
+supabase functions deploy invite-member --project-ref YOUR_PROJECT_REF
+```
+
+In the matching Supabase project's Edge Function secrets, verify:
+
+- `SITE_URL`: `https://cvoa.one`
+- `WORKSPACE_EMAIL`: the actual Google Workspace sending account
+- `WORKSPACE_APP_PASSWORD`: a current Google **App Password** for that account
+  (not its normal login password). Google revokes app passwords after a Google
+  account password change; generate a replacement in the Google account and
+  enter it directly into Supabase. Never commit it or paste it into a PR.
+
+In Supabase Authentication URL Configuration, allow
+`https://cvoa.one/set-password` as a redirect URL. If the redirect is rejected,
+Auth can fall back to the site root and bypass the password setup page.
+
+Retry an existing member from their roster entry using **Send Invite Email**.
+Linked accounts also support this action. Confirm delivery to an inbox you
+control, open the link while signed out, create the password, and verify the
+correct membership screen/card. Do not recreate the member to retry delivery.
+If the function returns 401 before its own error body, inspect the function's
+JWT configuration and signing-key compatibility; application-level validation
+uses `auth.getUser(token)` and checks National/post permissions.
+
+Local regression checks (no real email or account mutations):
+
+```sh
+node --test tests/member-invitations.test.mjs
+npm run build
+```
+
+The regression suite mocks Supabase and SMTP; it does not establish that the
+production credentials, redirect allowlist, or deployed Edge Function work.

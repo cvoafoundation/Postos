@@ -3,6 +3,7 @@ import { useAuth } from '@/context/AuthContext'
 import { AppShell } from '@/components/layout/AppShell'
 import { RoleGuard } from '@/components/layout/RoleGuard'
 import Login from '@/pages/Login'
+import SetPassword from '@/pages/SetPassword'
 import Dashboard from '@/pages/Dashboard'
 import ApplicationsPipeline from '@/pages/applications/ApplicationsPipeline'
 import VettingBoard from '@/pages/vetting/VettingBoard'
@@ -50,9 +51,16 @@ import NCCDrive from '@/pages/drive/NCCDrive'
 import SharedDriveView from '@/pages/drive/SharedDriveView'
 import UserManagement from '@/pages/admin/UserManagement'
 
+// Preserve older invitation emails that redirected to /login.
+const legacySetupHash = window.location.pathname === '/login' &&
+  ['invite', 'recovery'].includes(new URLSearchParams(window.location.hash.slice(1)).get('type') ?? '')
+  ? window.location.hash : null
+
 export default function App() {
   return (
     <Routes>
+      <Route path="/set-password" element={<SetPassword />} />
+      {legacySetupHash && <Route path="/login" element={<Navigate to={`/set-password${legacySetupHash}`} replace />} />}
       {/* Public — no login required, shared via link */}
       <Route path="/join-founding-team/:postId" element={<JoinFoundingTeam />} />
       <Route path="/post-checklist/:postId" element={<PublicChecklist />} />

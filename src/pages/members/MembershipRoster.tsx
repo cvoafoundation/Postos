@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { getFunctionError } from '@/lib/functionErrors'
 import { useMarkNotificationViewed } from '@/lib/notifications'
 import type { Member, MembershipType, Post } from '@/lib/types'
 import { Plus, Upload, Copy, Check, Search } from 'lucide-react'
@@ -469,6 +470,8 @@ function AddMemberModal({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (saving) return
+    if (inviteWarning) { onAdded(); return }
     setSaving(true)
     setError(null)
     setInviteWarning(null)
@@ -512,10 +515,9 @@ function AddMemberModal({
       })
       if (inviteError || data?.error) {
         setInviteWarning(
-          `Member added, but account creation failed (${data?.error ?? inviteError?.message ?? 'unknown error'}). You can retry it from their entry in the roster.`
+          `Member saved. Account setup needs attention (${await getFunctionError(inviteError, data)}). You can retry it from their entry in the roster.`
         )
         setSaving(false)
-        setTimeout(onAdded, 1800)
         return
       }
       if (form.account_method === 'manual' && data?.temp_password) {
@@ -605,8 +607,8 @@ function AddMemberModal({
           {error && <p className="text-status-attention text-sm">{error}</p>}
           {inviteWarning && <p className="text-status-developing text-sm">{inviteWarning}</p>}
 
-          <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
-            {saving
+          <button type={inviteWarning ? "button" : "submit"} onClick={inviteWarning ? onAdded : undefined} disabled={saving} className="btn-gold w-full disabled:opacity-50">
+            {inviteWarning ? 'Done — Return to Roster' : saving
               ? form.account_method === 'manual' && form.email
                 ? 'Adding & Generating Password…'
                 : form.account_method === 'email' && form.email
@@ -659,7 +661,7 @@ function EditMemberModal({
     const { data, error } = await supabase.functions.invoke('invite-member', { body: { member_id: member.id, method } })
     setInvitingAccount(false)
     if (error || data?.error) {
-      setInviteError(data?.error ?? error?.message ?? 'Could not create the account.')
+      setInviteError(await getFunctionError(error, data))
       return
     }
     if (method === 'manual' && data?.temp_password) {
@@ -797,8 +799,7 @@ function EditMemberModal({
             <span className="text-xs text-gold">Manage in User Management →</span>
           </button>
         )}
-        {!linkedAccount && (
-          <div className="panel p-2.5">
+        <div className="panel p-2.5">
             {tempPassword ? (
               <div className="space-y-2">
                 <p className="text-xs text-status-active">Account created — this password is shown only once, copy it now.</p>
@@ -820,11 +821,11 @@ function EditMemberModal({
               <p className="text-xs text-status-active">Invite sent to {member.email} — they'll set their own password and see their card immediately.</p>
             ) : member.email ? (
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-muted">No account yet — already paid, just no login.</span>
+                <span className="text-xs text-muted">{linkedAccount ? 'Send a new password setup link.' : 'Create their membership login.'}</span>
                 <div className="flex items-center gap-3 shrink-0">
-                  <button onClick={() => sendInvite('manual')} disabled={invitingAccount} className="text-xs text-gold hover:text-gold-bright disabled:opacity-50">
+                  {!member.profile_id && <button onClick={() => sendInvite('manual')} disabled={invitingAccount} className="text-xs text-gold hover:text-gold-bright disabled:opacity-50">
                     {invitingAccount ? 'Working…' : 'Generate Password'}
-                  </button>
+                  </button>}
                   <button onClick={() => sendInvite('email')} disabled={invitingAccount} className="text-xs text-gold hover:text-gold-bright disabled:opacity-50">
                     {invitingAccount ? 'Sending…' : 'Send Invite Email'}
                   </button>
@@ -833,9 +834,8 @@ function EditMemberModal({
             ) : (
               <p className="text-xs text-muted">No email on file — add one above to send an account invite.</p>
             )}
-            {inviteError && <p className="text-xs text-status-attention mt-1.5">{inviteError}</p>}
-          </div>
-        )}
+            {inviteError && <p role="alert" className="text-xs text-status-attention mt-1.5">{inviteError}</p>}
+        </div>
         <input placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
           <input type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
