@@ -10,7 +10,7 @@ import { supabase } from '@/lib/supabase'
 import { getFunctionError } from '@/lib/functionErrors'
 import { useMarkNotificationViewed } from '@/lib/notifications'
 import type { Member, MembershipType, Post } from '@/lib/types'
-import { Plus, Upload, Copy, Check, Search } from 'lucide-react'
+import { Plus, Upload, Copy, Check, Search, Mail } from 'lucide-react'
 import { format } from 'date-fns'
 
 const US_STATES = [
@@ -656,18 +656,25 @@ function EditMemberModal({
   const [copiedPassword, setCopiedPassword] = useState(false)
 
   async function sendInvite(method: 'email' | 'manual') {
+    if (invitingAccount) return
     setInvitingAccount(true)
     setInviteError(null)
-    const { data, error } = await supabase.functions.invoke('invite-member', { body: { member_id: member.id, method } })
-    setInvitingAccount(false)
-    if (error || data?.error) {
-      setInviteError(await getFunctionError(error, data))
-      return
-    }
-    if (method === 'manual' && data?.temp_password) {
-      setTempPassword(data.temp_password)
-    } else {
-      setInviteSent(true)
+    setInviteSent(false)
+    try {
+      const { data, error } = await supabase.functions.invoke('invite-member', { body: { member_id: member.id, method } })
+      if (error || data?.error) {
+        setInviteError(await getFunctionError(error, data))
+        return
+      }
+      if (method === 'manual' && data?.temp_password) {
+        setTempPassword(data.temp_password)
+      } else {
+        setInviteSent(true)
+      }
+    } catch (error) {
+      setInviteError(await getFunctionError(error))
+    } finally {
+      setInvitingAccount(false)
     }
   }
 
@@ -817,23 +824,35 @@ function EditMemberModal({
                   </button>
                 </div>
               </div>
-            ) : inviteSent ? (
-              <p className="text-xs text-status-active">Invite sent to {member.email} — they'll set their own password and see their card immediately.</p>
-            ) : member.email ? (
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-muted">{linkedAccount ? 'Send a new password setup link.' : 'Create their membership login.'}</span>
-                <div className="flex items-center gap-3 shrink-0">
-                  {!member.profile_id && <button onClick={() => sendInvite('manual')} disabled={invitingAccount} className="text-xs text-gold hover:text-gold-bright disabled:opacity-50">
-                    {invitingAccount ? 'Working…' : 'Generate Password'}
-                  </button>}
-                  <button onClick={() => sendInvite('email')} disabled={invitingAccount} className="text-xs text-gold hover:text-gold-bright disabled:opacity-50">
-                    {invitingAccount ? 'Sending…' : 'Send Invite Email'}
+            ) : null}
+            <div className={tempPassword ? 'space-y-2 mt-3' : 'space-y-2'}>
+              <p className="eyebrow">Account Access</p>
+              {member.email ? (
+                <>
+                  <p className="text-xs text-muted">
+                    Send to {member.email}. Members who have activated their account receive a password reset link; others receive an activation link.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => sendInvite('email')}
+                    disabled={invitingAccount || form.email !== (member.email ?? '')}
+                    className="btn-gold w-full flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Mail size={16} aria-hidden="true" />
+                    {invitingAccount ? 'Sending Email…' : 'Resend Activation / Password Reset Email'}
                   </button>
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-muted">No email on file — add one above to send an account invite.</p>
-            )}
+                  {!member.profile_id && !inviteSent && !tempPassword && (
+                    <button type="button" onClick={() => sendInvite('manual')} disabled={invitingAccount || form.email !== member.email} className="text-xs text-gold hover:text-gold-bright disabled:opacity-50">
+                      Generate Temporary Password
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-muted">Add and save an email address to send an activation link.</p>
+              )}
+              {form.email !== (member.email ?? '') && <p className="text-xs text-muted">Save the email change before sending.</p>}
+              {inviteSent && <p role="status" className="text-xs text-status-active">Password setup email sent to {member.email}.</p>}
+            </div>
             {inviteError && <p role="alert" className="text-xs text-status-attention mt-1.5">{inviteError}</p>}
         </div>
         <input placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
