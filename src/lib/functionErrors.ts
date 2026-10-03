@@ -9,7 +9,7 @@ export async function getFunctionError(error: any, data?: { error?: string } | n
       if (typeof body.message === 'string') return body.message
     } catch { /* Fall back to the transport error below. */ }
     if (error.context.status === 401) return 'Your session expired or the function rejected it. Sign in again; if it persists, check the Supabase function authentication settings.'
-    if (error.context.status === 404) return 'The invite-member function is not deployed in the connected Supabase project.'
+    if (error.context.status === 404) return 'The requested service is not deployed in the connected Supabase project.'
   }
   return error?.message ?? 'Could not complete account setup.'
 }

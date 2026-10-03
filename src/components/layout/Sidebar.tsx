@@ -35,7 +35,7 @@ type NavItem = { to: string; label: string; icon: typeof GitBranch; end?: boolea
 const NATIONAL_ONLY_ITEMS: NavItem[] = [
   { to: '/applications', label: 'Application Pipeline', icon: GitBranch, section: 'applications' },
   { to: '/vetting', label: 'Vetting System', icon: ClipboardCheck },
-  { to: '/users', label: 'User Management', icon: UserCog },
+  { to: '/users', label: 'Accounts & Access', icon: UserCog },
   { to: '/drive', label: 'NCC Drive', icon: HardDrive },
 ]
 
@@ -96,7 +96,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   useOnNotificationViewed(refetchCounts)
 
   const navItems = [
-    { to: '/', label: isPlainMember ? 'Home' : 'Global Dashboard', icon: LayoutGrid, end: true },
+    { to: '/', label: isNational ? 'Global Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
     // National always gets the full toolset too, on top of their own-only
     // items above — they manage every post's modules directly. A plain

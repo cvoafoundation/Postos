@@ -56,6 +56,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!session?.user) return
+    let active = true
+    const applyProfile = (value: Profile | null) => { if (active) setProfile(value) }
+    const finishLoading = () => { if (active) setLoading(false) }
     setLoading(true)
     supabase
       .from('profiles')
@@ -75,12 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await supabase.rpc('link_founding_team_profile')
             await supabase.rpc('link_member_profile')
             const { data: refreshed } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
-            setProfile((refreshed as Profile) ?? existingProfile)
-            setLoading(false)
+            applyProfile((refreshed as Profile) ?? existingProfile)
+            finishLoading()
             return
           }
-          setProfile(existingProfile)
-          setLoading(false)
+          applyProfile(existingProfile)
+          finishLoading()
           return
         }
 
@@ -124,8 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await supabase.rpc('link_member_profile')
 
             await supabase.from('pending_profile_signups').delete().eq('id', pending.id)
-            setProfile((newProfile as Profile) ?? null)
-            setLoading(false)
+            applyProfile((newProfile as Profile) ?? null)
+            finishLoading()
             return
           }
 
@@ -150,23 +153,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await supabase.rpc('link_founding_team_profile')
           await supabase.rpc('link_member_profile')
           const { data: refreshed } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
-          setProfile((refreshed as Profile) ?? (newProfile as Profile) ?? null)
-          setLoading(false)
+          applyProfile((refreshed as Profile) ?? (newProfile as Profile) ?? null)
+          finishLoading()
           return
         }
 
-        setProfile(null)
-        setLoading(false)
+        applyProfile(null)
+        finishLoading()
       })
       .catch((err: unknown) => {
         // Same principle as the session-restoration catch above — a
         // rejection anywhere in this chain (any of the several awaited
         // Supabase calls) must never leave loading stuck at true forever.
         console.error('[CVOA init] profile resolution failed — proceeding without a profile:', err)
-        setProfile(null)
-        setLoading(false)
+        applyProfile(null)
+        finishLoading()
       })
-  }, [session])
+    return () => { active = false }
+    // Token refreshes retain the same identity and do not require reloading the profile.
+  }, [session?.user.id])
 
   const isNational = profile?.role === 'national_commander' || profile?.role === 'national_staff'
 

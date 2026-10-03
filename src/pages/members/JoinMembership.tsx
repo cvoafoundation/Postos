@@ -1,6 +1,7 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { getFunctionError } from '@/lib/functionErrors'
 import { MEMBERSHIP_PRICES, type MembershipType } from '@/lib/types'
 import { Loader2, KeyRound, Upload, FileCheck } from 'lucide-react'
 
@@ -141,7 +142,7 @@ export default function JoinMembership() {
       })
 
       if (checkoutError || data?.error) {
-        setError(data?.error ?? checkoutError?.message ?? 'Could not start checkout.')
+        setError(await getFunctionError(checkoutError, data))
         return
       }
 
