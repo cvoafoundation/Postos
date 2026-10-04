@@ -4,7 +4,8 @@ import { PageHeader } from '@/components/layout/AppShell'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { computePostHealth, type PostHealthResult, type DimensionStatus } from '@/lib/postHealth'
+import { type DimensionStatus } from '@/lib/postHealth'
+import { usePostHealth, healthColor } from '@/lib/usePostHealth'
 import { POST_STATUS_LABELS, POST_STATUS_ORDER, type PostStatus } from '@/lib/types'
 import type {
   AnnualReview,
@@ -70,7 +71,9 @@ export default function PostHealthDetail() {
   const { profile, isNational } = useAuth()
 
   const [post, setPost] = useState<Post | null>(null)
-  const [result, setResult] = useState<PostHealthResult | null>(null)
+  const [healthVersion, setHealthVersion] = useState(0)
+  const health = usePostHealth(post?.status === 'active_post' ? [post.id] : [], healthVersion)
+  const result = post ? health.scores[post.id] : undefined
   const [signatures, setSignatures] = useState<GovernanceSignature[]>([])
   const [annualReview, setAnnualReview] = useState<AnnualReview | null>(null)
   const [serviceEvents, setServiceEvents] = useState<CommunityServiceEvent[]>([])
@@ -93,30 +96,10 @@ export default function PostHealthDetail() {
     if (!postId) return
     setLoading(true)
     const currentYear = new Date().getFullYear()
-    const [
-      postRes,
-      foundingRes,
-      sponsorsRes,
-      meetingsRes,
-      recruitsRes,
-      membersRes,
-      delegateRes,
-      votesRes,
-      sigsRes,
-      reviewRes,
-      serviceRes,
-      txRes,
-    ] = await Promise.all([
+    const [postRes, sigsRes, reviewRes, serviceRes, txRes] = await Promise.all([
       supabase.from('posts').select('*').eq('id', postId).single(),
-      supabase.from('founding_team_members').select('*').eq('post_id', postId),
-      supabase.from('sponsors').select('*').eq('post_id', postId),
-      supabase.from('meeting_records').select('meeting_date').eq('post_id', postId),
-      supabase.from('recruits').select('*').eq('post_id', postId),
-      supabase.from('members').select('*').eq('post_id', postId),
-      supabase.from('congress_delegates').select('*').eq('post_id', postId),
-      supabase.from('resolution_votes').select('id, voter_post_id').eq('voter_post_id', postId),
       supabase.from('governance_signatures').select('*').eq('post_id', postId),
-      supabase.from('annual_reviews').select('*').eq('post_id', postId).eq('review_year', currentYear).single(),
+      supabase.from('annual_reviews').select('*').eq('post_id', postId).eq('review_year', currentYear).maybeSingle(),
       supabase.from('community_service_events').select('*').eq('post_id', postId),
       supabase.from('financial_transactions').select('*').eq('post_id', postId),
     ])
@@ -128,23 +111,7 @@ export default function PostHealthDetail() {
     setServiceEvents((serviceRes.data ?? []) as CommunityServiceEvent[])
     setTransactions((txRes.data ?? []) as FinancialTransaction[])
 
-    if (postData) {
-      const computed = computePostHealth({
-        post: postData,
-        foundingTeam: (foundingRes.data ?? []) as any[],
-        sponsors: (sponsorsRes.data ?? []) as any[],
-        meetingDates: ((meetingsRes.data ?? []) as any[]).map((m) => m.meeting_date),
-        recruits: (recruitsRes.data ?? []) as any[],
-        members: (membersRes.data ?? []) as any[],
-        hasDelegate: ((delegateRes.data ?? []) as any[]).length > 0,
-        delegateVotesCast: ((votesRes.data ?? []) as any[]).length,
-        governanceSignatures: (sigsRes.data ?? []) as GovernanceSignature[],
-        annualReview: (reviewRes.data as AnnualReview) ?? null,
-        communityServiceEvents: (serviceRes.data ?? []) as CommunityServiceEvent[],
-        financialTransactions: (txRes.data ?? []) as FinancialTransaction[],
-      })
-      setResult(computed)
-    }
+    setHealthVersion(v => v + 1)
     setLoading(false)
   }
 
@@ -307,7 +274,7 @@ export default function PostHealthDetail() {
     )
   }
 
-  if (!result) return <p className="text-sm text-muted">Loading…</p>
+  if (!result) return <div><p role={health.error ? "alert" : undefined} className="text-sm text-muted">{health.error ?? "Loading health score…"}</p><button className="btn-ghost mt-3" onClick={() => setHealthVersion(v => v + 1)}>Refresh score</button></div>
 
   return (
     <div>
@@ -328,7 +295,7 @@ export default function PostHealthDetail() {
 
       {tab === 'main' && (
         <>
-          <div className="panel p-6 mb-6 flex items-center gap-6">
+          <div className={`panel p-6 mb-6 flex items-center gap-6 border-l-4 ${healthColor(result.overall)}`}>
         <div className="text-center">
           <div className={`font-display text-6xl ${result.overall === 'green' ? 'text-status-active' : result.overall === 'yellow' ? 'text-status-developing' : 'text-status-attention'}`}>
             {result.score}
@@ -364,13 +331,13 @@ export default function PostHealthDetail() {
                 ? () => setTab('sponsors')
                 : d.key === 'meetings'
                 ? () => setTab('meetings')
-                : null // congress participation — not wired up yet
+                : d.key === 'congress' ? () => navigate('/congress') : null
             return (
               <button
                 key={d.key}
                 onClick={action ?? undefined}
                 disabled={!action}
-                className={`panel p-4 flex items-center justify-between gap-4 text-left ${action ? 'hover:border-gold transition-colors cursor-pointer' : 'cursor-default'}`}
+                className={`panel border-l-4 ${healthColor(d.status)} p-4 flex items-center justify-between gap-4 text-left ${action ? 'hover:border-gold transition-colors cursor-pointer' : 'cursor-default'}`}
               >
                 <div>
                   <div className="text-sm font-medium text-ink">{d.label}</div>

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Route, Routes, Navigate } from 'react-router-dom'
+import { Route, Routes, Navigate, Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { AppShell } from '@/components/layout/AppShell'
 import { RoleGuard } from '@/components/layout/RoleGuard'
@@ -112,7 +112,7 @@ function AuthenticatedApp() {
         <Route path="/member-home" element={<MemberHome />} />
         <Route path="/my-applications" element={<MyApplications />} />
         <Route path="/state" element={<RoleGuard roles={['state_commander']}><StateHome /></RoleGuard>} />
-        <Route path="/membership-requests" element={<RoleGuard roles={[]}><MembershipRequests /></RoleGuard>} />
+        <Route path="/membership-requests" element={<Navigate to="/members?tab=requests" replace />} />
         <Route path="/fundraising" element={<RoleGuard roles={['state_commander','post_commander','post_officer']}><Fundraising /></RoleGuard>} />
         <Route
           path="/applications"
@@ -232,7 +232,7 @@ function AuthenticatedApp() {
         <Route
           path="/health"
           element={
-            <RoleGuard roles={['post_commander', 'post_officer']}>
+            <RoleGuard roles={['state_commander', 'post_commander', 'post_officer']}>
               <PostHealth />
             </RoleGuard>
           }
@@ -364,5 +364,7 @@ function HomeRoute() {
 
 function RosterRoute() {
   const { profile, isNational } = useAuth()
-  return !isNational && profile?.role === 'state_commander' ? <StateMemberships /> : <MembershipRoster />
+  const [params] = useSearchParams()
+  const requests = params.get('tab') === 'requests'
+  return <div><nav aria-label="Membership workspace" className="flex flex-wrap gap-3 mb-6 border-b border-hairline pb-3"><Link className={requests ? 'btn-ghost' : 'btn-gold'} aria-current={!requests ? 'page' : undefined} to="/members">Membership Roster</Link><Link className={requests ? 'btn-gold' : 'btn-ghost'} aria-current={requests ? 'page' : undefined} to="/members?tab=requests">Join &amp; Transfer Requests</Link></nav>{requests ? <MembershipRequests /> : !isNational && profile?.role === 'state_commander' ? <StateMemberships /> : <MembershipRoster />}</div>
 }

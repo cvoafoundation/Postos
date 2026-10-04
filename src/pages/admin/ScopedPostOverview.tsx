@@ -4,6 +4,8 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { PageHeader } from "@/components/layout/AppShell";
 import { WorkspaceStatus } from "@/components/workspaces/WorkspaceStatus";
+import { PostHealthSummary } from "@/components/health/PostHealthSummary";
+import StateEscalations from "@/components/workspaces/StateEscalations";
 interface Overview {
   post: { name: string; state: string; city: string; status: string };
   minutes: {
@@ -84,7 +86,7 @@ export default function ScopedPostOverview() {
     return () => {
       active = false;
     };
-  }, [assignedPost, version]);
+  }, [assignedPost, version, profile?.id, profile?.role, profile?.state, profile?.post_id]);
   return (
     <div>
       <PageHeader
@@ -96,6 +98,7 @@ export default function ScopedPostOverview() {
         appointments determine management authority. Congress voting authority
         comes from a current designated seat.
       </p>
+      <button className="btn-ghost mb-4" onClick={() => setVersion(v => v + 1)}>Refresh post overview</button>
       <WorkspaceStatus
         loading={loading}
         error={error}
@@ -129,8 +132,9 @@ export default function ScopedPostOverview() {
               )}
             </div>
           </div>
+          <PostHealthSummary postId={assignedPost!} status={data.post.status} version={version} />
           <div className="grid lg:grid-cols-2 gap-4">
-            <section className="panel p-5">
+            <section id="meetings" className="panel p-5">
               <h2 className="font-display text-xl">Recent meetings</h2>
               {data.minutes.length === 0 ? (
                 <p className="text-sm text-muted mt-3">
@@ -149,7 +153,7 @@ export default function ScopedPostOverview() {
                 </ul>
               )}
             </section>
-            <section className="panel p-5">
+            <section id="tasks" className="panel p-5">
               <h2 className="font-display text-xl">Open post tasks</h2>
               {data.tasks.length === 0 ? (
                 <p className="text-sm text-muted mt-3">No open tasks.</p>
@@ -168,7 +172,7 @@ export default function ScopedPostOverview() {
                 </ul>
               )}
             </section>
-            <section className="panel p-5">
+            <section id="campaigns" className="panel p-5">
               <h2 className="font-display text-xl">Fundraising activity</h2>
               {data.campaigns.length === 0 ? (
                 <p className="text-sm text-muted mt-3">
@@ -185,6 +189,7 @@ export default function ScopedPostOverview() {
               )}
             </section>
           </div>
+          <StateEscalations posts={[{ id: assignedPost!, name: data.post.name }]} />
         </>
       )}
     </div>

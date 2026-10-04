@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { supabase } from "./supabase";
 
 export function useWorkspace<T>(
   name: string,
   args: Record<string, unknown> = {},
 ) {
+  const { profile } = useAuth();
   const argsKey = JSON.stringify(args);
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export function useWorkspace<T>(
     return () => {
       active = false;
     };
-  }, [name, argsKey, version]);
+  }, [name, argsKey, version, profile?.id, profile?.role, profile?.state, profile?.post_id]);
   return { data, error, loading, refresh };
 }
 

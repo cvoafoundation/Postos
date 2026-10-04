@@ -71,6 +71,7 @@ before(async () => {
     ),
   );
   await db.exec(fs.readFileSync('supabase/migrations/20261004203000_state_post_operations.sql', 'utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20261004210000_membership_transfers.sql', 'utf8'));
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${uid(5)}','state@example.test',now()),('${uid(6)}','delegate@example.test',now()),('${uid(7)}','tribunal@example.test',now()),('${uid(8)}','national-staff@example.test',now());
   insert into public.profiles(id,full_name,email,role,state,post_id) values('${uid(5)}','State','state@example.test','state_commander','IN',null),('${uid(6)}','Delegate','delegate@example.test','delegate',null,'${post}'),('${uid(7)}','Tribunal','tribunal@example.test','ethics_tribunal',null,null),('${uid(8)}','National Staff','national-staff@example.test','national_staff',null,null);
   insert into public.congress_delegates(profile_id,post_id) values('${uid(6)}','${post}');
@@ -794,3 +795,107 @@ test('state overview includes support and activity counts only for assigned post
  assert.equal(posts[0].id, post);
  for (const key of ['overdue_actions','draft_meetings','active_campaigns','support_requests']) assert.equal(typeof posts[0][key], 'number');
 }));
+
+test('health source records remain scoped for National, state and local staff', async () => {
+  const ids = [uid(901), uid(902)];
+  await db.exec(`insert into public.community_service_events(id,post_id,title,event_date) values('${ids[0]}','${post}','Indiana service',current_date),('${ids[1]}','${otherPost}','Ohio service',current_date);`);
+  try {
+    for (const [actor, expected] of [[national, ids], [stateCommander, [ids[0]]], [officer, [ids[0]]]]) {
+      await as(actor, async () => {
+        assert.deepEqual((await db.query('select id from public.community_service_events order by id')).rows.map(r => r.id), expected);
+      });
+    }
+  } finally {
+    await db.exec(`delete from public.community_service_events where id in ('${ids[0]}','${ids[1]}')`);
+  }
+});
+
+const become = actor => db.query("select set_config('request.jwt.claim.sub',$1,true)", [actor]);
+test('incoming commander approval updates affiliation; source commander and state oversight cannot decide', () => as(national, async () => {
+  await become(member);
+  const request = (await db.query("select public.cvoa_request_post_change($1,$2,'Moving to Ohio') id", [memberRow,otherPost])).rows[0].id;
+  await become(officer);
+  await failure(() => db.query("select public.cvoa_review_post_change($1,true,'Approved')", [request]), /Receiving post commander/);
+  await become(stateCommander);
+  const stateRows = (await db.query('select public.cvoa_transfer_requests() data')).rows[0].data;
+  assert.equal(stateRows.length,1); assert.equal(stateRows[0].can_review,false);
+  await failure(() => db.query("select public.cvoa_review_post_change($1,true,'Approved')", [request]), /Receiving post commander/);
+  await become(national);
+  await db.query("select public.cvoa_add_appointment($1,'post_commander',$2,null,'Commander','Approved assignment')", [officer,otherPost]);
+  await become(officer);
+  const incoming = (await db.query('select public.cvoa_transfer_requests() data')).rows[0].data[0];
+  assert.equal(incoming.can_review,true);
+  await db.query("select public.cvoa_review_post_change($1,true,'Welcome to the post')", [request]);
+  await become(national);
+  assert.equal((await db.query('select post_id from public.members where id=$1',[memberRow])).rows[0].post_id,otherPost);
+  assert.equal((await db.query('select post_id from public.profiles where id=$1',[member])).rows[0].post_id,otherPost);
+  assert.equal((await db.query('select status,source_post_id from public.membership_change_requests where id=$1',[request])).rows[0].source_post_id,post);
+}));
+test('members withdraw only their own pending requests and can request again', () => as(member, async () => {
+  const req=(await db.query("select public.cvoa_request_post_change($1,$2,'Relocating') id",[memberRow,otherPost])).rows[0].id;
+  await become(guest);
+  await failure(() => db.query('select public.cvoa_withdraw_post_change($1)',[req]), /Only your pending/);
+  assert.deepEqual((await db.query('select public.cvoa_transfer_requests() data')).rows[0].data,[]);
+  await become(member);
+  await db.query('select public.cvoa_withdraw_post_change($1)',[req]);
+  assert.equal((await db.query('select status from public.membership_change_requests where id=$1',[req])).rows[0].status,'withdrawn');
+  await failure(() => db.query('select public.cvoa_withdraw_post_change($1)',[req]),/Only your pending/);
+  await db.query("select public.cvoa_request_post_change($1,$2,'New request')",[memberRow,otherPost]);
+}));
+test('at-large requests require National and transfer approval preserves staff authority', () => as(national, async () => {
+  const staffMember=uid(204);
+  await db.query("insert into public.members(id,profile_id,post_id,full_name,email,membership_status) values($1,$2,$3,'Staff member','staff-transfer@example.test','active')",[staffMember,officer,post]);
+  await become(officer);
+  const req=(await db.query("select public.cvoa_request_post_change($1,null,'Joining at large') id",[staffMember])).rows[0].id;
+  await failure(() => db.query("select public.cvoa_review_post_change($1,true,'Self-approved')",[req]),/Receiving post commander/);
+  await become(national);
+  assert.equal((await db.query('select public.cvoa_transfer_requests() data')).rows[0].data[0].staff_access,true);
+  await db.query("select public.cvoa_review_post_change($1,true,'Approved; staff appointment remains')",[req]);
+  assert.equal((await db.query('select post_id from public.members where id=$1',[staffMember])).rows[0].post_id,null);
+  const account=(await db.query('select role,post_id from public.profiles where id=$1',[officer])).rows[0];
+  assert.equal(account.role,'post_commander'); assert.equal(account.post_id,post);
+}));
+test('suspended users cannot submit, withdraw or review transfers', () => as(national, async () => {
+  await become(member);
+  const req=(await db.query("select public.cvoa_request_post_change($1,$2,'Moving') id",[memberRow,otherPost])).rows[0].id;
+  await become(national);
+  await updateAccount(member, 0, { suspended: true });
+  await become(member);
+  await failure(() => db.query('select public.cvoa_withdraw_post_change($1)',[req]),/Active account/);
+  await failure(() => db.query("select public.cvoa_request_post_change($1,null,'Leaving')",[memberRow]),/Active account/);
+}));
+test('post officer access does not confer commander approval authority', () => as(national, async () => {
+  await become(member);
+  const req=(await db.query("select public.cvoa_request_post_change($1,$2,'Moving') id",[memberRow,otherPost])).rows[0].id;
+  await become(national);
+  await db.query("select public.cvoa_add_appointment($1,'post_officer',$2,null,'Officer','Approved assignment')",[officer,otherPost]);
+  await become(officer);
+  assert.equal((await db.query('select public.cvoa_transfer_requests() data')).rows[0].data[0].can_review,false);
+  await failure(() => db.query("select public.cvoa_review_post_change($1,true,'Approved')",[req]),/Receiving post commander/);
+}));
+test('approvals reject stale source affiliations and inactive target posts', () => as(national, async () => {
+  await become(member);
+  const req=(await db.query("select public.cvoa_request_post_change($1,$2,'Moving') id",[memberRow,otherPost])).rows[0].id;
+  await become(national);
+  await db.query('update public.members set post_id=null where id=$1',[memberRow]);
+  await failure(() => db.query("select public.cvoa_review_post_change($1,true,'Approved')",[req]),/affiliation changed/);
+  await db.query('update public.members set post_id=$1 where id=$2',[post,memberRow]);
+  await db.query("update public.posts set status='charter_ready' where id=$1",[otherPost]);
+  await failure(() => db.query("select public.cvoa_review_post_change($1,true,'Approved')",[req]),/no longer active/);
+}));
+test('state and post staff cannot read requests wholly outside their jurisdiction', async () => {
+  const foreignMember=uid(205);
+  await db.query("insert into public.members(id,profile_id,post_id,full_name,email,membership_status) values($1,$2,$3,'Foreign member','foreign-transfer@example.test','active')",[foreignMember,guest,otherPost]);
+  try {
+    await as(guest,async () => {
+      await db.query("select public.cvoa_request_post_change($1,null,'At-large request')",[foreignMember]);
+      await become(stateCommander);
+      assert.deepEqual((await db.query('select public.cvoa_transfer_requests() data')).rows[0].data,[]);
+      assert.equal((await db.query('select id from public.membership_change_requests')).rows.length,0);
+      await become(officer);
+      assert.deepEqual((await db.query('select public.cvoa_transfer_requests() data')).rows[0].data,[]);
+      await become(national);
+      assert.equal((await db.query('select public.cvoa_transfer_requests() data')).rows[0].data.length,1);
+    });
+  } finally { await db.query('delete from public.members where id=$1',[foreignMember]); }
+});

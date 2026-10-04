@@ -4,7 +4,10 @@ import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
-import { computePostHealth, type PostHealthResult } from '@/lib/postHealth'
+import { type PostHealthResult } from '@/lib/postHealth'
+import { usePostHealth, healthColor } from '@/lib/usePostHealth'
+import { useAuth } from '@/context/AuthContext'
+import { readAllRows } from '@/lib/readAllRows'
 import { POST_STATUS_LABELS, type Post } from '@/lib/types'
 
 interface ScoredPost {
@@ -15,66 +18,32 @@ interface ScoredPost {
 export default function PostHealth() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<'health' | 'forming'>('health')
-  const [scored, setScored] = useState<ScoredPost[]>([])
-  const [formingPosts, setFormingPosts] = useState<Post[]>([])
+  const { profile } = useAuth()
+  const [allPosts, setAllPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
-
+  const [error, setError] = useState<string | null>(null)
+  const [version, setVersion] = useState(0)
+  const health = usePostHealth(allPosts.filter(p => p.status === 'active_post').map(p => p.id), version)
+  const formingPosts = allPosts.filter(p => p.status !== 'active_post')
+  const scored: ScoredPost[] = allPosts.flatMap(post => health.scores[post.id] ? [{ post, result: health.scores[post.id] }] : []).sort((a,b) => a.result.score - b.result.score)
+  const destination = (id: string) => profile?.role === 'state_commander' ? `/post-overview/${id}` : `/health/${id}`
   useEffect(() => {
-    async function load() {
-      const { data: postsData } = await supabase.from('posts').select('*')
-      const allPosts = (postsData ?? []) as Post[]
-      const posts = allPosts.filter((p) => p.status === 'active_post')
-      setFormingPosts(allPosts.filter((p) => p.status !== 'active_post'))
-
-      const results = await Promise.all(
-        posts.map(async (post) => {
-          const currentYear = new Date().getFullYear()
-          const [foundingRes, sponsorsRes, meetingsRes, recruitsRes, membersRes, delegateRes, votesRes, sigsRes, reviewRes, serviceRes, txRes] =
-            await Promise.all([
-              supabase.from('founding_team_members').select('*').eq('post_id', post.id),
-              supabase.from('sponsors').select('*').eq('post_id', post.id),
-              supabase.from('meeting_records').select('meeting_date').eq('post_id', post.id),
-              supabase.from('recruits').select('*').eq('post_id', post.id),
-              supabase.from('members').select('*').eq('post_id', post.id),
-              supabase.from('congress_delegates').select('*').eq('post_id', post.id),
-              supabase.from('resolution_votes').select('id, voter_post_id').eq('voter_post_id', post.id),
-              supabase.from('governance_signatures').select('*').eq('post_id', post.id),
-              supabase.from('annual_reviews').select('*').eq('post_id', post.id).eq('review_year', currentYear).single(),
-              supabase.from('community_service_events').select('*').eq('post_id', post.id),
-              supabase.from('financial_transactions').select('*').eq('post_id', post.id),
-            ])
-
-          const result = computePostHealth({
-            post,
-            foundingTeam: (foundingRes.data ?? []) as any[],
-            sponsors: (sponsorsRes.data ?? []) as any[],
-            meetingDates: ((meetingsRes.data ?? []) as any[]).map((m) => m.meeting_date),
-            recruits: (recruitsRes.data ?? []) as any[],
-            members: (membersRes.data ?? []) as any[],
-            hasDelegate: ((delegateRes.data ?? []) as any[]).length > 0,
-            delegateVotesCast: ((votesRes.data ?? []) as any[]).length,
-            governanceSignatures: (sigsRes.data ?? []) as any[],
-            annualReview: (reviewRes.data as any) ?? null,
-            communityServiceEvents: (serviceRes.data ?? []) as any[],
-            financialTransactions: (txRes.data ?? []) as any[],
-          })
-
-          return { post, result }
-        })
-      )
-
-      results.sort((a, b) => a.result.score - b.result.score)
-      setScored(results)
-      setLoading(false)
-    }
-    load()
-  }, [])
+    let active = true
+    setAllPosts([]); setLoading(true); setError(null)
+    void readAllRows<Post>(() => supabase.from('posts').select('*').order('id'))
+      .then(posts => { if (active) setAllPosts(posts) })
+      .catch(e => { if (active) setError(e.message) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [profile?.id, profile?.role, profile?.state, profile?.post_id, version])
 
   const struggling = scored.filter((s) => s.result.overall === 'red')
 
   return (
     <div>
-      <PageHeader eyebrow="Module 9" title="Posts" />
+      <PageHeader eyebrow={profile?.role === "state_commander" ? `State Command · ${profile.state}` : "Post operations"} title="Posts" />
+      <button className="btn-ghost mb-4" onClick={() => setVersion(v => v + 1)}>Refresh posts & scores</button>
+      {(error || health.error) && <p role="alert" className="text-status-attention mb-4">{error || health.error}</p>}
 
       {/* One page owns every post regardless of stage — Health for posts
           already live, Forming for everything still working through the
@@ -106,9 +75,9 @@ export default function PostHealth() {
       </div>
 
       {tab === 'health' ? (
-        loading ? (
+        loading || health.loading ? (
           <p className="text-sm text-muted">Computing health scores…</p>
-        ) : scored.length === 0 ? (
+        ) : error || health.error ? <p className="text-muted">Refresh to retry loading health data.</p> : scored.length === 0 ? (
           <EmptyState
             title="No active posts yet"
             hint="A real composite score — officers, sponsors, meetings, membership, Congress participation, governance, community service, and finances — rolls up here once posts go active."
@@ -120,7 +89,7 @@ export default function PostHealth() {
                 <div className="eyebrow mb-2 text-status-attention">Needs Immediate Attention</div>
                 <div className="flex gap-2 flex-wrap">
                   {struggling.map(({ post, result }) => (
-                    <button key={post.id} onClick={() => navigate(`/health/${post.id}`)}>
+                    <button key={post.id} onClick={() => navigate(destination(post.id))}>
                       <StatusBadge label={`${post.name} — ${result.score}`} tone="attention" />
                     </button>
                   ))}
@@ -128,7 +97,7 @@ export default function PostHealth() {
               </div>
             )}
 
-            <div className="panel overflow-hidden">
+            <div className="panel overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr>
@@ -141,10 +110,10 @@ export default function PostHealth() {
                 </thead>
                 <tbody>
                   {scored.map(({ post, result }) => (
-                    <tr key={post.id} onClick={() => navigate(`/health/${post.id}`)} className="cursor-pointer hover:bg-surface/60">
-                      <td className="table-cell">{post.name}</td>
+                    <tr key={post.id} onClick={() => navigate(destination(post.id))} className="cursor-pointer hover:bg-surface/60">
+                      <td className="table-cell"><button className="text-gold hover:underline" onClick={() => navigate(destination(post.id))}>{post.name} → Open dashboard</button></td>
                       <td className="table-cell font-mono">{post.state}</td>
-                      <td className="table-cell font-mono text-gold">{result.score}</td>
+                      <td className={`table-cell font-mono ${healthColor(result.overall)}`}>{result.score}/100</td>
                       <td className="table-cell">
                         <StatusBadge
                           label={result.overall}
@@ -159,10 +128,10 @@ export default function PostHealth() {
             </div>
           </>
         )
-      ) : formingPosts.length === 0 ? (
+      ) : loading ? <p className="text-muted">Loading forming posts…</p> : error ? <p className="text-muted">Refresh to retry loading posts.</p> : formingPosts.length === 0 ? (
         <EmptyState title="Nothing forming right now" hint="Posts show up here once an application advances to Founding Team Building." />
       ) : (
-        <div className="panel overflow-hidden">
+        <div className="panel overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr>
@@ -174,8 +143,8 @@ export default function PostHealth() {
             </thead>
             <tbody>
               {formingPosts.map((post) => (
-                <tr key={post.id} onClick={() => navigate(`/health/${post.id}`)} className="cursor-pointer hover:bg-surface/60">
-                  <td className="table-cell">{post.name}</td>
+                <tr key={post.id} onClick={() => navigate(destination(post.id))} className="cursor-pointer hover:bg-surface/60">
+                  <td className="table-cell"><button className="text-gold hover:underline" onClick={() => navigate(destination(post.id))}>{post.name} → Open dashboard</button></td>
                   <td className="table-cell font-mono">{post.state}</td>
                   <td className="table-cell">
                     <StatusBadge label={POST_STATUS_LABELS[post.status]} tone="developing" />

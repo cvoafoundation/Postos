@@ -186,13 +186,13 @@ export default function MemberHome() {
       <div id="join-a-post" className="panel p-5 max-w-lg">
         <div className="eyebrow mb-1">Join a Post</div>
         <p className="text-xs text-muted mb-4">
-          Pick an active post near you. National reviews affiliation changes; your current membership stays in place until approval.
+          Pick an active post near you. The receiving post commander reviews join requests; your current membership stays in place until approval.
         </p>
         {posts.length === 0 ? (
           <p className="text-sm text-muted">No active posts yet — be the first to start one.</p>
         ) : joinRequested ? (
           <div className="text-sm text-status-active flex items-center gap-1.5">
-            <CheckCircle2 size={16} /> Request sent — National will review your post affiliation. Track the decision in My Membership.
+            <CheckCircle2 size={16} /> Request sent — the receiving post commander will review it. Track the decision in My Membership.
           </div>
         ) : (
           <form onSubmit={requestToJoin} className="flex flex-col sm:flex-row gap-3">
