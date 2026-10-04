@@ -114,19 +114,24 @@ function ScorecardSummary({ applicationId }: { applicationId: string }) {
   )
 }
 
-function SignoffPanel({ applicationId }: { applicationId: string }) {
+function SignoffPanel({ applicationId, documentPath }: { applicationId: string; documentPath: string | null }) {
   const { profile } = useAuth()
   const [nationalAccounts, setNationalAccounts] = useState<Profile[]>([])
   const [signoffs, setSignoffs] = useState<ApplicationSignoff[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   async function load() {
     const [accountsRes, signoffsRes] = await Promise.all([
       supabase.from('profiles').select('*').in('role', ['national_commander', 'national_staff']),
       supabase.from('application_signoffs').select('*').eq('application_id', applicationId),
     ])
+    if (accountsRes.error || signoffsRes.error) { setError(accountsRes.error?.message ?? signoffsRes.error?.message ?? 'Could not load sign-offs.'); setLoading(false); return }
+    setError(null)
     setNationalAccounts((accountsRes.data ?? []) as Profile[])
-    setSignoffs((signoffsRes.data ?? []) as ApplicationSignoff[])
+    const current = new Set((accountsRes.data ?? []).map((a: Profile) => a.id))
+    setSignoffs(((signoffsRes.data ?? []) as ApplicationSignoff[]).filter(s => current.has(s.profile_id) && (s as ApplicationSignoff & { document_path: string | null }).document_path === documentPath))
     setLoading(false)
   }
 
@@ -139,14 +144,20 @@ function SignoffPanel({ applicationId }: { applicationId: string }) {
 
   async function signOff() {
     if (!profile) return
-    await supabase.from('application_signoffs').insert({ application_id: applicationId, profile_id: profile.id })
-    load()
+    if (saving) return
+    setSaving(true)
+    const { error } = await supabase.rpc('cvoa_sign_application', { p_application: applicationId })
+    if (error) setError(error.message); else await load()
+    setSaving(false)
   }
 
   async function undoSignoff() {
     if (!mySignoff) return
-    await supabase.from('application_signoffs').delete().eq('id', mySignoff.id)
-    load()
+    if (saving) return
+    setSaving(true)
+    const { error } = await supabase.from('application_signoffs').delete().eq('id', mySignoff.id)
+    if (error) setError(error.message); else await load()
+    setSaving(false)
   }
 
   if (loading) return null
@@ -154,12 +165,13 @@ function SignoffPanel({ applicationId }: { applicationId: string }) {
   return (
     <div className="border-t border-hairline pt-4">
       <div className="eyebrow mb-2 flex items-center gap-1.5">
-        <Users size={12} /> NCC Sign-off ({signoffs.length}/{nationalAccounts.length})
+        <Users size={12} /> National reviewer sign-offs ({signoffs.length}/{nationalAccounts.length})
       </div>
       <p className="text-xs text-muted mb-3">
-        Every National account must sign off before this candidate can be approved and issued a charter.
+        Every current National account must sign off before application approval. The charter decision is recorded later in the post workspace.
       </p>
       <div className="space-y-1.5 mb-3">
+        {error && <p role="alert" className="text-status-attention text-xs">{error} <button className="underline" onClick={load}>Retry</button></p>}
         {nationalAccounts.map((acct) => {
           const signed = signoffs.some((s) => s.profile_id === acct.id)
           return (
@@ -177,11 +189,13 @@ function SignoffPanel({ applicationId }: { applicationId: string }) {
         })}
       </div>
       {mySignoff ? (
-        <button onClick={undoSignoff} className="text-xs text-muted hover:text-status-attention">
+        <button onClick={undoSignoff}
+          disabled={saving} className="text-xs text-muted hover:text-status-attention">
           Undo my sign-off
         </button>
       ) : (
-        <button onClick={signOff} className="btn-gold text-xs px-3 py-1.5">
+        <button onClick={signOff}
+          disabled={saving || !!error} className="btn-gold text-xs px-3 py-1.5">
           Sign Off
         </button>
       )}
@@ -253,7 +267,7 @@ export function ApplicationDetailModal({
           />
         </div>
 
-        {application.status === 'vetting' && <SignoffPanel applicationId={application.id} />}
+        {['vetting', 'approved'].includes(application.status) && <SignoffPanel applicationId={application.id} documentPath={application.dd214_storage_path} />}
 
         <div className="border-t border-hairline pt-4">
           {!confirmingDelete ? (
