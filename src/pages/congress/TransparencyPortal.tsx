@@ -16,7 +16,7 @@ export default function TransparencyPortal() {
         supabase.from('resolutions').select('*').in('status', ['passed', 'implemented', 'rejected']).order('created_at', { ascending: false }),
         supabase.from('congress_announcements').select('*').eq('category', 'Official Position').order('created_at', { ascending: false }),
         supabase.from('legislative_bills').select('*').order('created_at', { ascending: false }),
-        supabase.from('resolution_votes').select('resolution_id, vote'),
+        supabase.rpc('cvoa_vote_totals'),
       ])
       setPassed((resRes.data ?? []) as Resolution[])
       setPositions((annRes.data ?? []) as CongressAnnouncement[])
@@ -24,8 +24,7 @@ export default function TransparencyPortal() {
 
       const counts: Record<string, { yes: number; no: number }> = {}
       for (const v of (votesRes.data ?? []) as any[]) {
-        if (!counts[v.resolution_id]) counts[v.resolution_id] = { yes: 0, no: 0 }
-        v.vote ? counts[v.resolution_id].yes++ : counts[v.resolution_id].no++
+        counts[v.resolution_id] = { yes: Number(v.support), no: Number(v.oppose) }
       }
       setVoteCounts(counts)
       setLoading(false)

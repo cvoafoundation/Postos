@@ -84,11 +84,9 @@ Deno.serve(async (req) => {
     // Validate with Auth itself, including projects using new JWT signing keys.
     const { data: { user: caller }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !caller) return reply(401, { error: 'Your session has expired. Please sign in again.' })
-    const { data: callerProfile, error: callerError } = await supabase.from('profiles').select('role, post_id').eq('id', caller.id).single()
+    const { data: callerProfile, error: callerError } = await supabase.from('profiles').select('role, post_id, access_suspended').eq('id', caller.id).single()
     if (callerError) return reply(500, { error: 'Could not verify your account permissions.' })
-    const isNational = callerProfile && ['national_commander', 'national_staff'].includes(callerProfile.role)
-    const isPostOfficer = callerProfile && ['post_commander', 'post_officer'].includes(callerProfile.role)
-    if (!isNational && !isPostOfficer) return reply(403, { error: "You don't have permission to send member invites." })
+    if (!callerProfile || callerProfile.access_suspended) return reply(403, { error: 'Your account access is suspended or unavailable.' })
 
     let body: RequestBody
     try { body = await req.json() } catch { return reply(400, { error: 'Invalid invitation request.' }) }
@@ -97,9 +95,8 @@ Deno.serve(async (req) => {
     if (!['email', 'manual'].includes(method)) return reply(400, { error: 'Choose email or manual account creation.' })
     const { data: member, error: memberError } = await supabase.from('members').select('*').eq('id', body.member_id).single()
     if (memberError || !member) return reply(404, { error: 'Member not found.' })
-    if (!isNational && (!callerProfile?.post_id || member.post_id !== callerProfile.post_id)) {
-      return reply(403, { error: 'You can only invite members from your own post.' })
-    }
+    const { data: permitted, error: permissionError } = await supabase.rpc('cvoa_service_authorized', { p_actor: caller.id, p_post: member.post_id, p_capability: 'manage_post' })
+    if (permissionError || !permitted) return reply(403, { error: 'You can only invite members from an assigned post or National.' })
     if (!member.email) return reply(400, { error: 'Add and save an email address for this member first.' })
     if (method === 'manual' && member.profile_id) return reply(409, { error: 'This member already has an account. Send a password setup email instead.' })
     let redirectTo = ''

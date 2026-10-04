@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { Profile, UserRole } from '@/lib/types'
+import type { AccessScope } from '@/lib/access'
 
 interface AuthContextValue {
   session: Session | null
@@ -9,6 +10,11 @@ interface AuthContextValue {
   loading: boolean
   isNational: boolean
   isDelegate: boolean
+  scopes: AccessScope[]
+  selectedScope: string
+  accessSuspended: boolean
+  accessError: string | null
+  selectWorkspace: (scope: string) => Promise<void>
   hasRole: (...roles: UserRole[]) => boolean
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
@@ -18,7 +24,14 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
-  const [profile, setProfile] = useState<Profile | null>(null)
+  const [baseProfile, setProfile] = useState<Profile | null>(null)
+  const [scopes, setScopes] = useState<AccessScope[]>([])
+  const [selectedScope, setSelectedScope] = useState('primary')
+  const [accessSuspended, setAccessSuspended] = useState(false)
+  const [accessError, setAccessError] = useState<string | null>(null)
+  const [accessLoading, setAccessLoading] = useState(false)
+  const selected = scopes.find(s => s.scope_id === selectedScope)
+  const profile = baseProfile && selected ? { ...baseProfile, role: selected.role, post_id: selected.post_id, state: selected.state, title: selected.title } : baseProfile
   const [loading, setLoading] = useState(true)
   const [isDelegate, setIsDelegate] = useState(false)
 
@@ -174,25 +187,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Token refreshes retain the same identity and do not require reloading the profile.
   }, [session?.user.id])
 
-  const isNational = profile?.role === 'national_commander' || profile?.role === 'national_staff'
+  const isNational = !accessSuspended && (baseProfile?.role === 'national_commander' || baseProfile?.role === 'national_staff')
 
   useEffect(() => {
-    if (!profile?.id) {
-      setIsDelegate(false)
-      return
-    }
-    // Exactly one delegate (and optionally an alternate) is designated per
-    // post — this is what actually gates casting a formal Congress vote,
-    // not just being any officer at that post.
-    supabase
-      .from('congress_delegates')
-      .select('id')
-      .eq('profile_id', profile.id)
-      .then(({ data }) => setIsDelegate(!!data && data.length > 0))
-  }, [profile?.id])
+    let active = true
+    setScopes([])
+    setIsDelegate(false)
+    setAccessError(null)
+    if (!baseProfile?.id) { setAccessSuspended(false); return }
+    setAccessLoading(true)
+    void supabase.rpc('cvoa_my_access').then(({ data, error }) => {
+      if (!active) return
+      if (error) { setAccessError(error.message); return }
+      const access = data as { scopes: AccessScope[]; selected: string | null; suspended: boolean }
+      setScopes(access.scopes)
+      setSelectedScope(access.selected ?? 'primary')
+      setAccessSuspended(access.suspended)
+    }).catch((error: unknown) => { if (active) setAccessError(error instanceof Error ? error.message : 'Could not verify access.') })
+      .finally(() => { if (active) setAccessLoading(false) })
+    return () => { active = false }
+  }, [baseProfile?.id, baseProfile?.role, baseProfile?.post_id, baseProfile?.state])
+
+  useEffect(() => {
+    setIsDelegate(!accessSuspended && scopes.some(s => s.source === 'Congress designation' && s.post_id === profile?.post_id && s.title !== 'Alternate delegate'))
+  }, [scopes, profile?.post_id, accessSuspended])
+
+  async function selectWorkspace(scope: string) {
+    const { error } = await supabase.rpc('cvoa_select_workspace', { p_scope: scope })
+    if (error) throw new Error(error.message)
+    setSelectedScope(scope)
+  }
 
   function hasRole(...roles: UserRole[]) {
-    return !!profile && roles.includes(profile.role)
+    return !accessSuspended && !!profile && roles.includes(profile.role)
   }
 
   async function signOut() {
@@ -210,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, profile, loading, isNational, isDelegate, hasRole, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, profile, loading: loading || accessLoading, isNational, isDelegate, scopes, selectedScope, accessSuspended, accessError, selectWorkspace, hasRole, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

@@ -63,7 +63,7 @@ function edgeFixture(file, options = {}) {
   const source = fs.readFileSync(file, 'utf8').replace(/^import .*$/gm, '')
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText
   vm.runInNewContext(js, {
-    createClient: () => ({ rpc: async () => ({data:state.reservations?.shift()??state.reservation??{token:'reservation-test',session_id:null,busy:false}}), from: query, auth: { getUser: async () => ({ data: { user: state.user } }) } }),
+    createClient: () => ({ rpc: async (name,args) => name==='cvoa_service_authorized' ? {data:state.accessAllowed ?? (!state.caller?.access_suspended && (args.p_capability==='personal' || ['national_commander','national_staff'].includes(state.caller?.role) || ['post_commander','post_officer'].includes(state.caller?.role) && !!state.caller?.post_id && state.caller.post_id===args.p_post))} : ({data:state.reservations?.shift()??state.reservation??{token:'reservation-test',session_id:null,busy:false}}), from: query, auth: { getUser: async () => ({ data: { user: state.user } }) } }),
     Stripe, Deno: { env: { get: (key) => state.env[key] }, serve: (fn) => { handler = fn } }, Response, Request, URL, console,
   })
   return { state, async invoke(body, headers = { Authorization: 'Bearer test-only' }, method = 'POST') {

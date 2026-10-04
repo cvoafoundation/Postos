@@ -27,9 +27,7 @@ export default function PublicRecruitSignup() {
   useEffect(() => {
     if (!postId) return
     supabase
-      .from('posts')
-      .select('name')
-      .eq('id', postId)
+      .rpc('cvoa_public_posts', { p_post: postId })
       .single()
       .then(({ data, error }: any) => {
         if (error || !data) {

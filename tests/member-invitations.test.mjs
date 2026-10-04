@@ -35,6 +35,7 @@ function fixture(overrides = {}) {
   state.profileReads = 0
   const client = {
     from: db,
+    rpc: async (_name, args) => ({ data: state.permissions ?? (['national_commander','national_staff'].includes(state.callerProfile?.role) || ['post_commander','post_officer'].includes(state.callerProfile?.role) && state.callerProfile?.post_id === args.p_post) }),
     auth: {
       getUser: async () => ({ data: { user: state.caller } }),
       admin: {

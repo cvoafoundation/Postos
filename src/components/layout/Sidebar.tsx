@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutGrid,
   GitBranch,
@@ -26,6 +26,7 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { supabase, isDemoMode } from '@/lib/supabase'
 import clsx from 'clsx'
+import { ROLE_LABELS, scopeLabel } from '@/lib/access'
 
 import type { NotificationSection } from '@/lib/notifications'
 import { useOnNotificationViewed } from '@/lib/notifications'
@@ -71,7 +72,10 @@ const MEMBER_ITEMS: NavItem[] = [
 
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { profile, isNational, signOut } = useAuth()
+  const { profile, isNational, signOut, scopes, selectedScope, selectWorkspace } = useAuth()
+  const navigate = useNavigate()
+  const [scopeError, setScopeError] = useState<string | null>(null)
+  const [switchingScope, setSwitchingScope] = useState(false)
   const isPlainMember = profile?.role === 'member' || profile?.role === 'delegate'
   const isPostOfficer = profile?.role === 'post_commander' || profile?.role === 'post_officer'
   const isState = profile?.role === 'state_commander'
@@ -100,7 +104,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   const navItems = [
     { to: '/', label: isNational ? 'National Dashboard' : isState ? 'State Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
-    ...(isState ? [{ to: '/fundraising', label: 'State Fundraising', icon: HandCoins }] : []),
+    ...(isState ? [{ to: '/members', label: 'State Membership Roster', icon: IdCard }, { to: '/fundraising', label: 'State Fundraising', icon: HandCoins }, { to: '/congress', label: 'Veterans Congress', icon: Landmark }] : []),
     // National always gets the full toolset too, on top of their own-only
     // items above — they manage every post's modules directly. A plain
     // member gets the small member set. A guest_applicant (not yet
@@ -168,6 +172,8 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4">
+          {scopes.length > 1 && <div className="px-4 mb-3"><label className="eyebrow" htmlFor="workspace-selector">Your appointed workspaces</label><select id="workspace-selector" className="input-field mt-2 text-xs" value={selectedScope} disabled={switchingScope} onChange={async e => { setSwitchingScope(true); setScopeError(null); try { await selectWorkspace(e.target.value); navigate('/'); onClose() } catch (error) { setScopeError(error instanceof Error ? error.message : 'Could not switch workspace.') } finally { setSwitchingScope(false) } }}>{scopes.map(s => <option key={s.scope_id} value={s.scope_id}>{ROLE_LABELS[s.role]} · {s.post_name ?? s.state ?? 'Personal / National'}</option>)}</select>{scopeError && <p role="alert" className="text-xs text-status-attention mt-2">{scopeError}</p>}</div>}
+          {scopes.find(s=>s.scope_id===selectedScope) && <p className="px-5 text-xs text-muted mb-2">{scopeLabel(scopes.find(s=>s.scope_id===selectedScope)!)}</p>}
           {navItems.map(({ to, label, icon: Icon, end, section }, index) => {
             const group = (path: string) => path === '/' ? 'Overview' : ['/my-membership','/member-home','/my-applications'].includes(path) ? 'Personal' : ['/file-complaint','/ethics-tribunal'].includes(path) ? 'Ethics' : NATIONAL_ONLY_ITEMS.some(item=>item.to===path) ? 'National' : isState ? 'State Oversight' : isPlainMember ? 'My Post & Congress' : 'Post Operations'
             const sectionTitle = index === 0 || group(to) !== group(navItems[index-1].to) ? group(to) : null

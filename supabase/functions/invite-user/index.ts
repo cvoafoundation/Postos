@@ -1,135 +1,204 @@
-// supabase/functions/invite-user/index.ts
-//
-// Creates a real account the correct way: an auth user AND its matching
-// profiles row, in one step. This is what was missing when a user was
-// created directly in the Supabase Auth dashboard — that only creates the
-// login, never the profile this app actually reads permissions from.
-//
-// Sends the invite through CVOA's own Google Workspace account (same
-// mechanism as the membership notification emails), not Supabase's default
-// email sender — generateLink() creates the account and hands back a
-// magic-link URL without emailing anyone itself; we send that link
-// ourselves via Gmail SMTP.
-//
-// DEPLOYING THIS (one-time setup): Deploy: `supabase functions deploy invite-user`
-
-import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
-import nodemailer from 'npm:nodemailer@6.9.16'
-
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const SITE_URL = Deno.env.get('SITE_URL')!
-const WORKSPACE_EMAIL = Deno.env.get('WORKSPACE_EMAIL')
-const WORKSPACE_APP_PASSWORD = Deno.env.get('WORKSPACE_APP_PASSWORD')
-
-interface RequestBody {
-  email: string
-  full_name: string
-  role: string
-  post_id: string | null
-}
-
-async function sendInviteEmail(email: string, fullName: string, actionLink: string) {
-  if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
-    console.warn('WORKSPACE_EMAIL/WORKSPACE_APP_PASSWORD not set — skipping invite email (dry run):', email, actionLink)
-    return
-  }
-  const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: { user: WORKSPACE_EMAIL, pass: WORKSPACE_APP_PASSWORD },
-  })
-  await transporter.sendMail({
-    from: `CVOA.ONE SYSTEM (COS) <${WORKSPACE_EMAIL}>`,
-    to: email,
-    subject: `You're invited to CVOA.ONE SYSTEM (COS)`,
-    text: `Hi ${fullName},\n\nYou've been invited to create your account. Open this link to set your password and get started:\n\n${actionLink}\n\nIf you weren't expecting this, you can safely ignore this email.`,
-    html: `<p>Hi ${fullName},</p>
-           <p>You've been invited to create your account. Click below to set your password and get started:</p>
-           <p><a href="${actionLink}">Set your password &amp; log in</a></p>
-           <p>If you weren't expecting this, you can safely ignore this email.</p>`,
-  })
-}
-
+// Invitations create a basic account. Staff authority is appointed separately.
+import { createClient } from "npm:@supabase/supabase-js@2.45.4";
+import nodemailer from "npm:nodemailer@6.9.16";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SITE_URL = Deno.env.get("SITE_URL")!;
+const WORKSPACE_EMAIL = Deno.env.get("WORKSPACE_EMAIL");
+const WORKSPACE_APP_PASSWORD = Deno.env.get("WORKSPACE_APP_PASSWORD");
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const reply = (status: number, body: Record<string, unknown>) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+const escapeHtml = (value: string) =>
+  value.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
+  );
 Deno.serve(async (req) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  }
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-
-  const body = (await req.json()) as RequestBody
-  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
-
-  // This call requires the caller to already be authenticated as National —
-  // enforced by checking their own profile before doing anything.
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-  const callerClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  })
-  const {
-    data: { user: caller },
-  } = await callerClient.auth.getUser()
-  if (!caller) {
-    return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-  const { data: callerProfile } = await supabase.from('profiles').select('role').eq('id', caller.id).single()
-  if (!callerProfile || !['national_commander', 'national_staff'].includes(callerProfile.role)) {
-    return new Response(JSON.stringify({ error: 'Only National accounts can invite new users.' }), {
-      status: 403,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
-  // generateLink (type: 'invite') creates the auth user and hands back a
-  // magic-link URL, but — unlike inviteUserByEmail — never sends any email
-  // itself. That's the whole point: it lets us send our own email instead.
-  const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-    type: 'invite',
-    email: body.email,
-    options: { redirectTo: `${SITE_URL}/login` },
-  })
-  if (linkError || !linkData?.user) {
-    return new Response(JSON.stringify({ error: linkError?.message ?? 'Could not create the invite.' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
-  const { error: profileError } = await supabase.from('profiles').insert({
-    id: linkData.user.id,
-    full_name: body.full_name,
-    email: body.email,
-    role: body.role,
-    post_id: body.post_id,
-  })
-  if (profileError) {
-    return new Response(JSON.stringify({ error: `Invite created, but profile creation failed: ${profileError.message}` }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST")
+    return reply(405, { error: "Use POST to invite an account." });
   try {
-    await sendInviteEmail(body.email, body.full_name, linkData.properties.action_link)
-  } catch (emailError) {
-    return new Response(
-      JSON.stringify({ error: `Account created, but the invite email failed to send: ${(emailError as Error).message}` }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
+    if (!token)
+      return reply(401, { error: "Sign in again before inviting an account." });
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const {
+      data: { user: caller },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+    if (authError || !caller)
+      return reply(401, { error: "Sign in again before inviting an account." });
+    const { data: permitted, error: permissionError } = await supabase.rpc(
+      "cvoa_service_authorized",
+      { p_actor: caller.id, p_post: null, p_capability: "national" },
+    );
+    if (permissionError || !permitted)
+      return reply(403, { error: "National access administration required." });
+    const body = (await req.json()) as {
+      email?: string;
+      full_name?: string;
+      role?: string;
+      post_id?: string | null;
+      profile_id?: string;
+    };
+    if (body.profile_id) {
+      const { data: profile, error: lookupError } = await supabase
+        .from("profiles")
+        .select("id,full_name,email")
+        .eq("id", body.profile_id)
+        .single();
+      if (lookupError || !profile)
+        return reply(404, {
+          error: "Account profile not found. Review identity before sending.",
+        });
+      const { data: authAccount, error: accountError } =
+        await supabase.auth.admin.getUserById(profile.id);
+      if (
+        accountError ||
+        !authAccount?.user?.email ||
+        authAccount.user.email.trim().toLowerCase() !==
+          profile.email.trim().toLowerCase()
+      )
+        return reply(409, {
+          error:
+            "Account and login email differ. Review identity before sending a setup link.",
+        });
+      if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD)
+        return reply(503, {
+          error: "Configure Google Workspace email delivery before sending.",
+        });
+      const site = new URL(SITE_URL);
+      if (!["https:", "http:"].includes(site.protocol))
+        return reply(503, { error: "Configure SITE_URL for password setup." });
+      const { data: setup, error: setupError } =
+        await supabase.auth.admin.generateLink({
+          type: authAccount.user.email_confirmed_at ? "recovery" : "invite",
+          email: authAccount.user.email,
+          options: { redirectTo: new URL("/set-password", site).href },
+        });
+      if (
+        setupError ||
+        !setup?.properties?.action_link ||
+        setup.user?.id !== profile.id
+      )
+        return reply(409, {
+          error:
+            "Could not create a setup link for this account. No account permissions were changed.",
+        });
+      const link = setup.properties.action_link;
+      const transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: {
+          user: WORKSPACE_EMAIL,
+          pass: WORKSPACE_APP_PASSWORD.replace(/\s/g, ""),
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+      });
+      await transporter.sendMail({
+        from: `CVOA.ONE <${WORKSPACE_EMAIL}>`,
+        to: authAccount.user.email,
+        subject: "Your CVOA.ONE password setup link",
+        text: `Hi ${profile.full_name},\n\nSet up your password:\n\n${link}`,
+        html: `<p>Hi ${escapeHtml(profile.full_name)},</p><p><a href="${escapeHtml(link)}">Set up your password</a></p>`,
+      });
+      return reply(200, { success: true });
+    }
+    if (
+      typeof body.email !== "string" ||
+      !/^\S+@\S+\.\S+$/.test(body.email.trim()) ||
+      typeof body.full_name !== "string" ||
+      !body.full_name.trim() ||
+      body.full_name.length > 200
     )
+      return reply(400, { error: "Provide a name and valid email address." });
+    if (!["guest_applicant", "member"].includes(body.role ?? "guest_applicant"))
+      return reply(400, {
+        error:
+          "Invite a basic account, then review and assign staff authority in Accounts & Access.",
+      });
+    if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD)
+      return reply(503, {
+        error:
+          "Configure Google Workspace email delivery before creating this invitation.",
+      });
+    const site = new URL(SITE_URL);
+    if (!["https:", "http:"].includes(site.protocol))
+      return reply(503, { error: "Configure SITE_URL for password setup." });
+    const email = body.email.trim().toLowerCase();
+    const { data: linkData, error: linkError } =
+      await supabase.auth.admin.generateLink({
+        type: "invite",
+        email,
+        options: { redirectTo: new URL("/set-password", site).href },
+      });
+    if (linkError || !linkData?.user)
+      return reply(400, {
+        error:
+          linkError?.message ??
+          "Could not create invitation. If an account already exists, open its person record.",
+      });
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .insert({
+        id: linkData.user.id,
+        full_name: body.full_name.trim(),
+        email,
+        role: body.role ?? "guest_applicant",
+        post_id: body.post_id ?? null,
+      });
+    if (profileError)
+      return reply(500, {
+        error: `The auth account exists, but its profile needs review: ${profileError.message}`,
+      });
+    const link = linkData.properties.action_link;
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: {
+        user: WORKSPACE_EMAIL,
+        pass: WORKSPACE_APP_PASSWORD.replace(/\s/g, ""),
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+    });
+    try {
+      await transporter.sendMail({
+        from: `CVOA.ONE <${WORKSPACE_EMAIL}>`,
+        to: email,
+        subject: "Your CVOA.ONE account invitation",
+        text: `Hi ${body.full_name.trim()},\n\nSet your password to access CVOA.ONE:\n\n${link}`,
+        html: `<p>Hi ${escapeHtml(body.full_name.trim())},</p><p><a href="${escapeHtml(link)}">Set your password and access CVOA.ONE</a></p>`,
+      });
+    } catch {
+      return reply(502, {
+        error:
+          "Account created, but email delivery failed. Open the person record to review activation; no staff authority was granted.",
+      });
+    }
+    return reply(200, { success: true });
+  } catch {
+    return reply(500, {
+      error:
+        "Could not finish this invitation. Review the account directory before retrying.",
+    });
   }
-
-  return new Response(JSON.stringify({ success: true }), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  })
-})
+});

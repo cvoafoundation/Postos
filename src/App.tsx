@@ -54,6 +54,8 @@ const UserManagement = lazy(() => import('@/pages/admin/UserManagement'))
 const StateHome = lazy(() => import('@/pages/StateHome'))
 const MyApplications = lazy(() => import('@/pages/members/MyApplications'))
 const MembershipRequests = lazy(() => import('@/pages/members/MembershipRequests'))
+const ScopedPostOverview = lazy(() => import('@/pages/admin/ScopedPostOverview'))
+const StateMemberships = lazy(() => import('@/pages/admin/StateMemberships'))
 const Fundraising = lazy(() => import('@/pages/fundraising/Fundraising'))
 
 // Preserve older invitation emails that redirected to /login.
@@ -85,7 +87,7 @@ export default function App() {
 }
 
 function AuthenticatedApp() {
-  const { session, loading } = useAuth()
+  const { session, loading, accessSuspended, accessError, signOut } = useAuth()
 
   if (loading) {
     return (
@@ -99,11 +101,14 @@ function AuthenticatedApp() {
     return <Login />
   }
 
+  if (accessSuspended || accessError) return <div className="panel max-w-lg mx-auto mt-20 p-8"><h1 className="font-display text-2xl">{accessSuspended ? 'Account access suspended' : 'Access verification unavailable'}</h1><p className="text-sm text-muted my-4">{accessSuspended ? 'Contact National about restoring your workspace. Your membership record remains preserved.' : accessError}</p><button className="btn-ghost" onClick={signOut}>Sign out</button><button className="btn-gold ml-3" onClick={() => window.location.reload()}>Retry</button></div>
+
   return (
     <AppShell>
       <Suspense fallback={<div role="status" className="p-8 text-sm text-muted">Loading page…</div>}>
       <Routes>
         <Route path="/" element={<HomeRoute />} />
+        <Route path="/post-overview/:postId" element={<RoleGuard roles={['state_commander','post_commander','post_officer','delegate']}><ScopedPostOverview /></RoleGuard>} />
         <Route path="/member-home" element={<MemberHome />} />
         <Route path="/my-applications" element={<MyApplications />} />
         <Route path="/state" element={<RoleGuard roles={['state_commander']}><StateHome /></RoleGuard>} />
@@ -259,8 +264,8 @@ function AuthenticatedApp() {
         <Route
           path="/members"
           element={
-            <RoleGuard roles={['post_commander', 'post_officer']}>
-              <MembershipRoster />
+            <RoleGuard roles={['state_commander','post_commander', 'post_officer']}>
+              <RosterRoute />
             </RoleGuard>
           }
         />
@@ -333,7 +338,8 @@ function HomeRoute() {
   const { profile, isNational } = useAuth()
   if (isNational) return <Dashboard />
   if (profile?.role === 'state_commander') return <StateHome />
-  if (profile?.role === 'member' || profile?.role === 'delegate') return <MemberHome />
+  if (profile?.role === 'delegate') return <ScopedPostOverview />
+  if (profile?.role === 'member') return <MemberHome />
   if (profile?.role === 'ethics_tribunal') return <EthicsTribunalInbox />
   if (profile?.role === 'post_commander' || profile?.role === 'post_officer') return <PostHome />
   // Anything else — guest_applicant (not yet verified/promoted), delegate, or
@@ -354,4 +360,9 @@ function HomeRoute() {
       </div>
     </div>
   )
+}
+
+function RosterRoute() {
+  const { profile, isNational } = useAuth()
+  return !isNational && profile?.role === 'state_commander' ? <StateMemberships /> : <MembershipRoster />
 }

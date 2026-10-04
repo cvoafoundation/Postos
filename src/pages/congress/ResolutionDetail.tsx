@@ -19,6 +19,7 @@ import {
   type DebateResponseType,
 } from '@/lib/types'
 import { format, formatDistanceToNow } from 'date-fns'
+import StateVotingSummary from '@/components/access/StateVotingSummary'
 import { Upload, FileText, ThumbsUp, ThumbsDown, Trash2 } from 'lucide-react'
 
 function statusTone(status: string) {
@@ -54,6 +55,9 @@ export default function ResolutionDetail() {
   const [newComment, setNewComment] = useState('')
   const [responseType, setResponseType] = useState<DebateResponseType>('clarification')
   const [postingComment, setPostingComment] = useState(false)
+  const [voteTotals, setVoteTotals] = useState<{yes:number;no:number}|null>(null)
+  const [voteError, setVoteError] = useState<string|null>(null)
+  const [savingVote, setSavingVote] = useState(false)
   const [myVote, setMyVote] = useState<boolean | null>(null)
   const [myPreference, setMyPreference] = useState<boolean | null>(null)
   const [preferenceTally, setPreferenceTally] = useState<{ support: number; oppose: number } | null>(null)
@@ -62,19 +66,22 @@ export default function ResolutionDetail() {
   async function load() {
     if (!id) return
     setLoading(true)
-    const [resRes, amendRes, docRes, commentRes, voteRes, postsRes] = await Promise.all([
+    const [resRes, amendRes, docRes, commentRes, voteRes, postsRes, totalsRes] = await Promise.all([
       supabase.from('resolutions').select('*').eq('id', id).single(),
       supabase.from('resolution_amendments').select('*').eq('resolution_id', id).order('created_at', { ascending: false }),
       supabase.from('resolution_documents').select('*').eq('resolution_id', id).order('created_at', { ascending: false }),
       supabase.from('resolution_comments').select('*').eq('resolution_id', id).order('created_at', { ascending: true }),
       supabase.from('resolution_votes').select('vote, voter_post_id, voter_id').eq('resolution_id', id),
       supabase.from('posts').select('id, name'),
+      supabase.rpc('cvoa_vote_totals', { p_resolution: id }),
     ])
     setResolution((resRes.data as Resolution) ?? null)
     setAmendments((amendRes.data ?? []) as ResolutionAmendment[])
     setDocuments((docRes.data ?? []) as ResolutionDocument[])
     setComments((commentRes.data ?? []) as ResolutionComment[])
     setVotes((voteRes.data ?? []) as any[])
+    const totals = totalsRes.data?.[0]
+    setVoteTotals(totals ? {yes:Number(totals.support),no:Number(totals.oppose)} : null)
     const postMap: Record<string, string> = {}
     for (const p of (postsRes.data ?? []) as any[]) postMap[p.id] = p.name
     setPosts(postMap)
@@ -123,7 +130,7 @@ export default function ResolutionDetail() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  }, [id, profile?.post_id, isDelegate])
 
   async function advanceStatus(status: ResolutionStatus) {
     if (!resolution) return
@@ -150,28 +157,16 @@ export default function ResolutionDetail() {
   }
 
   async function castVote(vote: boolean) {
-    if (!resolution?.vote_type || !profile) return
-    const { data: existing } = await supabase
-      .from('resolution_votes')
-      .select('id')
-      .eq('resolution_id', resolution.id)
-      .eq('vote_type', resolution.vote_type)
-      .eq('voter_id', profile.id)
-      .single()
-
-    if (existing) {
-      await supabase.from('resolution_votes').update({ vote }).eq('id', (existing as any).id)
-    } else {
-      await supabase.from('resolution_votes').insert({
-        resolution_id: resolution.id,
-        vote_type: resolution.vote_type,
-        voter_id: profile.id,
-        voter_post_id: profile.post_id,
-        vote,
-      })
-    }
-    setMyVote(vote)
-    load()
+    if (!resolution?.vote_type || !profile || savingVote) return
+    setSavingVote(true); setVoteError(null)
+    try {
+      const { data: existing, error: lookupError } = await supabase.from('resolution_votes').select('id').eq('resolution_id', resolution.id).eq('vote_type', resolution.vote_type).eq('voter_id', profile.id).maybeSingle()
+      if (lookupError) throw lookupError
+      const result = existing ? await supabase.from('resolution_votes').update({ vote }).eq('id',existing.id).select('id').single() : await supabase.from('resolution_votes').insert({resolution_id:resolution.id,vote_type:resolution.vote_type,voter_id:profile.id,voter_post_id:profile.post_id,vote}).select('id').single()
+      if(result.error)throw result.error
+      setMyVote(vote)
+      await load()
+    }catch(error){setVoteError((error as {message?:string}).message??'Your vote was not saved. Please retry.')}finally{setSavingVote(false)}
   }
 
   // The "electoral college" mechanic — never counts toward the resolution
@@ -233,8 +228,8 @@ export default function ResolutionDetail() {
   if (loading) return <p className="text-sm text-muted">Loading…</p>
   if (!resolution) return <EmptyState title="Resolution not found" />
 
-  const yesVotes = votes.filter((v) => v.vote).length
-  const noVotes = votes.filter((v) => !v.vote).length
+  const yesVotes = voteTotals?.yes ?? votes.filter((v) => v.vote).length
+  const noVotes = voteTotals?.no ?? votes.filter((v) => !v.vote).length
   const totalVotes = votes.length
   const yesPct = totalVotes > 0 ? Math.round((yesVotes / totalVotes) * 100) : 0
 
@@ -424,10 +419,12 @@ export default function ResolutionDetail() {
         </div>
 
         <div className="space-y-6">
+          {voteError && <p role="alert" className="text-status-attention text-sm mb-3">{voteError}</p>}
+          {profile?.role === 'delegate' && profile.state && <StateVotingSummary resolutionId={resolution.id} state={profile.state}/>}
           {resolution.status === 'voting' && resolution.vote_type && (
             <div className="panel p-5">
               <div className="eyebrow mb-3">Cast Your Vote</div>
-              {(resolution.vote_type === 'delegate_vote' || resolution.vote_type === 'constitutional_amendment') && !isNational && !isDelegate ? (
+              {(resolution.vote_type === 'delegate_vote' || resolution.vote_type === 'constitutional_amendment') && !isDelegate ? (
                 <div>
                   <p className="text-xs text-muted mb-3">
                     This is a formal {resolution.vote_type === 'constitutional_amendment' ? 'constitutional amendment' : 'delegate'} vote —
@@ -461,7 +458,7 @@ export default function ResolutionDetail() {
               ) : (
                 <div className="grid grid-cols-2 gap-2 mb-4">
                   <button
-                    onClick={() => castVote(true)}
+                    disabled={savingVote} onClick={() => castVote(true)}
                     className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border ${
                       myVote === true ? 'bg-status-active text-base border-status-active' : 'border-hairline hover:border-status-active text-ink'
                     }`}
@@ -469,7 +466,7 @@ export default function ResolutionDetail() {
                     <ThumbsUp size={14} /> Support
                   </button>
                   <button
-                    onClick={() => castVote(false)}
+                    disabled={savingVote} onClick={() => castVote(false)}
                     className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border ${
                       myVote === false ? 'bg-status-attention text-base border-status-attention' : 'border-hairline hover:border-status-attention text-ink'
                     }`}
@@ -523,7 +520,7 @@ export default function ResolutionDetail() {
 
               {Object.keys(postBreakdown).length > 0 && (
                 <div className="border-t border-hairline mt-3 pt-3">
-                  <div className="eyebrow mb-2">By Post</div>
+                  <div className="eyebrow mb-2">Votes visible within your jurisdiction</div>
                   <div className="space-y-1">
                     {Object.entries(postBreakdown).map(([name, counts]) => (
                       <div key={name} className="flex justify-between text-xs">
