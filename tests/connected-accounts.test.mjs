@@ -1055,3 +1055,6 @@ test('URO delivery completion records actual accepted recipients without duplica
  await db.exec("set local role authenticated; select set_config('request.jwt.claim.role','authenticated',true)");
  const state=await uroState(s);assert.equal(state.notices.length,1);assert.equal(state.events.filter(e=>e.action==='NoticeDeliveryRecorded').length,1);await uroCommand(s,'agenda',{title:'Updated packet',classification:'discussion'});assert.notEqual(await rpc('select public.uro_prepare_notice($1) data',[s]),job);
 }));
+test('URO canceled vote ballots are preserved but never counted in a reopened vote',()=>as(national,async()=>{
+ const {s}=await uroSetup();await uroStart(s);const id=await uroMotion(s);await uroCommand(s,'vote',{id,choice:'yes'});await uroCommand(s,'cancel_vote',{id,reason:'Attendance correction'});await uroCommand(s,'stage',{state:'final_question'});await uroCommand(s,'open_vote',{id,method:'digital'});await uroCommand(s,'close_vote',{id,opportunity_confirmed:true});const state=await uroState(s),p=state.proposals[0];assert.equal(p.vote_round,2);assert.equal(p.result.yes,0);assert.equal(p.result.not_cast,3);assert.equal(p.status,'defeated');assert.equal(state.my_ballots.length,1);assert.equal(state.my_ballots[0].round,1);
+}));
