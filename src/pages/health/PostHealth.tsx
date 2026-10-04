@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -14,35 +14,85 @@ interface ScoredPost {
 
 export default function PostHealth() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'health' | 'forming'>('health')
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'forming' ? 'forming' : 'health'
+  const statusFilter = params.get('status') === 'charter_ready' ? 'charter_ready' : null
+  function setTab(next: 'health' | 'forming') {
+    setParams((previous) => {
+      const updated = new URLSearchParams(previous)
+      updated.set('tab', next)
+      updated.delete('status')
+      return updated
+    })
+  }
   const [scored, setScored] = useState<ScoredPost[]>([])
   const [formingPosts, setFormingPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const displayedFormingPosts = formingPosts.filter((p) => !statusFilter || p.status === statusFilter)
 
   useEffect(() => {
+    let active = true
     async function load() {
-      const { data: postsData } = await supabase.from('posts').select('*')
-      const allPosts = (postsData ?? []) as Post[]
+      setLoading(true)
+      setError(null)
+      const allPosts: Post[] = []
+      let total = Infinity
+      while (allPosts.length < total) {
+        let query = supabase
+          .from('posts')
+          .select('*', { count: 'exact' })
+          .order('id')
+          .range(allPosts.length, allPosts.length + 249)
+        if (tab === 'forming')
+          query = statusFilter ? query.eq('status', statusFilter) : query.neq('status', 'active_post')
+        const { data, error: fetchError, count } = await query
+        if (!active) return
+        if (fetchError) throw new Error(fetchError.message)
+        if (!data?.length) break
+        allPosts.push(...(data as Post[]))
+        total = count ?? allPosts.length
+      }
       const posts = allPosts.filter((p) => p.status === 'active_post')
       setFormingPosts(allPosts.filter((p) => p.status !== 'active_post'))
+      if (tab === 'forming') {
+        setLoading(false)
+        return
+      }
 
       const results = await Promise.all(
         posts.map(async (post) => {
           const currentYear = new Date().getFullYear()
-          const [foundingRes, sponsorsRes, meetingsRes, recruitsRes, membersRes, delegateRes, votesRes, sigsRes, reviewRes, serviceRes, txRes] =
-            await Promise.all([
-              supabase.from('founding_team_members').select('*').eq('post_id', post.id),
-              supabase.from('sponsors').select('*').eq('post_id', post.id),
-              supabase.from('meeting_records').select('meeting_date').eq('post_id', post.id),
-              supabase.from('recruits').select('*').eq('post_id', post.id),
-              supabase.from('members').select('*').eq('post_id', post.id),
-              supabase.from('congress_delegates').select('*').eq('post_id', post.id),
-              supabase.from('resolution_votes').select('id, voter_post_id').eq('voter_post_id', post.id),
-              supabase.from('governance_signatures').select('*').eq('post_id', post.id),
-              supabase.from('annual_reviews').select('*').eq('post_id', post.id).eq('review_year', currentYear).single(),
-              supabase.from('community_service_events').select('*').eq('post_id', post.id),
-              supabase.from('financial_transactions').select('*').eq('post_id', post.id),
-            ])
+          const [
+            foundingRes,
+            sponsorsRes,
+            meetingsRes,
+            recruitsRes,
+            membersRes,
+            delegateRes,
+            votesRes,
+            sigsRes,
+            reviewRes,
+            serviceRes,
+            txRes,
+          ] = await Promise.all([
+            supabase.from('founding_team_members').select('*').eq('post_id', post.id),
+            supabase.from('sponsors').select('*').eq('post_id', post.id),
+            supabase.from('meeting_records').select('meeting_date').eq('post_id', post.id),
+            supabase.from('recruits').select('*').eq('post_id', post.id),
+            supabase.from('members').select('*').eq('post_id', post.id),
+            supabase.from('congress_delegates').select('*').eq('post_id', post.id),
+            supabase.from('resolution_votes').select('id, voter_post_id').eq('voter_post_id', post.id),
+            supabase.from('governance_signatures').select('*').eq('post_id', post.id),
+            supabase
+              .from('annual_reviews')
+              .select('*')
+              .eq('post_id', post.id)
+              .eq('review_year', currentYear)
+              .single(),
+            supabase.from('community_service_events').select('*').eq('post_id', post.id),
+            supabase.from('financial_transactions').select('*').eq('post_id', post.id),
+          ])
 
           const result = computePostHealth({
             post,
@@ -63,12 +113,21 @@ export default function PostHealth() {
         })
       )
 
+      if (!active) return
       results.sort((a, b) => a.result.score - b.result.score)
       setScored(results)
       setLoading(false)
     }
-    load()
-  }, [])
+    load().catch((e) => {
+      if (active) {
+        setError(e instanceof Error ? e.message : 'Could not load posts.')
+        setLoading(false)
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [tab, statusFilter])
 
   const struggling = scored.filter((s) => s.result.overall === 'red')
 
@@ -105,7 +164,19 @@ export default function PostHealth() {
         </button>
       </div>
 
-      {tab === 'health' ? (
+      {statusFilter && tab === 'forming' && (
+        <div className="flex justify-between items-center mb-4 text-sm">
+          <span>Showing charter-ready posts</span>
+          <button className="btn-ghost" onClick={() => setTab('forming')}>
+            Show all forming posts
+          </button>
+        </div>
+      )}
+      {error ? (
+        <p role="alert" className="text-status-attention">
+          {error}
+        </p>
+      ) : tab === 'health' ? (
         loading ? (
           <p className="text-sm text-muted">Computing health scores…</p>
         ) : scored.length === 0 ? (
@@ -141,14 +212,24 @@ export default function PostHealth() {
                 </thead>
                 <tbody>
                   {scored.map(({ post, result }) => (
-                    <tr key={post.id} onClick={() => navigate(`/health/${post.id}`)} className="cursor-pointer hover:bg-surface/60">
+                    <tr
+                      key={post.id}
+                      onClick={() => navigate(`/health/${post.id}`)}
+                      className="cursor-pointer hover:bg-surface/60"
+                    >
                       <td className="table-cell">{post.name}</td>
                       <td className="table-cell font-mono">{post.state}</td>
                       <td className="table-cell font-mono text-gold">{result.score}</td>
                       <td className="table-cell">
                         <StatusBadge
                           label={result.overall}
-                          tone={result.overall === 'green' ? 'active' : result.overall === 'yellow' ? 'developing' : 'attention'}
+                          tone={
+                            result.overall === 'green'
+                              ? 'active'
+                              : result.overall === 'yellow'
+                                ? 'developing'
+                                : 'attention'
+                          }
                         />
                       </td>
                       <td className="table-cell text-muted">{post.charter_date ?? '—'}</td>
@@ -159,8 +240,19 @@ export default function PostHealth() {
             </div>
           </>
         )
-      ) : formingPosts.length === 0 ? (
-        <EmptyState title="Nothing forming right now" hint="Posts show up here once an application advances to Founding Team Building." />
+      ) : loading ? (
+        <p role="status" className="text-sm text-muted">
+          Loading forming posts…
+        </p>
+      ) : displayedFormingPosts.length === 0 ? (
+        <EmptyState
+          title={statusFilter ? 'No charter-ready posts' : 'Nothing forming right now'}
+          hint={
+            statusFilter
+              ? 'Clear the filter to see other forming posts.'
+              : 'Posts appear here as their application progresses.'
+          }
+        />
       ) : (
         <div className="panel overflow-hidden">
           <table className="w-full">
@@ -173,8 +265,12 @@ export default function PostHealth() {
               </tr>
             </thead>
             <tbody>
-              {formingPosts.map((post) => (
-                <tr key={post.id} onClick={() => navigate(`/health/${post.id}`)} className="cursor-pointer hover:bg-surface/60">
+              {displayedFormingPosts.map((post) => (
+                <tr
+                  key={post.id}
+                  onClick={() => navigate(`/health/${post.id}`)}
+                  className="cursor-pointer hover:bg-surface/60"
+                >
                   <td className="table-cell">{post.name}</td>
                   <td className="table-cell font-mono">{post.state}</td>
                   <td className="table-cell">
