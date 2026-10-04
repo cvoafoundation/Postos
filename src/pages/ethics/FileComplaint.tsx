@@ -9,13 +9,31 @@ import { format } from 'date-fns'
 import { ShieldAlert } from 'lucide-react'
 
 const CATEGORIES: { value: EthicsComplaintCategory; label: string }[] = [
-  { value: 'ethical_misconduct', label: 'Ethical misconduct or dishonorable behavior' },
-  { value: 'abuse_of_authority', label: 'Abuse of authority or dereliction of duty' },
-  { value: 'bylaws_violation', label: 'Violation of bylaws, oath of office, or code of conduct' },
+  {
+    value: 'ethical_misconduct',
+    label: 'Ethical misconduct or dishonorable behavior',
+  },
+  {
+    value: 'abuse_of_authority',
+    label: 'Abuse of authority or dereliction of duty',
+  },
+  {
+    value: 'bylaws_violation',
+    label: 'Violation of bylaws, oath of office, or code of conduct',
+  },
   { value: 'gross_negligence', label: 'Gross negligence in official duties' },
-  { value: 'financial_impropriety', label: 'Financial mismanagement, fraud, or impropriety' },
-  { value: 'discrimination_harassment', label: 'Discriminatory or harassing conduct' },
-  { value: 'retaliation', label: 'Retaliation against a whistleblower or complainant' },
+  {
+    value: 'financial_impropriety',
+    label: 'Financial mismanagement, fraud, or impropriety',
+  },
+  {
+    value: 'discrimination_harassment',
+    label: 'Discriminatory or harassing conduct',
+  },
+  {
+    value: 'retaliation',
+    label: 'Retaliation against a whistleblower or complainant',
+  },
   { value: 'other', label: 'Other' },
 ]
 
@@ -54,10 +72,7 @@ export default function FileComplaint() {
   function loadMine() {
     if (!profile) return
     supabase
-      .from('ethics_complaints')
-      .select('*')
-      .eq('complainant_id', profile.id)
-      .order('created_at', { ascending: false })
+      .rpc('cvoa_my_ethics_complaints')
       .then(({ data }) => setMyComplaints((data ?? []) as EthicsComplaint[]))
   }
 
@@ -68,7 +83,7 @@ export default function FileComplaint() {
     setSaving(true)
     setError(null)
     const { error } = await supabase.from('ethics_complaints').insert({
-      complainant_id: form.anonymous ? null : profile?.id ?? null,
+      complainant_id: form.anonymous ? null : (profile?.id ?? null),
       filed_anonymously: form.anonymous,
       respondent_name: form.respondent_name,
       respondent_context: form.respondent_context || null,
@@ -81,7 +96,13 @@ export default function FileComplaint() {
       return
     }
     setSubmitted(true)
-    setForm({ respondent_name: '', respondent_context: '', category: 'ethical_misconduct', description: '', anonymous: false })
+    setForm({
+      respondent_name: '',
+      respondent_context: '',
+      category: 'ethical_misconduct',
+      description: '',
+      anonymous: false,
+    })
     loadMine()
   }
 
@@ -92,15 +113,18 @@ export default function FileComplaint() {
       <div className="panel p-4 mb-6 flex items-start gap-3 border-gold/30">
         <ShieldAlert size={18} className="text-gold shrink-0 mt-0.5" />
         <p className="text-sm text-muted">
-          This goes directly and only to the Ethics Tribunal — not to National Command, not to your post's
-          leadership. Nobody else can see what you submit here, including who filed it if you choose to file
-          anonymously.
+          Your complaint is reviewed by the independent Ethics Tribunal. National and post staff cannot open
+          the case through their staff access. Your status view excludes internal deliberations. Anonymous
+          reports omit your account identity from the case record; identifying details in your narrative or
+          technical service logs may still identify you. Tribunal-authorized disclosures follow Article X.
         </p>
       </div>
 
       {submitted && (
         <div className="panel p-4 mb-6 border-status-active/40">
-          <p className="text-sm text-status-active">Complaint submitted. The Ethics Tribunal will review it.</p>
+          <p className="text-sm text-status-active">
+            Complaint submitted. The Ethics Tribunal will review it.
+          </p>
         </div>
       )}
 
@@ -119,7 +143,11 @@ export default function FileComplaint() {
             value={form.respondent_context}
             onChange={(e) => update('respondent_context', e.target.value)}
           />
-          <select className="input-field" value={form.category} onChange={(e) => update('category', e.target.value as EthicsComplaintCategory)}>
+          <select
+            className="input-field"
+            value={form.category}
+            onChange={(e) => update('category', e.target.value as EthicsComplaintCategory)}
+          >
             {CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
@@ -135,8 +163,13 @@ export default function FileComplaint() {
             onChange={(e) => update('description', e.target.value)}
           />
           <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-            <input type="checkbox" checked={form.anonymous} onChange={(e) => update('anonymous', e.target.checked)} />
-            File this anonymously — the Tribunal won't know it was you, and you won't be able to check its status afterward
+            <input
+              type="checkbox"
+              checked={form.anonymous}
+              onChange={(e) => update('anonymous', e.target.checked)}
+            />
+            File this anonymously — the Tribunal won't know it was you, and you won't be able to check its
+            status afterward
           </label>
           {error && <p className="text-status-attention text-sm">{error}</p>}
           <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">

@@ -8,9 +8,6 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import {
   RESOLUTION_STATUS_LABELS,
-  RESOLUTION_STATUS_ORDER,
-  VOTE_TYPE_LABELS,
-  type CongressVoteType,
   type Resolution,
   type ResolutionAmendment,
   type ResolutionComment,
@@ -19,7 +16,7 @@ import {
   type DebateResponseType,
 } from '@/lib/types'
 import { format, formatDistanceToNow } from 'date-fns'
-import { Upload, FileText, ThumbsUp, ThumbsDown, Trash2 } from 'lucide-react'
+import { Upload, FileText, ThumbsUp, ThumbsDown } from 'lucide-react'
 
 function statusTone(status: string) {
   if (status === 'passed' || status === 'implemented') return 'active' as const
@@ -44,19 +41,35 @@ export default function ResolutionDetail() {
   const [amendments, setAmendments] = useState<ResolutionAmendment[]>([])
   const [documents, setDocuments] = useState<ResolutionDocument[]>([])
   const [comments, setComments] = useState<ResolutionComment[]>([])
-  const [votes, setVotes] = useState<{ vote: boolean; voter_post_id: string | null; voter_id: string | null }[]>([])
+  const [votes, setVotes] = useState<
+    { vote: boolean; voter_post_id: string | null; voter_id: string | null }[]
+  >([])
   const [posts, setPosts] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   const [showAmend, setShowAmend] = useState(false)
   const [showVoteSetup, setShowVoteSetup] = useState(false)
+  const [isPresiding, setIsPresiding] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [ballot, setBallot] = useState<{
+    closed_at: string | null
+    closes_at: string
+    result: string | null
+    motion: string
+    active_chapters: number
+    present_chapters: number | null
+  } | null>(null)
+  const [savingVote, setSavingVote] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [responseType, setResponseType] = useState<DebateResponseType>('clarification')
   const [postingComment, setPostingComment] = useState(false)
   const [myVote, setMyVote] = useState<boolean | null>(null)
   const [myPreference, setMyPreference] = useState<boolean | null>(null)
-  const [preferenceTally, setPreferenceTally] = useState<{ support: number; oppose: number } | null>(null)
+  const [preferenceTally, setPreferenceTally] = useState<{
+    support: number
+    oppose: number
+  } | null>(null)
   const [savingPreference, setSavingPreference] = useState(false)
 
   async function load() {
@@ -64,17 +77,47 @@ export default function ResolutionDetail() {
     setLoading(true)
     const [resRes, amendRes, docRes, commentRes, voteRes, postsRes] = await Promise.all([
       supabase.from('resolutions').select('*').eq('id', id).single(),
-      supabase.from('resolution_amendments').select('*').eq('resolution_id', id).order('created_at', { ascending: false }),
-      supabase.from('resolution_documents').select('*').eq('resolution_id', id).order('created_at', { ascending: false }),
-      supabase.from('resolution_comments').select('*').eq('resolution_id', id).order('created_at', { ascending: true }),
-      supabase.from('resolution_votes').select('vote, voter_post_id, voter_id').eq('resolution_id', id),
+      supabase
+        .from('resolution_amendments')
+        .select('*')
+        .eq('resolution_id', id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('resolution_documents')
+        .select('*')
+        .eq('resolution_id', id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('resolution_comments')
+        .select('*')
+        .eq('resolution_id', id)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('resolution_votes')
+        .select('vote, voter_post_id, voter_id, vote_type')
+        .eq('resolution_id', id),
       supabase.from('posts').select('id, name'),
     ])
     setResolution((resRes.data as Resolution) ?? null)
     setAmendments((amendRes.data ?? []) as ResolutionAmendment[])
     setDocuments((docRes.data ?? []) as ResolutionDocument[])
     setComments((commentRes.data ?? []) as ResolutionComment[])
-    setVotes((voteRes.data ?? []) as any[])
+    setVotes(
+      (voteRes.data ?? []).filter(
+        (v) => (v as { vote_type?: string }).vote_type === (resRes.data as Resolution | null)?.vote_type
+      ) as any[]
+    )
+    const [office, record] = await Promise.all([
+      supabase.rpc('cvoa_is_congress_presiding'),
+      supabase
+        .from('congress_ballots')
+        .select('closed_at,closes_at,result,motion,active_chapters,present_chapters')
+        .eq('resolution_id', id)
+        .maybeSingle(),
+    ])
+    setIsPresiding(office.data === true)
+    setBallot(record.data)
+    setActionError(resRes.error?.message ?? record.error?.message ?? null)
     const postMap: Record<string, string> = {}
     for (const p of (postsRes.data ?? []) as any[]) postMap[p.id] = p.name
     setPosts(postMap)
@@ -113,7 +156,10 @@ export default function ResolutionDetail() {
           p_post_id: profile.post_id,
         })
         if (tally && tally.length > 0) {
-          setPreferenceTally({ support: Number(tally[0].support_count), oppose: Number(tally[0].oppose_count) })
+          setPreferenceTally({
+            support: Number(tally[0].support_count),
+            oppose: Number(tally[0].oppose_count),
+          })
         }
       }
     }
@@ -125,53 +171,50 @@ export default function ResolutionDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  async function advanceStatus(status: ResolutionStatus) {
+  async function certifyResult() {
     if (!resolution) return
-    if (status === 'voting') {
-      setShowVoteSetup(true)
-      return
-    }
-    await supabase.from('resolutions').update({ status }).eq('id', resolution.id)
-    load()
-  }
-
-  async function deleteResolution() {
-    if (!resolution) return
-    const confirmed = window.confirm(
-      `Permanently delete "${resolution.title}"? This removes the resolution and everything tied to it — amendments, debate, votes, documents. This cannot be undone.`
-    )
-    if (!confirmed) return
-    const { error } = await supabase.from('resolutions').delete().eq('id', resolution.id)
+    setSavingVote(true)
+    const { error } = await supabase.rpc('cvoa_close_congress_ballot', {
+      p_resolution: resolution.id,
+    })
+    setSavingVote(false)
     if (error) {
-      window.alert(`Couldn't delete: ${error.message}`)
+      setActionError(error.message)
       return
     }
-    navigate('/congress')
+    void load()
   }
-
   async function castVote(vote: boolean) {
     if (!resolution?.vote_type || !profile) return
-    const { data: existing } = await supabase
-      .from('resolution_votes')
-      .select('id')
-      .eq('resolution_id', resolution.id)
-      .eq('vote_type', resolution.vote_type)
-      .eq('voter_id', profile.id)
-      .single()
-
-    if (existing) {
-      await supabase.from('resolution_votes').update({ vote }).eq('id', (existing as any).id)
-    } else {
-      await supabase.from('resolution_votes').insert({
+    setSavingVote(true)
+    setActionError(null)
+    if (['delegate_vote', 'constitutional_amendment'].includes(resolution.vote_type)) {
+      const { error } = await supabase.rpc('cvoa_congress_check_in', {
+        p_resolution: resolution.id,
+      })
+      if (error) {
+        setActionError(error.message)
+        setSavingVote(false)
+        return
+      }
+    }
+    const { error } = await supabase.from('resolution_votes').upsert(
+      {
         resolution_id: resolution.id,
         vote_type: resolution.vote_type,
         voter_id: profile.id,
         voter_post_id: profile.post_id,
         vote,
-      })
+      },
+      { onConflict: 'resolution_id,vote_type,voter_id' }
+    )
+    setSavingVote(false)
+    if (error) {
+      setActionError(error.message)
+      return
     }
     setMyVote(vote)
-    load()
+    void load()
   }
 
   // The "electoral college" mechanic — never counts toward the resolution
@@ -179,7 +222,7 @@ export default function ResolutionDetail() {
   async function castPreference(preference: boolean) {
     if (!resolution || !profile?.post_id) return
     setSavingPreference(true)
-    await supabase.from('resolution_member_preferences').upsert(
+    const { error } = await supabase.from('resolution_member_preferences').upsert(
       {
         resolution_id: resolution.id,
         post_id: profile.post_id,
@@ -190,19 +233,27 @@ export default function ResolutionDetail() {
       { onConflict: 'resolution_id,member_profile_id' }
     )
     setSavingPreference(false)
+    if (error) {
+      setActionError(error.message)
+      return
+    }
     setMyPreference(preference)
   }
 
   async function postComment() {
     if (!newComment.trim() || !resolution) return
     setPostingComment(true)
-    await supabase.from('resolution_comments').insert({
+    const { error } = await supabase.from('resolution_comments').insert({
       resolution_id: resolution.id,
       author_id: profile?.id ?? null,
       response_type: responseType,
       body: newComment.trim(),
     })
     setPostingComment(false)
+    if (error) {
+      setActionError(error.message)
+      return
+    }
     setNewComment('')
     load()
   }
@@ -249,12 +300,16 @@ export default function ResolutionDetail() {
   const topLevelComments = comments.filter((c) => !c.parent_comment_id)
   const repliesFor = (parentId: string) => comments.filter((c) => c.parent_comment_id === parentId)
 
-  const currentIndex = RESOLUTION_STATUS_ORDER.indexOf(resolution.status)
-  const nextStatus = RESOLUTION_STATUS_ORDER[currentIndex + 1]
-
+  const voteOpen =
+    resolution.status === 'voting' &&
+    !!resolution.voting_closes_at &&
+    new Date(resolution.voting_closes_at) > new Date()
   return (
     <div>
-      <button onClick={() => navigate('/congress')} className="text-xs font-mono text-muted hover:text-gold mb-4">
+      <button
+        onClick={() => navigate('/congress')}
+        className="text-xs font-mono text-muted hover:text-gold mb-4"
+      >
         ← Back to Veterans Congress
       </button>
 
@@ -263,24 +318,60 @@ export default function ResolutionDetail() {
         title={resolution.title}
         action={
           <div className="flex items-center gap-3">
-            {isNational && nextStatus && (
-              <button onClick={() => advanceStatus(nextStatus)} className="btn-gold">
-                Advance to {RESOLUTION_STATUS_LABELS[nextStatus]} →
-              </button>
-            )}
-            {isNational && (
-              <button onClick={deleteResolution} className="text-xs text-muted hover:text-status-attention flex items-center gap-1.5">
-                <Trash2 size={13} /> Delete
+            {isPresiding &&
+              !ballot &&
+              ['draft', 'under_review', 'committee_review', 'discussion'].includes(resolution.status) && (
+                <button onClick={() => setShowVoteSetup(true)} className="btn-gold">
+                  Open formal Congress ballot
+                </button>
+              )}
+            {isPresiding && ballot && !ballot.closed_at && new Date(ballot.closes_at) <= new Date() && (
+              <button disabled={savingVote} className="btn-gold" onClick={certifyResult}>
+                Certify Congress result
               </button>
             )}
           </div>
         }
       />
 
+      {actionError && (
+        <p role="alert" className="text-status-attention mb-4">
+          {actionError}
+        </p>
+      )}
+      <div className="panel p-4 mb-5 text-sm">
+        <p>
+          Congress deliberates and adopts measures. The NCC records executive ratification and implementation
+          under the applicable bylaw provision.
+        </p>
+        {ballot && (
+          <p className="text-muted mt-2">
+            {ballot.motion.replaceAll('_', ' ')} · Deadline{' '}
+            {format(new Date(ballot.closes_at), 'MMM d, yyyy p')} ·{' '}
+            {ballot.result?.replaceAll('_', ' ') ?? 'Ballot open / awaiting certification'}
+          </p>
+        )}
+        {(resolution as Resolution & { decision_record?: string }).decision_record && (
+          <p className="text-xs mt-2">
+            {(resolution as Resolution & { decision_record?: string }).decision_record}
+          </p>
+        )}
+        {ballot?.result === 'no_quorum' && (
+          <p className="text-status-attention mt-2">
+            No valid decision was made. Preserve this ballot record and introduce a new measure for the next
+            duly convened vote.
+          </p>
+        )}
+      </div>
       <div className="flex items-center gap-3 mb-6">
-        <StatusBadge label={RESOLUTION_STATUS_LABELS[resolution.status]} tone={statusTone(resolution.status)} />
+        <StatusBadge
+          label={RESOLUTION_STATUS_LABELS[resolution.status]}
+          tone={statusTone(resolution.status)}
+        />
         <StatusBadge label={resolution.category.replaceAll('_', ' ')} tone="neutral" />
-        {resolution.vote_type && <StatusBadge label={VOTE_TYPE_LABELS[resolution.vote_type]} tone="developing" />}
+        {resolution.vote_type && (
+          <StatusBadge label={resolution.vote_type.replaceAll('_', ' ')} tone="developing" />
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -308,8 +399,15 @@ export default function ResolutionDetail() {
             <div className="panel p-5">
               <div className="eyebrow mb-2">Financial Impact</div>
               <div className="text-sm">
-                <div>Cost: {resolution.financial_impact_cost != null ? `$${resolution.financial_impact_cost.toLocaleString()}` : '—'}</div>
-                <div className="text-muted mt-1">Funding: {resolution.financial_impact_funding_source ?? '—'}</div>
+                <div>
+                  Cost:{' '}
+                  {resolution.financial_impact_cost != null
+                    ? `$${resolution.financial_impact_cost.toLocaleString()}`
+                    : '—'}
+                </div>
+                <div className="text-muted mt-1">
+                  Funding: {resolution.financial_impact_funding_source ?? '—'}
+                </div>
               </div>
             </div>
             <div className="panel p-5">
@@ -334,7 +432,12 @@ export default function ResolutionDetail() {
               <ul className="space-y-1.5">
                 {documents.map((d) => (
                   <li key={d.id}>
-                    <a href={docUrl(d.storage_path)} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-gold hover:text-gold-bright">
+                    <a
+                      href={docUrl(d.storage_path)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-2 text-sm text-gold hover:text-gold-bright"
+                    >
                       <FileText size={14} /> {d.title}
                     </a>
                   </li>
@@ -346,9 +449,12 @@ export default function ResolutionDetail() {
           <div className="panel p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="eyebrow">Amendment History</div>
-              {isNational && (
-                <button onClick={() => setShowAmend(true)} className="text-xs text-gold hover:text-gold-bright">
-                  + Add Amendment
+              {(isDelegate || isNational) && (
+                <button
+                  onClick={() => setShowAmend(true)}
+                  className="text-xs text-gold hover:text-gold-bright"
+                >
+                  + Propose Amendment
                 </button>
               )}
             </div>
@@ -360,7 +466,9 @@ export default function ResolutionDetail() {
                   <div key={a.id} className="border-l-2 border-gold/40 pl-3">
                     <p className="text-sm text-ink">{a.amendment_summary}</p>
                     <p className="text-[11px] text-muted font-mono mt-0.5">
-                      {formatDistanceToNow(new Date(a.created_at), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(a.created_at), {
+                        addSuffix: true,
+                      })}
                     </p>
                   </div>
                 ))}
@@ -402,7 +510,9 @@ export default function ResolutionDetail() {
                     <div className="flex items-center gap-2 mb-1">
                       <StatusBadge label={RESPONSE_LABELS[c.response_type]} tone="neutral" />
                       <span className="text-[11px] text-muted font-mono">
-                        {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(c.created_at), {
+                          addSuffix: true,
+                        })}
                       </span>
                     </div>
                     <p className="text-sm text-ink">{c.body}</p>
@@ -424,54 +534,89 @@ export default function ResolutionDetail() {
         </div>
 
         <div className="space-y-6">
-          {resolution.status === 'voting' && resolution.vote_type && (
+          {voteOpen && resolution.vote_type && (
             <div className="panel p-5">
               <div className="eyebrow mb-3">Cast Your Vote</div>
-              {(resolution.vote_type === 'delegate_vote' || resolution.vote_type === 'constitutional_amendment') && !isNational && !isDelegate ? (
+              {isDelegate && (
+                <button
+                  disabled={savingVote}
+                  className="btn-ghost mb-3"
+                  onClick={async () => {
+                    setSavingVote(true)
+                    const { error } = await supabase.rpc('cvoa_congress_check_in', {
+                      p_resolution: resolution.id,
+                    })
+                    setSavingVote(false)
+                    if (error) setActionError(error.message)
+                    else setActionError(null)
+                  }}
+                >
+                  Record attendance without casting a vote
+                </button>
+              )}
+              {(resolution.vote_type === 'delegate_vote' ||
+                resolution.vote_type === 'constitutional_amendment') &&
+              !isDelegate ? (
                 <div>
                   <p className="text-xs text-muted mb-3">
-                    This is a formal {resolution.vote_type === 'constitutional_amendment' ? 'constitutional amendment' : 'delegate'} vote —
-                    only your post's designated delegate casts the vote that actually counts. But you can still show
-                    them how you'd vote — it's anonymous, non-binding, and only your own delegate sees the tally.
+                    This is a formal{' '}
+                    {resolution.vote_type === 'constitutional_amendment'
+                      ? 'constitutional amendment'
+                      : 'delegate'}{' '}
+                    vote — only currently seated, certified delegates cast the formal ballots. But you can
+                    still show them how you'd vote — it's anonymous, non-binding, and only your own delegate
+                    sees the tally.
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => castPreference(true)}
-                      disabled={savingPreference}
+                      disabled={savingPreference || !profile?.post_id}
                       className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border disabled:opacity-50 ${
-                        myPreference === true ? 'bg-status-active text-base border-status-active' : 'border-hairline hover:border-status-active text-ink'
+                        myPreference === true
+                          ? 'bg-status-active text-base border-status-active'
+                          : 'border-hairline hover:border-status-active text-ink'
                       }`}
                     >
                       <ThumbsUp size={14} /> Support
                     </button>
                     <button
                       onClick={() => castPreference(false)}
-                      disabled={savingPreference}
+                      disabled={savingPreference || !profile?.post_id}
                       className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border disabled:opacity-50 ${
-                        myPreference === false ? 'bg-status-attention text-base border-status-attention' : 'border-hairline hover:border-status-attention text-ink'
+                        myPreference === false
+                          ? 'bg-status-attention text-base border-status-attention'
+                          : 'border-hairline hover:border-status-attention text-ink'
                       }`}
                     >
                       <ThumbsDown size={14} /> Oppose
                     </button>
                   </div>
                   {myPreference !== null && (
-                    <p className="text-[11px] text-muted mt-2">Your delegate can see this reflected in their post's tally, anonymously.</p>
+                    <p className="text-[11px] text-muted mt-2">
+                      Your delegate can see this reflected in their post's tally, anonymously.
+                    </p>
                   )}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2 mb-4">
                   <button
+                    disabled={savingVote}
                     onClick={() => castVote(true)}
                     className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border ${
-                      myVote === true ? 'bg-status-active text-base border-status-active' : 'border-hairline hover:border-status-active text-ink'
+                      myVote === true
+                        ? 'bg-status-active text-base border-status-active'
+                        : 'border-hairline hover:border-status-active text-ink'
                     }`}
                   >
                     <ThumbsUp size={14} /> Support
                   </button>
                   <button
+                    disabled={savingVote}
                     onClick={() => castVote(false)}
                     className={`flex items-center justify-center gap-2 rounded-sm py-2 text-sm border ${
-                      myVote === false ? 'bg-status-attention text-base border-status-attention' : 'border-hairline hover:border-status-attention text-ink'
+                      myVote === false
+                        ? 'bg-status-attention text-base border-status-attention'
+                        : 'border-hairline hover:border-status-attention text-ink'
                     }`}
                   >
                     <ThumbsDown size={14} /> Oppose
@@ -479,7 +624,8 @@ export default function ResolutionDetail() {
                 </div>
               )}
 
-              {(resolution.vote_type === 'delegate_vote' || resolution.vote_type === 'constitutional_amendment') &&
+              {(resolution.vote_type === 'delegate_vote' ||
+                resolution.vote_type === 'constitutional_amendment') &&
                 (isDelegate || isNational) &&
                 preferenceTally &&
                 preferenceTally.support + preferenceTally.oppose > 0 && (
@@ -492,15 +638,17 @@ export default function ResolutionDetail() {
                     <div className="h-2 bg-surface rounded-full overflow-hidden mb-2">
                       <div
                         className="h-full bg-status-active"
-                        style={{ width: `${(preferenceTally.support / (preferenceTally.support + preferenceTally.oppose)) * 100}%` }}
+                        style={{
+                          width: `${(preferenceTally.support / (preferenceTally.support + preferenceTally.oppose)) * 100}%`,
+                        }}
                       />
                     </div>
                     <p className="text-[11px] text-gold">
                       {preferenceTally.support > preferenceTally.oppose
                         ? 'Your members lean toward supporting this — how you vote is still your call.'
                         : preferenceTally.oppose > preferenceTally.support
-                        ? 'Your members lean toward opposing this — how you vote is still your call.'
-                        : "Your members are evenly split — how you vote is still your call."}
+                          ? 'Your members lean toward opposing this — how you vote is still your call.'
+                          : 'Your members are evenly split — how you vote is still your call.'}
                     </p>
                   </div>
                 )}
@@ -589,20 +737,23 @@ function AmendmentModal({
 
   async function handleSave() {
     setSaving(true)
-    await supabase.from('resolution_amendments').insert({
+    const { error } = await supabase.from('resolution_amendments').insert({
       resolution_id: resolution.id,
       amended_by: profile?.id ?? null,
       amendment_summary: summary,
       previous_body: resolution.body,
       new_body: newBody,
     })
-    await supabase.from('resolutions').update({ body: newBody }).eq('id', resolution.id)
     setSaving(false)
+    if (error) {
+      window.alert(error.message)
+      return
+    }
     onSaved()
   }
 
   return (
-    <Modal title="Add Amendment" onClose={onClose}>
+    <Modal title="Propose Amendment" onClose={onClose}>
       <div className="space-y-3">
         <input
           placeholder="Summary of what changed"
@@ -617,10 +768,15 @@ function AmendmentModal({
           onChange={(e) => setNewBody(e.target.value)}
         />
         <p className="text-[11px] text-muted">
-          The previous text is preserved permanently in the amendment history — nothing is deleted.
+          This records proposed text for consideration. The original measure and ballot text remain unchanged.
+          Adoption of revised text requires the applicable congressional procedure.
         </p>
-        <button onClick={handleSave} disabled={saving || !summary} className="btn-gold w-full disabled:opacity-50">
-          {saving ? 'Saving…' : 'Save Amendment'}
+        <button
+          onClick={handleSave}
+          disabled={saving || !summary}
+          className="btn-gold w-full disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Record Proposed Amendment'}
         </button>
       </div>
     </Modal>
@@ -636,50 +792,76 @@ function VoteSetupModal({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [voteType, setVoteType] = useState<CongressVoteType>('informal_poll')
-  const [threshold, setThreshold] = useState('0.5')
-  const [saving, setSaving] = useState(false)
-
-  async function handleSave() {
+  const [motion, setMotion] = useState(resolution.category === 'bylaws' ? 'bylaws' : 'ordinary'),
+    [closes, setCloses] = useState(''),
+    [reference, setReference] = useState(''),
+    [saving, setSaving] = useState(false),
+    [error, setError] = useState<string | null>(null)
+  async function open() {
     setSaving(true)
-    await supabase
-      .from('resolutions')
-      .update({
-        status: 'voting',
-        vote_type: voteType,
-        supermajority_threshold: voteType === 'constitutional_amendment' ? Number(threshold) : null,
-        voting_opens_at: new Date().toISOString(),
-      })
-      .eq('id', resolution.id)
+    const result = await supabase.rpc('cvoa_open_congress_ballot', {
+      p_resolution: resolution.id,
+      p_closes: new Date(closes).toISOString(),
+      p_motion: motion,
+      p_reference: reference,
+    })
     setSaving(false)
+    if (result.error) {
+      setError(result.error.message)
+      return
+    }
     onSaved()
   }
-
   return (
-    <Modal title="Open for Voting" onClose={onClose}>
+    <Modal title="Open formal Congress ballot" onClose={onClose}>
       <div className="space-y-3">
-        <div>
-          <label className="eyebrow block mb-1.5">Vote Type</label>
-          <select className="input-field" value={voteType} onChange={(e) => setVoteType(e.target.value as CongressVoteType)}>
-            {(Object.keys(VOTE_TYPE_LABELS) as CongressVoteType[]).map((v) => (
-              <option key={v} value={v}>
-                {VOTE_TYPE_LABELS[v]}
-              </option>
-            ))}
+        <p className="text-xs text-muted">
+          Use a duly convened session and adopted joint operating rules (§9.3). The electorate is frozen at
+          opening. Chapter quorum and the applicable delegate threshold are checked when certifying the
+          result. Bylaws amendments still require NCC approval under Article XIV.
+        </p>
+        <label className="text-sm block">
+          Motion type
+          <select className="input-field mt-1" value={motion} onChange={(e) => setMotion(e.target.value)}>
+            {[
+              ['ordinary', 'Ordinary resolution — majority of votes cast'],
+              ['bylaws', 'Bylaws amendment — majority of seated delegates'],
+              ['structural', 'Structural change — two-thirds of seated delegates'],
+              ['override', 'Executive override — two-thirds of all seated delegates'],
+              ['recall_initiation', 'Initiate recall — three-fifths of all seated delegates'],
+              ['recall_removal', 'Recall removal — requires a subsequent session; procedure review pending'],
+            ]
+              .filter(([value]) => value !== 'recall_removal')
+              .map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
           </select>
-        </div>
-        {voteType === 'constitutional_amendment' && (
-          <div>
-            <label className="eyebrow block mb-1.5">Supermajority Threshold</label>
-            <select className="input-field" value={threshold} onChange={(e) => setThreshold(e.target.value)}>
-              <option value="0.6">60%</option>
-              <option value="0.667">Two-thirds (66.7%)</option>
-              <option value="0.75">75%</option>
-            </select>
-          </div>
+        </label>
+        <label className="text-sm block">
+          Voting closes
+          <input
+            type="datetime-local"
+            className="input-field mt-1"
+            value={closes}
+            onChange={(e) => setCloses(e.target.value)}
+          />
+        </label>
+        <input
+          className="input-field"
+          aria-label="Joint operating resolution reference"
+          placeholder="Adopted joint operating resolution and session reference"
+          value={reference}
+          onChange={(e) => setReference(e.target.value)}
+        />
+        {error && (
+          <p role="alert" className="text-status-attention">
+            {error}
+          </p>
         )}
-        <button onClick={handleSave} disabled={saving} className="btn-gold w-full disabled:opacity-50">
-          {saving ? 'Opening…' : 'Open Voting'}
+        <button disabled={saving || !closes || !reference.trim()} className="btn-gold w-full" onClick={open}>
+          {saving ? 'Opening…' : 'Open ballot'}
         </button>
       </div>
     </Modal>

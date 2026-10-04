@@ -21,6 +21,9 @@ function statusTone(status: string) {
 export default function VeteransCongress() {
   const navigate = useNavigate()
   const { isNational } = useAuth()
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
   const [resolutions, setResolutions] = useState<Resolution[]>([])
   const [voteCounts, setVoteCounts] = useState<Record<string, number>>({})
   const [announcements, setAnnouncements] = useState<CongressAnnouncement[]>([])
@@ -28,38 +31,42 @@ export default function VeteransCongress() {
   const [showNewAnnouncement, setShowNewAnnouncement] = useState(false)
 
   async function load() {
-    const { data } = await supabase.from('resolutions').select('*').order('created_at', { ascending: false })
-    setResolutions((data ?? []) as Resolution[])
-
-    const { data: votes } = await supabase.from('resolution_votes').select('resolution_id, vote')
-    const counts: Record<string, number> = {}
-    for (const v of votes ?? []) {
-      if (v.vote) counts[v.resolution_id] = (counts[v.resolution_id] ?? 0) + 1
+    setLoading(true)
+    setError(null)
+    try {
+      const { data, error } = await supabase.rpc('cvoa_congress_overview')
+      if (error) throw error
+      const rows = (data?.resolutions ?? []) as (Resolution & { yes_votes: number })[]
+      setResolutions(rows)
+      setVoteCounts(Object.fromEntries(rows.map((r) => [r.id, r.yes_votes])))
+      setAnnouncements(data?.announcements ?? [])
+    } catch (e) {
+      setError((e as { message?: string }).message ?? 'Unable to load Congress record. Please retry.')
+    } finally {
+      setLoading(false)
     }
-    setVoteCounts(counts)
-
-    const { data: ann } = await supabase
-      .from('congress_announcements')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(5)
-    setAnnouncements((ann ?? []) as CongressAnnouncement[])
   }
 
   useEffect(() => {
     load()
   }, [])
 
-  const open = resolutions.filter((r) => !['passed', 'rejected', 'implemented', 'archived'].includes(r.status))
+  const open = resolutions.filter(
+    (r) =>
+      r.title.toLowerCase().includes(search.toLowerCase()) &&
+      !['passed', 'rejected', 'implemented', 'archived'].includes(r.status)
+  )
   const upcomingVotes = resolutions.filter((r) => r.status === 'voting')
   const recentlyPassed = resolutions.filter((r) => ['passed', 'implemented'].includes(r.status)).slice(0, 5)
   const recentlyRejected = resolutions.filter((r) => r.status === 'rejected').slice(0, 5)
-  const trending = [...resolutions].sort((a, b) => (voteCounts[b.id] ?? 0) - (voteCounts[a.id] ?? 0)).slice(0, 3)
+  const trending = [...resolutions]
+    .sort((a, b) => (voteCounts[b.id] ?? 0) - (voteCounts[a.id] ?? 0))
+    .slice(0, 3)
 
   return (
     <div>
       <PageHeader
-        eyebrow="Module 8 — Flagship"
+        eyebrow="Legislative branch · Article IX"
         title="Veterans Congress"
         action={
           <div className="flex gap-2">
@@ -78,6 +85,26 @@ export default function VeteransCongress() {
         }
       />
       <CongressSubNav />
+      <p className="text-sm text-muted mb-5">
+        Members propose and debate measures. Certified delegates cast formal ballots under adopted operating
+        rules. Congress decisions and executive implementation are separate records.
+      </p>
+      {error && (
+        <p role="alert" className="text-status-attention mb-4">
+          {error}{' '}
+          <button className="underline" onClick={() => void load()}>
+            Retry
+          </button>
+        </p>
+      )}
+      {loading && <p className="text-muted mb-3">Loading Congress record…</p>}
+      <input
+        className="input-field mb-5"
+        aria-label="Search resolutions"
+        placeholder="Search resolutions"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
 
       {trending.length > 0 && (
         <div className="panel p-5 mb-6">
@@ -157,14 +184,17 @@ export default function VeteransCongress() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="panel p-4">
-              <div className="eyebrow mb-3 text-status-active">Recently Passed</div>
+              <div className="eyebrow mb-3 text-status-active">Adopted by Congress</div>
               {recentlyPassed.length === 0 ? (
-                <p className="text-xs text-muted">Nothing passed yet.</p>
+                <p className="text-xs text-muted">No measures adopted yet.</p>
               ) : (
                 <ul className="space-y-1.5 text-sm">
                   {recentlyPassed.map((r) => (
                     <li key={r.id}>
-                      <button onClick={() => navigate(`/congress/resolutions/${r.id}`)} className="hover:text-gold text-left">
+                      <button
+                        onClick={() => navigate(`/congress/resolutions/${r.id}`)}
+                        className="hover:text-gold text-left"
+                      >
                         {r.title}
                       </button>
                     </li>
@@ -180,7 +210,10 @@ export default function VeteransCongress() {
                 <ul className="space-y-1.5 text-sm">
                   {recentlyRejected.map((r) => (
                     <li key={r.id}>
-                      <button onClick={() => navigate(`/congress/resolutions/${r.id}`)} className="hover:text-gold text-left">
+                      <button
+                        onClick={() => navigate(`/congress/resolutions/${r.id}`)}
+                        className="hover:text-gold text-left"
+                      >
                         {r.title}
                       </button>
                     </li>
@@ -195,7 +228,10 @@ export default function VeteransCongress() {
           <div className="flex items-center justify-between mb-4">
             <div className="eyebrow">National Announcements</div>
             {isNational && (
-              <button onClick={() => setShowNewAnnouncement(true)} className="text-xs text-gold hover:text-gold-bright flex items-center gap-1">
+              <button
+                onClick={() => setShowNewAnnouncement(true)}
+                className="text-xs text-gold hover:text-gold-bright flex items-center gap-1"
+              >
                 <Plus size={12} /> New
               </button>
             )}
@@ -210,7 +246,9 @@ export default function VeteransCongress() {
                   <div className="text-ink font-medium">{a.title}</div>
                   <div className="text-muted text-xs mt-0.5">{a.body}</div>
                   <div className="font-mono text-[11px] text-muted mt-1">
-                    {formatDistanceToNow(new Date(a.created_at), { addSuffix: true })}
+                    {formatDistanceToNow(new Date(a.created_at), {
+                      addSuffix: true,
+                    })}
                   </div>
                 </li>
               ))}
@@ -244,7 +282,11 @@ export default function VeteransCongress() {
 
 function NewAnnouncementModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const { profile } = useAuth()
-  const [form, setForm] = useState({ title: '', body: '', category: 'General' })
+  const [form, setForm] = useState({
+    title: '',
+    body: '',
+    category: 'General',
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -273,8 +315,18 @@ function NewAnnouncementModal({ onClose, onCreated }: { onClose: () => void; onC
   return (
     <Modal title="New National Announcement" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
-        <input required placeholder="Title" className="input-field" value={form.title} onChange={(e) => update('title', e.target.value)} />
-        <select className="input-field" value={form.category} onChange={(e) => update('category', e.target.value)}>
+        <input
+          required
+          placeholder="Title"
+          className="input-field"
+          value={form.title}
+          onChange={(e) => update('title', e.target.value)}
+        />
+        <select
+          className="input-field"
+          value={form.category}
+          onChange={(e) => update('category', e.target.value)}
+        >
           <option>General</option>
           <option>Legislative</option>
           <option>Compliance</option>

@@ -159,10 +159,10 @@ export default function UserManagement() {
                       <select
                         className="input-field text-xs py-1"
                         value={p.role}
-                        disabled={savingId === p.id}
+                        disabled={savingId === p.id || p.role === 'ethics_tribunal'}
                         onChange={(e) => updateAccount(p, { role: e.target.value as UserRole })}
                       >
-                        {ROLES.map((r) => (
+                        {ROLES.filter(r => r.value !== 'ethics_tribunal' || p.role === 'ethics_tribunal').map((r) => (
                           <option key={r.value} value={r.value}>
                             {r.label}
                           </option>
@@ -217,7 +217,7 @@ export default function UserManagement() {
                     <td className="table-cell">
                       <button
                         onClick={() => deleteAccount(p)}
-                        disabled={deletingId === p.id}
+                        disabled={deletingId === p.id || p.role === 'ethics_tribunal'}
                         className="text-muted hover:text-status-attention disabled:opacity-50"
                         title="Delete this account entirely"
                       >
@@ -294,7 +294,7 @@ function InviteUserModal({ posts, onClose, onInvited }: { posts: Post[]; onClose
         <input required placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
         <input required type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
         <select className="input-field" value={form.role} onChange={(e) => update('role', e.target.value as UserRole)}>
-          {ROLES.map((r) => (
+          {ROLES.filter(r => r.value !== 'ethics_tribunal').map((r) => (
             <option key={r.value} value={r.value}>
               {r.label}
             </option>

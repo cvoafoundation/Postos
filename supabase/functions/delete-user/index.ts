@@ -66,10 +66,27 @@ Deno.serve(async (req) => {
     })
   }
 
+  const { data: target, error: targetError } = await supabase.from('profiles').select('role').eq('id', body.user_id).single()
+  if (targetError || !target) {
+    return new Response(JSON.stringify({ error: 'Could not verify the target account. No deletion was performed.' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+  if (target.role === 'ethics_tribunal') {
+    return new Response(JSON.stringify({ error: 'Tribunal removal requires the documented Article X process.' }), {
+      status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   // The profile row first — if this fails partway, we're left with a login
   // and no profile (recoverable/visible), rather than a profile pointing at
   // a login that no longer exists (a broken, confusing state).
-  await supabase.from('profiles').delete().eq('id', body.user_id)
+  const { error: profileError } = await supabase.from('profiles').delete().eq('id', body.user_id)
+  if (profileError) {
+    return new Response(JSON.stringify({ error: 'Profile deletion was blocked. No login deletion was performed.' }), {
+      status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
   const { error: authError } = await supabase.auth.admin.deleteUser(body.user_id)
 
   if (authError) {

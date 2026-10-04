@@ -497,6 +497,16 @@ export interface EthicsComplaint {
   status: EthicsComplaintStatus
   assigned_to: string | null
   tribunal_notes: string | null
+  notice_text: string | null
+  notice_served_at: string | null
+  response_due_at: string | null
+  hearing_at: string | null
+  findings: string | null
+  governing_provisions: string | null
+  rationale: string | null
+  proposed_sanction: string | null
+  clear_and_convincing: boolean
+  record_version: number
   resolved_at: string | null
   created_at: string
 }

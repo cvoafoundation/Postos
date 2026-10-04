@@ -8,7 +8,10 @@ import { useAuth } from '@/context/AuthContext'
 import type { Committee, CommitteeRecommendation, CommitteeReview, Resolution } from '@/lib/types'
 
 export default function Committees() {
-  const { isNational } = useAuth()
+  const { profile } = useAuth()
+  const [isPresiding, setIsPresiding] = useState(false)
+  const [myCommittees, setMyCommittees] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
   const [committees, setCommittees] = useState<Committee[]>([])
   const [selected, setSelected] = useState<Committee | null>(null)
   const [reviews, setReviews] = useState<CommitteeReview[]>([])
@@ -19,16 +22,35 @@ export default function Committees() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    supabase.from('committees').select('*').order('name').then(({ data }: any) => {
-      const list = (data ?? []) as Committee[]
-      setCommittees(list)
-      if (list.length > 0) setSelected(list[0])
-    })
-    supabase.from('resolutions').select('*').order('title').then(({ data }: any) => setResolutions((data ?? []) as Resolution[]))
+    supabase.rpc('cvoa_is_congress_presiding').then(({ data }) => setIsPresiding(data === true))
+    if (profile?.id)
+      supabase
+        .from('committee_members')
+        .select('committee_id')
+        .eq('profile_id', profile.id)
+        .then(({ data }) => setMyCommittees((data ?? []).map((r) => r.committee_id)))
+    supabase
+      .from('committees')
+      .select('*')
+      .order('name')
+      .then(({ data }: any) => {
+        const list = (data ?? []) as Committee[]
+        setCommittees(list)
+        if (list.length > 0) setSelected(list[0])
+      })
+    supabase
+      .from('resolutions')
+      .select('*')
+      .order('title')
+      .then(({ data }: any) => setResolutions((data ?? []) as Resolution[]))
   }, [])
 
   async function loadReviews(committeeId: string) {
-    const { data } = await supabase.from('committee_reviews').select('*').eq('committee_id', committeeId).order('created_at', { ascending: false })
+    const { data } = await supabase
+      .from('committee_reviews')
+      .select('*')
+      .eq('committee_id', committeeId)
+      .order('created_at', { ascending: false })
     setReviews((data ?? []) as CommitteeReview[])
   }
 
@@ -39,13 +61,18 @@ export default function Committees() {
   async function submitReview() {
     if (!selected || !resolutionId) return
     setSaving(true)
-    await supabase.from('committee_reviews').insert({
+    const { error } = await supabase.from('committee_reviews').insert({
+      reviewed_by: profile?.id,
       resolution_id: resolutionId,
       committee_id: selected.id,
       recommendation,
       notes: notes || null,
     })
     setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
     setNotes('')
     loadReviews(selected.id)
   }
@@ -56,6 +83,14 @@ export default function Committees() {
     <div>
       <PageHeader eyebrow="Module 8" title="Veterans Congress" />
       <CongressSubNav />
+      <p className="text-sm text-muted mb-4">
+        Congress committee recommendations inform deliberation and carry no executive authority (§9.4).
+      </p>
+      {error && (
+        <p role="alert" className="text-status-attention mb-4">
+          {error}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-2">
@@ -74,11 +109,15 @@ export default function Committees() {
         <div className="lg:col-span-2">
           {selected ? (
             <div className="space-y-6">
-              {isNational && (
+              {(isPresiding || myCommittees.includes(selected.id)) && (
                 <div className="panel p-4">
                   <div className="eyebrow mb-3">Submit Review — {selected.name}</div>
                   <div className="space-y-2">
-                    <select className="input-field" value={resolutionId} onChange={(e) => setResolutionId(e.target.value)}>
+                    <select
+                      className="input-field"
+                      value={resolutionId}
+                      onChange={(e) => setResolutionId(e.target.value)}
+                    >
                       <option value="">Select a resolution…</option>
                       {resolutions.map((r) => (
                         <option key={r.id} value={r.id}>
@@ -102,7 +141,11 @@ export default function Committees() {
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                     />
-                    <button onClick={submitReview} disabled={saving || !resolutionId} className="btn-gold w-full disabled:opacity-50">
+                    <button
+                      onClick={submitReview}
+                      disabled={saving || !resolutionId}
+                      className="btn-gold w-full disabled:opacity-50"
+                    >
                       {saving ? 'Submitting…' : 'Submit Review'}
                     </button>
                   </div>
@@ -131,7 +174,13 @@ export default function Committees() {
                           <td className="table-cell">
                             <StatusBadge
                               label={r.recommendation.replaceAll('_', ' ')}
-                              tone={r.recommendation === 'approve' ? 'active' : r.recommendation === 'reject' ? 'attention' : 'developing'}
+                              tone={
+                                r.recommendation === 'approve'
+                                  ? 'active'
+                                  : r.recommendation === 'reject'
+                                    ? 'attention'
+                                    : 'developing'
+                              }
                             />
                           </td>
                           <td className="table-cell text-muted">{r.notes ?? '—'}</td>

@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import type { EthicsComplaint, EthicsComplaintStatus } from '@/lib/types'
 import { format } from 'date-fns'
+import { useAuth } from '@/context/AuthContext'
 
 const CATEGORY_LABELS: Record<string, string> = {
   ethical_misconduct: 'Ethical misconduct or dishonorable behavior',
@@ -35,28 +36,24 @@ function statusTone(status: EthicsComplaintStatus) {
 
 export default function EthicsTribunalInbox() {
   const [complaints, setComplaints] = useState<EthicsComplaint[]>([])
-  const [filerNames, setFilerNames] = useState<Record<string, string>>({})
+  const filerNames = Object.fromEntries(
+    complaints.map((c) => [
+      c.complainant_id ?? c.id,
+      (c as EthicsComplaint & { filer_name?: string }).filer_name ?? 'Identity not available',
+    ])
+  )
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [viewing, setViewing] = useState<EthicsComplaint | null>(null)
 
   function load() {
     setLoading(true)
-    supabase
-      .from('ethics_complaints')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .then(async ({ data }) => {
-        const rows = (data ?? []) as EthicsComplaint[]
-        setComplaints(rows)
-        const ids = [...new Set(rows.filter((c) => c.complainant_id).map((c) => c.complainant_id!))]
-        if (ids.length > 0) {
-          const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', ids)
-          const map: Record<string, string> = {}
-          for (const p of (profiles ?? []) as any[]) map[p.id] = p.full_name
-          setFilerNames(map)
-        }
-        setLoading(false)
-      })
+    supabase.rpc('cvoa_ethics_docket').then(async ({ data, error: loadError }) => {
+      setError(loadError?.message ?? null)
+      const rows = (data ?? []) as EthicsComplaint[]
+      setComplaints(rows)
+      setLoading(false)
+    })
   }
 
   useEffect(load, [])
@@ -68,10 +65,30 @@ export default function EthicsTribunalInbox() {
     <div>
       <PageHeader eyebrow="Article X — Confidential" title="Ethics Tribunal" />
       <p className="text-sm text-muted mb-6 max-w-2xl">
-        Every complaint filed goes only here — not to National Command, not to any post. This inbox is visible
-        exclusively to Tribunal members.
+        Independent judicial workspace · Articles X and XIII. Review intake, record notice and defense time,
+        manage recusals, and issue a written opinion. Recused members lose case access. National has no staff
+        override.
       </p>
 
+      {error && (
+        <p role="alert" className="text-status-attention mb-4">
+          {error}
+        </p>
+      )}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="panel p-4">
+          {open.length}
+          <div className="eyebrow mt-2">Open cases</div>
+        </div>
+        <div className="panel p-4">
+          {open.filter((c) => c.response_due_at && new Date(c.response_due_at) > new Date()).length}
+          <div className="eyebrow mt-2">Defense periods</div>
+        </div>
+        <div className="panel p-4">
+          {closed.length}
+          <div className="eyebrow mt-2">Written dispositions</div>
+        </div>
+      </div>
       {loading ? (
         <p className="text-sm text-muted">Loading…</p>
       ) : complaints.length === 0 ? (
@@ -81,7 +98,12 @@ export default function EthicsTribunalInbox() {
           <div className="eyebrow mb-3">Open ({open.length})</div>
           <div className="space-y-2 mb-8">
             {open.map((c) => (
-              <ComplaintRow key={c.id} complaint={c} filerName={c.complainant_id ? filerNames[c.complainant_id] : undefined} onClick={() => setViewing(c)} />
+              <ComplaintRow
+                key={c.id}
+                complaint={c}
+                filerName={c.complainant_id ? filerNames[c.complainant_id] : undefined}
+                onClick={() => setViewing(c)}
+              />
             ))}
             {open.length === 0 && <p className="text-sm text-muted">Nothing open right now.</p>}
           </div>
@@ -91,7 +113,12 @@ export default function EthicsTribunalInbox() {
               <div className="eyebrow mb-3">Closed ({closed.length})</div>
               <div className="space-y-2">
                 {closed.map((c) => (
-                  <ComplaintRow key={c.id} complaint={c} filerName={c.complainant_id ? filerNames[c.complainant_id] : undefined} onClick={() => setViewing(c)} />
+                  <ComplaintRow
+                    key={c.id}
+                    complaint={c}
+                    filerName={c.complainant_id ? filerNames[c.complainant_id] : undefined}
+                    onClick={() => setViewing(c)}
+                  />
                 ))}
               </div>
             </>
@@ -114,7 +141,15 @@ export default function EthicsTribunalInbox() {
   )
 }
 
-function ComplaintRow({ complaint, filerName, onClick }: { complaint: EthicsComplaint; filerName?: string; onClick: () => void }) {
+function ComplaintRow({
+  complaint,
+  filerName,
+  onClick,
+}: {
+  complaint: EthicsComplaint
+  filerName?: string
+  onClick: () => void
+}) {
   return (
     <button onClick={onClick} className="w-full text-left panel p-4 hover:border-gold transition-colors">
       <div className="flex items-center justify-between mb-1">
@@ -123,7 +158,8 @@ function ComplaintRow({ complaint, filerName, onClick }: { complaint: EthicsComp
       </div>
       <div className="text-xs text-muted mb-1">{CATEGORY_LABELS[complaint.category]}</div>
       <div className="text-[11px] text-muted font-mono">
-        {format(new Date(complaint.created_at), 'MMM d, yyyy')} · {complaint.filed_anonymously ? 'Filed anonymously' : filerName ?? 'Unknown filer'}
+        {format(new Date(complaint.created_at), 'MMM d, yyyy')} ·{' '}
+        {complaint.filed_anonymously ? 'Filed anonymously' : (filerName ?? 'Unknown filer')}
       </div>
     </button>
   )
@@ -140,77 +176,274 @@ function ComplaintDetailModal({
   onClose: () => void
   onUpdated: () => void
 }) {
-  const [status, setStatus] = useState(complaint.status)
-  const [notes, setNotes] = useState(complaint.tribunal_notes ?? '')
+  const { profile } = useAuth()
+  const [form, setForm] = useState({
+    record_version: complaint.record_version,
+    status: complaint.status,
+    tribunal_notes: complaint.tribunal_notes ?? '',
+    notice_text: complaint.notice_text ?? '',
+    notice_served_at: complaint.notice_served_at?.slice(0, 16) ?? '',
+    response_due_at: complaint.response_due_at?.slice(0, 16) ?? '',
+    hearing_at: complaint.hearing_at?.slice(0, 16) ?? '',
+    findings: complaint.findings ?? '',
+    governing_provisions: complaint.governing_provisions ?? '',
+    rationale: complaint.rationale ?? '',
+    proposed_sanction: complaint.proposed_sanction ?? '',
+    clear_and_convincing: complaint.clear_and_convincing,
+  })
+  const [savedForm] = useState(form)
+  const dirty = JSON.stringify(form) !== JSON.stringify(savedForm)
   const [saving, setSaving] = useState(false)
-
-  async function handleSave() {
+  const [error, setError] = useState<string | null>(null)
+  const [events, setEvents] = useState<
+    { id: string; actor_name: string; event: string; created_at: string }[]
+  >([])
+  const [approvals, setApprovals] = useState<{ profile_id: string }[]>([])
+  const [recusalReason, setRecusalReason] = useState('')
+  const closed = ['resolved', 'dismissed'].includes(complaint.status)
+  useEffect(() => {
+    Promise.all([
+      supabase
+        .from('ethics_case_events')
+        .select('id,actor_name,event,created_at')
+        .eq('complaint_id', complaint.id)
+        .order('created_at'),
+      supabase.from('ethics_decision_votes').select('profile_id').eq('complaint_id', complaint.id),
+    ]).then(([history, votes]) => {
+      setEvents(history.data ?? [])
+      setApprovals(votes.data ?? [])
+      setError(history.error?.message ?? votes.error?.message ?? null)
+    })
+  }, [complaint.id])
+  async function action(name: string, args: Record<string, unknown>) {
     setSaving(true)
-    await supabase
-      .from('ethics_complaints')
-      .update({
-        status,
-        tribunal_notes: notes || null,
-        resolved_at: ['resolved', 'dismissed'].includes(status) ? new Date().toISOString() : null,
-      })
-      .eq('id', complaint.id)
-    setSaving(false)
-    onUpdated()
+    setError(null)
+    try {
+      const result = await supabase.rpc(name, { ...args, ...(['cvoa_approve_ethics_opinion','cvoa_publish_ethics_opinion'].includes(name) ? {p_version:complaint.record_version} : {}) })
+      if (result.error) throw result.error
+      onUpdated()
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : ((e as { message?: string }).message ?? 'Could not save the case. Please retry.')
+      )
+    } finally {
+      setSaving(false)
+    }
   }
-
+  const field = (key: keyof typeof form, label: string, rows = 3) => (
+    <label className="block text-sm">
+      {label}
+      <textarea
+        className="input-field mt-1"
+        rows={rows}
+        value={String(form[key] ?? '')}
+        disabled={closed || saving}
+        onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+      />
+    </label>
+  )
+  const date = (key: 'notice_served_at' | 'response_due_at' | 'hearing_at', label: string) => (
+    <label className="block text-sm">
+      {label} (UTC)
+      <input
+        type="datetime-local"
+        className="input-field mt-1"
+        value={form[key]}
+        disabled={closed || saving}
+        onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+      />
+    </label>
+  )
   return (
-    <Modal title={`Complaint Re: ${complaint.respondent_name}`} onClose={onClose}>
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <div className="eyebrow mb-1">Filed</div>
-            <div>{format(new Date(complaint.created_at), 'MMM d, yyyy')}</div>
-          </div>
-          <div>
-            <div className="eyebrow mb-1">Filed By</div>
-            <div>{complaint.filed_anonymously ? 'Anonymous' : filerName ?? 'Unknown'}</div>
-          </div>
+    <Modal title={`Case: ${complaint.respondent_name}`} onClose={onClose}>
+      <div className="space-y-5">
+        {error && (
+          <p role="alert" className="text-status-attention">
+            {error}
+          </p>
+        )}
+        <div className="text-sm text-muted">
+          Filed {format(new Date(complaint.created_at), 'MMM d, yyyy')} ·{' '}
+          {complaint.filed_anonymously
+            ? 'Anonymous report'
+            : (filerName ?? 'Identified filer (identity retained in sealed record)')}{' '}
+          · {CATEGORY_LABELS[complaint.category]}
         </div>
-
-        {complaint.respondent_context && (
-          <div>
-            <div className="eyebrow mb-1">Respondent Context</div>
-            <p className="text-sm text-muted">{complaint.respondent_context}</p>
+        <section>
+          <div className="eyebrow mb-2">Allegation</div>
+          <p className="text-sm whitespace-pre-wrap">{complaint.description}</p>
+          <p className="text-xs text-muted mt-2">{complaint.respondent_context}</p>
+        </section>
+        {!closed && (
+          <label className="block text-sm">
+            Case stage
+            <select
+              className="input-field mt-1"
+              value={form.status}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  status: e.target.value as EthicsComplaintStatus,
+                })
+              }
+            >
+              {['new', 'under_review', 'investigating'].map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABELS[s as EthicsComplaintStatus]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <section className="space-y-3 border-t border-hairline pt-4">
+          <div className="eyebrow">Written charges and defense · §10.4</div>
+          <p className="text-xs text-muted">
+            Record notice actually served outside this screen, including charges, cited rules and the
+            respondent’s rights. Allow at least 14 days to prepare a defense. Recording dates does not send
+            notice or schedule a meeting.
+          </p>
+          {field('notice_text', 'Notice of charges and respondent rights', 4)}
+          {date('notice_served_at', 'Notice served')}
+          {date('response_due_at', 'Defense deadline')}
+          {date('hearing_at', 'Hearing')}
+        </section>
+        <section className="space-y-3 border-t border-hairline pt-4">
+          <div className="eyebrow">Written opinion · §10.3</div>
+          {field('findings', 'Findings of fact')}
+          {field('governing_provisions', 'Governing provisions and conclusions')}
+          {field('rationale', 'Decision rationale')}
+          {field('proposed_sanction', 'Proposed sanction (leave empty for no sanction)')}
+          <label className="flex gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.clear_and_convincing}
+              disabled={closed || saving}
+              onChange={(e) => setForm({ ...form, clear_and_convincing: e.target.checked })}
+            />
+            The finding meets the clear and convincing evidence standard.
+          </label>
+          <p className="text-xs text-muted">
+            A sanction requires three non-recused affirmative votes on this saved opinion. Four affirmative
+            votes are recommended for removal or permanent disqualification. Editing the record clears prior
+            approvals. Platform access changes require a separate enforcement action.
+          </p>
+        </section>
+        {field('tribunal_notes', 'Internal deliberations — Tribunal only', 4)}
+        {!closed && (
+          <div className="space-y-3">
+            <button
+              className="btn-gold w-full"
+              disabled={saving}
+              onClick={() =>
+                action('cvoa_save_ethics_case', {
+                  p_case: complaint.id,
+                  p_data: {
+                    ...form,
+                    ...Object.fromEntries(
+                      ['notice_served_at', 'response_due_at', 'hearing_at'].map((k) => [
+                        k,
+                        form[k as 'hearing_at'] ? `${form[k as 'hearing_at']}:00Z` : null,
+                      ])
+                    ),
+                  },
+                })
+              }
+            >
+              Save case record
+            </button>
+            <p className="text-xs text-muted">
+              {approvals.length} recorded approvals ·{' '}
+              {approvals.some((v) => v.profile_id === profile?.id)
+                ? 'Your approval is recorded'
+                : 'Your approval is not recorded'}
+              . Approvals apply to the saved record.{' '}
+              {dirty && 'Save your changes before approving or issuing an opinion.'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="btn-ghost"
+                disabled={saving || dirty}
+                onClick={() =>
+                  action('cvoa_approve_ethics_opinion', {
+                    p_case: complaint.id,
+                  })
+                }
+              >
+                Approve saved opinion
+              </button>
+              <button
+                className="btn-ghost"
+                disabled={saving || dirty}
+                onClick={() =>
+                  action('cvoa_publish_ethics_opinion', {
+                    p_case: complaint.id,
+                    p_dismiss: false,
+                  })
+                }
+              >
+                Issue saved opinion
+              </button>
+              <button
+                className="btn-ghost"
+                disabled={saving || dirty}
+                onClick={() =>
+                  action('cvoa_publish_ethics_opinion', {
+                    p_case: complaint.id,
+                    p_dismiss: true,
+                  })
+                }
+              >
+                Issue dismissal
+              </button>
+            </div>
           </div>
         )}
-
-        <div>
-          <div className="eyebrow mb-1">Category</div>
-          <p className="text-sm text-muted">{CATEGORY_LABELS[complaint.category]}</p>
-        </div>
-
-        <div>
-          <div className="eyebrow mb-1">Description</div>
-          <p className="text-sm text-ink whitespace-pre-wrap">{complaint.description}</p>
-        </div>
-
-        <div className="border-t border-hairline pt-4">
-          <div className="eyebrow mb-2">Status</div>
-          <select className="input-field mb-3" value={status} onChange={(e) => setStatus(e.target.value as EthicsComplaintStatus)}>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <div className="eyebrow mb-2">Tribunal Notes (internal, confidential)</div>
-          <textarea
-            className="input-field"
-            rows={4}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Findings, hearing notes, sanction decisions…"
-          />
-        </div>
-
-        <button onClick={handleSave} disabled={saving} className="btn-gold w-full disabled:opacity-50">
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+        {closed && (
+          <p className="panel p-3 text-sm">
+            {STATUS_LABELS[complaint.status]} · Written record sealed.{' '}
+            {complaint.resolved_at &&
+              `Appeal filing deadline: ${format(new Date(new Date(complaint.resolved_at).getTime() + 30 * 86400000), 'MMM d, yyyy')}.`}{' '}
+            Congress review follows §10.5; it requires written grounds and delegate endorsements. Filing an
+            appeal does not automatically stay a ruling.
+          </p>
+        )}
+        {!closed && (
+          <section className="border-t border-hairline pt-4">
+            <div className="eyebrow mb-2">Conflict and recusal · §10.2</div>
+            <input
+              className="input-field mb-2"
+              placeholder="Reason for your recusal"
+              aria-label="Reason for your recusal"
+              value={recusalReason}
+              onChange={(e) => setRecusalReason(e.target.value)}
+            />
+            <button
+              className="btn-ghost"
+              disabled={saving || !recusalReason.trim()}
+              onClick={() =>
+                action('cvoa_recuse_ethics', {
+                  p_case: complaint.id,
+                  p_reason: recusalReason,
+                })
+              }
+            >
+              Record my recusal and leave case
+            </button>
+          </section>
+        )}
+        <section className="border-t border-hairline pt-4">
+          <div className="eyebrow mb-3">Case history</div>
+          {events.map((e) => (
+            <div className="text-xs mb-3" key={e.id}>
+              <p>{e.event}</p>
+              <p className="text-muted mt-1">
+                {e.actor_name} · {format(new Date(e.created_at), 'MMM d, yyyy p')}
+              </p>
+            </div>
+          ))}
+        </section>
       </div>
     </Modal>
   )

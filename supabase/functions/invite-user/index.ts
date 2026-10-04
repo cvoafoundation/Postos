@@ -31,8 +31,7 @@ interface RequestBody {
 
 async function sendInviteEmail(email: string, fullName: string, actionLink: string) {
   if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
-    console.warn('WORKSPACE_EMAIL/WORKSPACE_APP_PASSWORD not set — skipping invite email (dry run):', email, actionLink)
-    return
+    throw new Error('Workspace email delivery is not configured.')
   }
   const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
@@ -87,6 +86,20 @@ Deno.serve(async (req) => {
   if (!callerProfile || !['national_commander', 'national_staff'].includes(callerProfile.role)) {
     return new Response(JSON.stringify({ error: 'Only National accounts can invite new users.' }), {
       status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (body.role === 'ethics_tribunal') {
+    return new Response(JSON.stringify({ error: 'Tribunal seating requires the documented Article X appointment and ratification process.' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
+    return new Response(JSON.stringify({ error: 'Workspace email delivery is not configured. No account was created.' }), {
+      status: 503,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
