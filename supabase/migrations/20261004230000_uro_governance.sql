@@ -49,13 +49,13 @@ create table public.uro_proposals (
  identifier text not null unique, kind text not null check(kind in ('main','amendment','refer','postpone','table','reconsider','close_debate','extend_debate','chair_challenge','emergency_override','suspend_rule','uro_amendment','consent','withdraw')),
  original_text text not null check(length(trim(original_text)) between 1 and 12000), current_text text not null, maker_id uuid references public.profiles(id), second_id uuid references public.profiles(id),
  second_exempt boolean not null default false, context jsonb not null default '{}', status text not null default 'draft', threshold text not null default 'majority' check(threshold in ('majority','two_thirds','unanimous')),
- method text check(method in ('voice','hands','roll_call','digital','secret')), electorate uuid[], eligible_present integer, quorum_snapshot jsonb,
+ vote_round integer not null default 0, method text check(method in ('voice','hands','roll_call','digital','secret')), electorate uuid[], eligible_present integer, quorum_snapshot jsonb,
  result jsonb, opened_at timestamptz, closed_at timestamptz, created_at timestamptz not null default now()
 );
 create index uro_proposals_meeting on public.uro_proposals(meeting_id);
 create sequence public.uro_proposal_number;
 create table public.uro_ballots (
- proposal_id uuid not null references public.uro_proposals(id), participant_id uuid not null references public.uro_participants(id), choice text not null check(choice in ('yes','no','abstain')), cast_at timestamptz not null default now(), primary key(proposal_id,participant_id)
+ proposal_id uuid not null references public.uro_proposals(id), participant_id uuid not null references public.uro_participants(id), round integer not null, choice text not null check(choice in ('yes','no','abstain')), cast_at timestamptz not null default now(), primary key(proposal_id,participant_id,round)
 );
 create table public.uro_events (
  id bigint generated always as identity primary key, meeting_id uuid not null references public.uro_sessions(id), actor_id uuid references public.profiles(id), action text not null, detail jsonb not null default '{}', occurred_at timestamptz not null default now()
@@ -253,7 +253,7 @@ declare s public.uro_sessions; p public.uro_proposals; a public.uro_agenda; me p
    insert into public.uro_notices(meeting_id,recipient_ids,revision,method,sent_at,sender_id,evidence,deadline) values(s.id,array(select id from public.uro_participants where meeting_id=s.id),s.notice_revision,p_data->>'method',(p_data->>'sent_at')::timestamptz,auth.uid(),p_data->>'evidence',s.notice_deadline) returning id into result;event:='NoticeRecorded';
  when 'packet_ready' then
    if not (chair or clerk) or s.phase<>'prepare' then raise exception 'Preparation authority required.';end if;
-   update public.uro_sessions set phase='review',state='packet_review' where id=s.id;event:='PacketDistributed';
+   update public.uro_sessions set phase='review',state='packet_review' where id=s.id;event:='PacketReviewOpened';
  when 'rsvp' then
    if me.id is null then raise exception 'Participant required.';end if;
    update public.uro_participants set rsvp=p_data->>'state' where id=me.id;event:='ParticipationResponded';
@@ -302,7 +302,7 @@ declare s public.uro_sessions; p public.uro_proposals; a public.uro_agenda; me p
    target:=(p_data->>'parent_id')::uuid;
    if target is not null then select * into p from public.uro_proposals where id=target and meeting_id=s.id;if not found then raise exception 'Parent motion must belong to this meeting.';end if;end if;
    if kind='amendment' and (target is null or p.kind='amendment' or p.status not in ('draft','introduced','before_body','deliberation','ready_for_vote') or exists(select 1 from public.uro_proposals where parent_id=target and status not in ('adopted','defeated','withdrawn','out_of_order'))) then raise exception 'One amendment to the main motion may be pending at a time.';end if;
-   if kind='reconsider' and (target is null or p.closed_at is null or p.status not in ('adopted','defeated') or not exists(select 1 from public.uro_ballots where proposal_id=target and participant_id=me.id and choice=case when p.status='adopted' then 'yes' else 'no' end)) then raise exception 'Reconsideration requires evidence that the maker voted on the prevailing side in this meeting.';end if;
+   if kind='reconsider' and (target is null or p.closed_at is null or p.status not in ('adopted','defeated') or not exists(select 1 from public.uro_ballots where proposal_id=target and round=p.vote_round and participant_id=me.id and choice=case when p.status='adopted' then 'yes' else 'no' end)) then raise exception 'Reconsideration requires evidence that the maker voted on the prevailing side in this meeting.';end if;
    if kind in ('emergency_override','suspend_rule') and (length(trim(coalesce(p_data->'context'->>'rule','')))=0 or length(trim(coalesce(p_data->'context'->>'authority','')))=0 or not coalesce((p_data->'context'->>'suspendable')::boolean,false)) then raise exception 'Identify a suspendable URO rule and controlling authority. Law, quorum and superior rights cannot be suspended.';end if;
    if kind='chair_challenge' and not exists(select 1 from public.uro_challenges where id=(p_data->'context'->>'challenge_id')::uuid and meeting_id=s.id and ruling is not null) then raise exception 'Identify an existing Chair ruling.';end if;
    if p_data->'context'->>'approves_minutes_id' is not null and not exists(select 1 from public.uro_sessions x where x.id=(p_data->'context'->>'approves_minutes_id')::uuid and x.body_id=s.body_id and x.minutes_state='certified' and x.ended_at<s.started_at) then raise exception 'Select certified prior minutes of this governing body.';end if;
@@ -345,18 +345,18 @@ declare s public.uro_sessions; p public.uro_proposals; a public.uro_agenda; me p
    q:=public.uro_quorum(s.id,p.agenda_id);if not (q->>'satisfied')::boolean then raise exception 'Quorum is not satisfied or recusal treatment is unconfigured.';end if;
    select array_agg(x.id order by x.id) into ids from public.uro_participants x where x.meeting_id=s.id and public.uro_participant_active(x.id) and (x.presence='present' or (x.presence='remote' and (s.rules->>'remote_authorized')::boolean)) and not exists(select 1 from public.uro_recusals r where r.agenda_id=p.agenda_id and r.participant_id=x.id);
    if coalesce(cardinality(ids),0)=0 then raise exception 'Eligible voters must be present.';end if;
-   update public.uro_proposals set electorate=ids,eligible_present=cardinality(ids),quorum_snapshot=q,method=p_data->>'method',status=case when p_data->>'unanimous_consent'='true' then 'consent_open' else 'voting' end,opened_at=now() where id=p.id;
+   update public.uro_proposals set vote_round=vote_round+1,closed_at=null,result=null,electorate=ids,eligible_present=cardinality(ids),quorum_snapshot=q,method=p_data->>'method',status=case when p_data->>'unanimous_consent'='true' then 'consent_open' else 'voting' end,opened_at=now() where id=p.id;
    update public.uro_sessions set state='vote' where id=s.id;event:='VoteOpened';detail:=jsonb_build_object('proposal',p.id,'eligible_present',cardinality(ids),'quorum',q,'method',p_data->>'method');
  when 'vote' then
    select * into p from public.uro_proposals where id=(p_data->>'id')::uuid and meeting_id=s.id;
    if not found or p.status<>'voting' or p.method not in ('digital','secret') or not voter or not me.id=any(p.electorate) or me.presence not in ('present','remote') then raise exception 'Open digital vote and eligible present participant required.';end if;
-   insert into public.uro_ballots(proposal_id,participant_id,choice) values(p.id,me.id,p_data->>'choice') on conflict(proposal_id,participant_id) do update set choice=excluded.choice,cast_at=now();event:='VoteCast';detail:=jsonb_build_object('proposal',p.id); -- Never place a secret choice in the public audit log.
+   insert into public.uro_ballots(proposal_id,participant_id,round,choice) values(p.id,me.id,p.vote_round,p_data->>'choice') on conflict(proposal_id,participant_id,round) do update set choice=excluded.choice,cast_at=now();event:='VoteCast';detail:=jsonb_build_object('proposal',p.id); -- Never place a secret choice in the public audit log.
  when 'record_ballot' then
    if not chair then raise exception 'Chair must attest assisted roll-call entries.';end if;
    select * into p from public.uro_proposals where id=(p_data->>'id')::uuid and meeting_id=s.id;
    target:=(p_data->>'participant_id')::uuid;
    if not found or p.status<>'voting' or p.method<>'roll_call' or not coalesce(target=any(p.electorate),false) or not public.uro_participant_active(target) then raise exception 'Open roll-call and eligible participant required.';end if;
-   insert into public.uro_ballots(proposal_id,participant_id,choice) values(p.id,target,p_data->>'choice') on conflict(proposal_id,participant_id) do update set choice=excluded.choice,cast_at=now();event:='RollCallRecorded';
+   insert into public.uro_ballots(proposal_id,participant_id,round,choice) values(p.id,target,p.vote_round,p_data->>'choice') on conflict(proposal_id,participant_id,round) do update set choice=excluded.choice,cast_at=now();event:='RollCallRecorded';
  when 'object' then
    select * into p from public.uro_proposals where id=(p_data->>'id')::uuid and meeting_id=s.id;
    if not found or p.status<>'consent_open' or not voter or not me.id=any(p.electorate) then raise exception 'Eligible member and open unanimous-consent action required.';end if;
@@ -364,7 +364,8 @@ declare s public.uro_sessions; p public.uro_proposals; a public.uro_agenda; me p
  when 'cancel_vote' then
    if not chair or length(trim(coalesce(p_data->>'reason','')))=0 then raise exception 'Chair must record why the vote is canceled.';end if;
    update public.uro_proposals set status='before_body',result=null where id=(p_data->>'id')::uuid and meeting_id=s.id and status in ('voting','consent_open');if not found then raise exception 'Open vote required.';end if;
-   delete from public.uro_ballots where proposal_id=(p_data->>'id')::uuid;update public.uro_sessions set state='deliberation' where id=s.id;event:='VoteCanceled';
+   -- Preserve canceled rounds; a reopened vote receives a fresh round.
+   update public.uro_sessions set state='deliberation' where id=s.id;event:='VoteCanceled';
  when 'close_vote' then
    if not chair or s.phase<>'meet' then raise exception 'Chair required to announce the result.';end if;
    select * into p from public.uro_proposals where id=(p_data->>'id')::uuid and meeting_id=s.id;
@@ -376,14 +377,14 @@ declare s public.uro_sessions; p public.uro_proposals; a public.uro_agenda; me p
     if not coalesce((p_data->>'opportunity_confirmed')::boolean,false) then raise exception 'Confirm all participants had a reasonable opportunity to object.';end if;
     yes:=p.eligible_present;no:=0;abstain:=0;passed:=true;required:=p.eligible_present;
    else
-    if p.method in ('digital','secret','roll_call') then select count(*) filter(where choice='yes'),count(*) filter(where choice='no'),count(*) filter(where choice='abstain') into yes,no,abstain from public.uro_ballots where proposal_id=p.id;
+    if p.method in ('digital','secret','roll_call') then select count(*) filter(where choice='yes'),count(*) filter(where choice='no'),count(*) filter(where choice='abstain') into yes,no,abstain from public.uro_ballots where proposal_id=p.id and round=p.vote_round;
     else yes:=(p_data->>'yes')::int;no:=(p_data->>'no')::int;abstain:=(p_data->>'abstain')::int;end if;
     if yes is null or no is null or abstain is null or least(yes,no,abstain)<0 or yes+no+abstain>p.eligible_present then raise exception 'Vote counts must be nonnegative and fit the frozen electorate.';end if;
     if yes+no+abstain<p.eligible_present and not coalesce((p_data->>'opportunity_confirmed')::boolean,false) then raise exception 'Some eligible voters have not voted. Confirm opportunity or keep the vote open.';end if;
     required:=case p.threshold when 'two_thirds' then (2*p.eligible_present+2)/3 when 'unanimous' then p.eligible_present else p.eligible_present/2+1 end;
     passed:=case when p.kind='chair_challenge' then no>=required else yes>=required end;
    end if;
-   rowdata:=jsonb_build_object('yes',yes,'no',no,'abstain',abstain,'not_cast',p.eligible_present-yes-no-abstain,'required',required,'denominator',p.eligible_present,'rule_version',s.rules->>'version','unanimous_consent',p.status='consent_open');
+   rowdata:=jsonb_build_object('round',p.vote_round,'yes',yes,'no',no,'abstain',abstain,'not_cast',p.eligible_present-yes-no-abstain,'required',required,'denominator',p.eligible_present,'rule_version',s.rules->>'version','unanimous_consent',p.status='consent_open');
    update public.uro_proposals set status=case when passed then 'adopted' else 'defeated' end,result=rowdata,closed_at=now() where id=p.id;
    if passed then
     insert into public.uro_decisions(meeting_id,proposal_id,identifier,text,authorized_amount) values(s.id,p.id,p.identifier,p.current_text,(p.context->>'authorized_amount')::numeric) returning id into result;
@@ -492,7 +493,7 @@ declare s public.uro_sessions; b public.uro_bodies; quorum jsonb; issues jsonb:=
  'corrections',(select coalesce(jsonb_agg(x order by created_at),'[]') from public.uro_corrections x where meeting_id=s.id),
  'notes',(select coalesce(jsonb_agg(x order by created_at desc),'[]') from public.uro_private_notes x where meeting_id=s.id and author_id=auth.uid()),
  'my_ballots',(select coalesce(jsonb_agg(x),'[]') from public.uro_ballots x join public.uro_participants p on p.id=x.participant_id where p.meeting_id=s.id and p.profile_id=auth.uid()),
- 'roll_calls',(select coalesce(jsonb_agg(jsonb_build_object('proposal_id',v.proposal_id,'participant_id',v.participant_id,'choice',v.choice)),'[]') from public.uro_ballots v join public.uro_proposals p on p.id=v.proposal_id where p.meeting_id=s.id and p.method in ('digital','roll_call') and p.closed_at is not null),
+ 'roll_calls',(select coalesce(jsonb_agg(jsonb_build_object('proposal_id',v.proposal_id,'participant_id',v.participant_id,'round',v.round,'choice',v.choice)),'[]') from public.uro_ballots v join public.uro_proposals p on p.id=v.proposal_id where p.meeting_id=s.id and p.method in ('digital','roll_call') and p.closed_at is not null and v.round=p.vote_round),
  'previous_minutes',(select coalesce(jsonb_agg(jsonb_build_object('id',x.id,'title',x.title,'minutes_state',x.minutes_state)),'[]') from public.uro_sessions x where x.body_id=s.body_id and x.id<>s.id and x.ended_at<s.scheduled_at and x.minutes_state<>'draft'),
  'approval_decisions',(select coalesce(jsonb_agg(jsonb_build_object('id',d.id,'identifier',d.identifier,'text',d.text)),'[]') from public.uro_decisions d join public.uro_proposals p on p.id=d.proposal_id join public.uro_sessions x on x.id=d.meeting_id where x.body_id=s.body_id and x.started_at>s.ended_at and p.context->>'approves_minutes_id'=s.id::text),
  'live_seconds',case when s.started_at is null then 0 else greatest(0,extract(epoch from coalesce(s.ended_at,now())-s.started_at)::int-s.recess_seconds-case when s.recess_started_at is null then 0 else extract(epoch from now()-s.recess_started_at)::int end) end);
