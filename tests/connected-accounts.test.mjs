@@ -22,7 +22,8 @@ before(async () => {
  create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
  create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
  create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;
- grant usage on schema public,auth,storage to anon,authenticated,service_role;`);
+ grant usage on schema public,auth,storage to anon,authenticated,service_role;
+ grant select,insert,update,delete on storage.objects to authenticated; alter table storage.objects enable row level security;`);
   let schema = fs
     .readFileSync("supabase/schema.sql", "utf8")
     .replace('create extension if not exists "uuid-ossp";', "")
@@ -72,6 +73,8 @@ before(async () => {
   );
   await db.exec(fs.readFileSync('supabase/migrations/20261004203000_state_post_operations.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261004210000_membership_transfers.sql', 'utf8'));
+  await db.exec(`insert into public.drive_folders(id,name,shared_with_posts,created_by) values('${uid(9701)}','Legacy resources',true,'${national}'); insert into public.drive_files(id,folder_id,name,storage_path,uploaded_by) values('${uid(9702)}','${uid(9701)}','Legacy file','legacy/resource.pdf','${national}'); insert into storage.objects(bucket_id,name) values('ncc-drive','legacy/resource.pdf');`);
+  await db.exec(fs.readFileSync('supabase/migrations/20261004220000_document_workspaces.sql', 'utf8'));
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${uid(5)}','state@example.test',now()),('${uid(6)}','delegate@example.test',now()),('${uid(7)}','tribunal@example.test',now()),('${uid(8)}','national-staff@example.test',now());
   insert into public.profiles(id,full_name,email,role,state,post_id) values('${uid(5)}','State','state@example.test','state_commander','IN',null),('${uid(6)}','Delegate','delegate@example.test','delegate',null,'${post}'),('${uid(7)}','Tribunal','tribunal@example.test','ethics_tribunal',null,null),('${uid(8)}','National Staff','national-staff@example.test','national_staff',null,null);
   insert into public.congress_delegates(profile_id,post_id) values('${uid(6)}','${post}');
@@ -899,3 +902,92 @@ test('state and post staff cannot read requests wholly outside their jurisdictio
     });
   } finally { await db.query('delete from public.members where id=$1',[foreignMember]); }
 });
+
+// Execute drive permissions as actual authenticated database roles.
+async function driveDirectory(){return rpc('select public.cvoa_drive_directory() data')}
+async function driveCreate(w,kind='document',parent=null){return rpc('select public.cvoa_drive_create($1,$2,$3,$4,$5::jsonb) data',[w,parent,kind,'Test document',kind==='document'?JSON.stringify({type:'doc',content:[{type:'paragraph'}]}):null])}
+async function actor(user){await db.query("select set_config('request.jwt.claim.sub',$1,true)",[user])}
+async function driveSave(id,version=1){return rpc("select public.cvoa_drive_save($1,$2,$3::jsonb) data",[id,version,JSON.stringify({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Updated'}]}]})])}
+test('Drive directory scopes National, state and post access without granting members staff access',()=>as(national,async()=>{
+ const all=(await driveDirectory()).workspaces;assert.equal(all.length,5);
+ await actor(stateCommander);const state=(await driveDirectory()).workspaces;assert.equal(state.length,2);assert.ok(state.every(w=>w.state==='IN'));assert.equal(state.find(w=>w.kind==='post').level,1);
+ await actor(officer);const local=await driveDirectory();assert.equal(local.workspaces.length,1);assert.equal(local.workspaces[0].post_id,post);
+ await actor(member);assert.deepEqual(await driveDirectory(),{workspaces:[],recipients:[]});
+ await actor(tribunal);assert.deepEqual((await driveDirectory()).workspaces,[]);
+}));
+test('Drive native revisions reject stale saves and restore without deleting history',()=>as(national,async()=>{
+ const ws=(await driveDirectory()).workspaces.find(w=>w.kind==='national').id;const id=await driveCreate(ws);
+ assert.equal(await driveSave(id),2);await failure(()=>driveSave(id),/changed|version|another/i);
+ const revisions=(await db.query('select * from public.cvoa_drive_revisions where item_id=$1 order by version',[id])).rows;assert.equal(revisions.length,2);
+ assert.equal(await rpc('select public.cvoa_drive_restore_revision($1,$2,2) data',[id,revisions[0].id]),3);
+ assert.equal((await db.query('select count(*)::int n from public.cvoa_drive_revisions where item_id=$1',[id])).rows[0].n,3);
+ await failure(()=>db.query("update public.cvoa_drive_revisions set version=99 where item_id=$1",[id]),/permission denied/);
+}));
+test('Drive state oversight can read posts but cannot edit their documents',()=>as(national,async()=>{
+ const ws=(await driveDirectory()).workspaces.find(w=>w.post_id===post).id;const id=await driveCreate(ws);
+ await actor(stateCommander);assert.equal((await db.query('select id from public.cvoa_drive_items where id=$1',[id])).rows.length,1);
+ await failure(()=>driveSave(id),/editing permission/);await failure(()=>driveCreate(ws),/authority/);
+ await actor(member);assert.equal((await db.query('select id from public.cvoa_drive_items where id=$1',[id])).rows.length,0);
+}));
+test('Drive sharing inherits folder rights, permits collaborative creation and prevents resharing',()=>as(national,async()=>{
+ const ws=(await driveDirectory()).workspaces;const source=ws.find(w=>w.kind==='national').id,target=ws.find(w=>w.post_id===post).id;
+ const folder=await driveCreate(source,'folder'),doc=await driveCreate(source,'document',folder);
+ const share=await rpc("select public.cvoa_drive_share($1,$2,'edit') data",[folder,target]);
+ await actor(officer);assert.equal(await rpc('select public.cvoa_drive_item_level($1) data',[doc]),3);assert.equal(await driveSave(doc),2);
+ const child=await driveCreate(source,'document',folder);assert.ok(child);
+ await failure(()=>driveCreate(source),/authority/);await failure(()=>rpc("select public.cvoa_drive_share($1,$2,'view') data",[doc,target]),/Only owning/);
+ await failure(()=>rpc("select public.cvoa_drive_manage($1,'trash') data",[doc]),/Owning workspace/);
+ await actor(national);await rpc('select public.cvoa_drive_revoke_share($1) data',[share]);await actor(officer);
+ assert.equal((await db.query('select id from public.cvoa_drive_items where id=$1',[doc])).rows.length,0);
+}));
+test('Drive comment-only sharing cannot edit, impersonate comments or retain revoked access',()=>as(national,async()=>{
+ const ws=(await driveDirectory()).workspaces,source=ws.find(w=>w.kind==='national').id,target=ws.find(w=>w.post_id===post).id;
+ const doc=await driveCreate(source);const share=await rpc("select public.cvoa_drive_share($1,$2,'comment') data",[doc,target]);
+ await actor(officer);await db.query('insert into public.cvoa_drive_comments(item_id,author_id,body) values($1,$2,$3)',[doc,officer,'Review feedback']);
+ await failure(()=>driveSave(doc),/editing permission/);
+ await failure(()=>db.query('insert into public.cvoa_drive_comments(item_id,author_id,body) values($1,$2,$3)',[doc,national,'Impersonation']),/row-level security/);
+ await actor(national);await rpc('select public.cvoa_drive_revoke_share($1) data',[share]);await actor(officer);
+ assert.equal((await db.query('select * from public.cvoa_drive_comments where item_id=$1',[doc])).rows.length,0);
+}));
+test('Drive trash blocks shared descendants and prevents circular folder moves',()=>as(national,async()=>{
+ const ws=(await driveDirectory()).workspaces,source=ws.find(w=>w.kind==='national').id,target=ws.find(w=>w.post_id===post).id;
+ const folder=await driveCreate(source,'folder'),child=await driveCreate(source,'folder',folder),doc=await driveCreate(source,'document',child);
+ await failure(()=>rpc("select public.cvoa_drive_manage($1,'move',null,$2) data",[folder,child]),/inside itself/);
+ await rpc("select public.cvoa_drive_share($1,$2,'edit') data",[folder,target]);await rpc("select public.cvoa_drive_manage($1,'trash') data",[folder]);
+ await actor(officer);assert.equal(await rpc('select public.cvoa_drive_item_level($1) data',[doc]),0);await failure(()=>driveCreate(source,'document',child),/authority|folder/);
+ await actor(national);assert.deepEqual(await rpc('select public.cvoa_drive_live_ids($1) data',[[doc]]),[]);
+ await rpc("select public.cvoa_drive_manage($1,'restore') data",[folder]);assert.deepEqual(await rpc('select public.cvoa_drive_live_ids($1) data',[[doc]]),[doc]);
+}));
+test('Drive versioned blob uploads enforce workspace and folder authority',()=>as(national,async()=>{
+ const ws=(await driveDirectory()).workspaces,source=ws.find(w=>w.kind==='national').id,target=ws.find(w=>w.post_id===post).id;
+ const folder=await driveCreate(source,'folder');await rpc("select public.cvoa_drive_share($1,$2,'edit') data",[folder,target]);
+ await actor(officer);const id=uid(9801),path=`${source}/${id}/${folder}/version/file.pdf`;
+ assert.equal(await rpc('select public.cvoa_drive_storage_write($1) data',[path]),true);
+ assert.equal(await rpc('select public.cvoa_drive_storage_write($1) data',[`${source}/${uid(9802)}/root/version/file.pdf`]),false);
+ await db.query("insert into storage.objects(bucket_id,name) values('ncc-drive',$1)",[path]);
+ await rpc("select public.cvoa_drive_create($1,$2,'file','File',null,$3,'application/pdf',42,$4) data",[source,folder,path,id]);
+ assert.equal(await rpc('select public.cvoa_drive_storage_read($1) data',[path]),true);
+ // No storage update/delete policy: original versions remain recoverable.
+ assert.equal((await db.query("delete from storage.objects where name=$1 returning id",[path])).rows.length,0);
+ await actor(national);await rpc("select public.cvoa_drive_manage($1,'trash') data",[folder]);await actor(officer);
+ assert.equal(await rpc('select public.cvoa_drive_storage_read($1) data',[path]),false);
+}));
+
+test('Drive imports existing files and revocation closes legacy blob access',()=>as(national,async()=>{
+ const file=(await db.query('select * from public.cvoa_drive_items where id=$1',[uid(9702)])).rows[0];assert.equal(file.storage_path,'legacy/resource.pdf');
+ const share=(await db.query('select id from public.cvoa_drive_shares where item_id=$1',[uid(9701)])).rows[0].id;
+ await actor(member);assert.equal(await rpc('select public.cvoa_drive_storage_read($1) data',['legacy/resource.pdf']),true);
+ assert.equal((await db.query("select * from storage.objects where name='legacy/resource.pdf'")).rows.length,1);
+ await actor(national);await rpc('select public.cvoa_drive_revoke_share($1) data',[share]);await actor(member);
+ assert.equal((await db.query("select * from storage.objects where name='legacy/resource.pdf'")).rows.length,0);
+}));
+test('Drive approval is enforced by the database and suspended users lose document access',()=>as(national,async()=>{
+ const ws=(await driveDirectory()).workspaces.find(w=>w.kind==='national').id,id=await driveCreate(ws);
+ await failure(()=>rpc("select public.cvoa_drive_save($1,null,'{}'::jsonb) data",[id]),/changed/);
+ await failure(()=>rpc("select public.cvoa_drive_save($1,1,'{}'::jsonb) data",[id]),/valid document/);
+ await rpc("select public.cvoa_drive_save($1,1,$2::jsonb,'approved') data",[id,JSON.stringify({type:'doc'})]);
+ await failure(()=>rpc("select public.cvoa_drive_save($1,2,$2::jsonb,'approved') data",[id,JSON.stringify({type:'doc'})]),/Reopen/);
+ await updateAccount(nationalStaff,0,{suspended:true});await actor(nationalStaff);
+ assert.equal((await db.query('select * from public.cvoa_drive_items')).rows.length,0);
+ await failure(()=>driveDirectory(),/Active account/);
+}));
