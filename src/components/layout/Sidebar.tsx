@@ -103,6 +103,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   const navItems = [
     { to: '/', label: isNational ? 'National Dashboard' : isState ? 'State Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
+    ...(isState || isPlainMember ? [{ to: '/meetings', label: 'Meetings', icon: CalendarCheck }] : []),
     ...(isState ? [{ to: '/drive', label: 'Documents & Files', icon: HardDrive }, { to: '/health', label: 'State Posts', icon: HeartPulse }, { to: '/members', label: 'State Membership Roster', icon: IdCard }, { to: '/fundraising', label: 'State Fundraising', icon: HandCoins }, { to: '/congress', label: 'Veterans Congress', icon: Landmark }] : []),
     // National always gets the full toolset too, on top of their own-only
     // items above — they manage every post's modules directly. A plain
