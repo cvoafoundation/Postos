@@ -45,3 +45,20 @@
     @apply px-4 py-3 text-sm border-b border-hairline/60;
   }
 }
+
+.drive-document h1 { font-size: 2em; font-weight: 700; margin: 1em 0 .5em; }
+.drive-document h2 { font-size: 1.5em; font-weight: 600; margin: 1em 0 .5em; }
+.drive-document h3 { font-size: 1.25em; font-weight: 600; margin: .8em 0 .4em; }
+.drive-document p { margin: .65em 0; }
+.drive-document ul { list-style: disc; padding-left: 1.5em; }
+.drive-document ol { list-style: decimal; padding-left: 1.5em; }
+.drive-document blockquote { border-left: 3px solid #C9A227; padding-left: 1em; }
+.drive-document table { border-collapse: collapse; width: 100%; }
+.drive-document td, .drive-document th { border: 1px solid #999; padding: .5em; min-width: 60px; }
+.drive-document th { font-weight: 600; }
+.drive-document a { text-decoration: underline; }
+@media print {
+ body:has(.drive-print-area) * { visibility: hidden; }
+ .drive-print-area, .drive-print-area * { visibility: visible; color: #111 !important; background: #fff !important; }
+ .drive-print-area { position: absolute; left: 0; top: 0; width: 100%; }
+}

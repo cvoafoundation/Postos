@@ -48,8 +48,7 @@ const FileComplaint = lazy(() => import('@/pages/ethics/FileComplaint'))
 const EthicsTribunalInbox = lazy(() => import('@/pages/ethics/EthicsTribunalInbox'))
 const VerifyMembership = lazy(() => import('@/pages/members/VerifyMembership'))
 const MembershipPaymentResult = lazy(() => import('@/pages/members/MembershipPaymentResult'))
-const NCCDrive = lazy(() => import('@/pages/drive/NCCDrive'))
-const SharedDriveView = lazy(() => import('@/pages/drive/SharedDriveView'))
+const DocumentDrive = lazy(() => import('@/pages/drive/DocumentDrive'))
 const UserManagement = lazy(() => import('@/pages/admin/UserManagement'))
 const StateHome = lazy(() => import('@/pages/StateHome'))
 const MyApplications = lazy(() => import('@/pages/members/MyApplications'))
@@ -301,16 +300,16 @@ function AuthenticatedApp() {
         <Route
           path="/drive"
           element={
-            <RoleGuard roles={[]}>
-              <NCCDrive />
+            <RoleGuard roles={['state_commander','post_commander','post_officer']}>
+              <DocumentDrive />
             </RoleGuard>
           }
         />
         <Route
           path="/shared-files"
           element={
-            <RoleGuard roles={['member', 'post_commander', 'post_officer']}>
-              <SharedDriveView />
+            <RoleGuard roles={['member', 'state_commander', 'post_commander', 'post_officer', 'delegate']}>
+              <DocumentDrive />
             </RoleGuard>
           }
         />
