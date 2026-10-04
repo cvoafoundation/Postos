@@ -232,7 +232,7 @@ function AuthenticatedApp() {
         <Route
           path="/health"
           element={
-            <RoleGuard roles={['post_commander', 'post_officer']}>
+            <RoleGuard roles={['state_commander', 'post_commander', 'post_officer']}>
               <PostHealth />
             </RoleGuard>
           }
