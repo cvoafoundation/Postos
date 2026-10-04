@@ -75,6 +75,7 @@ before(async () => {
   await db.exec(fs.readFileSync('supabase/migrations/20261004210000_membership_transfers.sql', 'utf8'));
   await db.exec(`insert into public.drive_folders(id,name,shared_with_posts,created_by) values('${uid(9701)}','Legacy resources',true,'${national}'); insert into public.drive_files(id,folder_id,name,storage_path,uploaded_by) values('${uid(9702)}','${uid(9701)}','Legacy file','legacy/resource.pdf','${national}'); insert into storage.objects(bucket_id,name) values('ncc-drive','legacy/resource.pdf');`);
   await db.exec(fs.readFileSync('supabase/migrations/20261004220000_document_workspaces.sql', 'utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20261004230000_uro_governance.sql', 'utf8'));
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${uid(5)}','state@example.test',now()),('${uid(6)}','delegate@example.test',now()),('${uid(7)}','tribunal@example.test',now()),('${uid(8)}','national-staff@example.test',now());
   insert into public.profiles(id,full_name,email,role,state,post_id) values('${uid(5)}','State','state@example.test','state_commander','IN',null),('${uid(6)}','Delegate','delegate@example.test','delegate',null,'${post}'),('${uid(7)}','Tribunal','tribunal@example.test','ethics_tribunal',null,null),('${uid(8)}','National Staff','national-staff@example.test','national_staff',null,null);
   insert into public.congress_delegates(profile_id,post_id) values('${uid(6)}','${post}');
@@ -990,4 +991,67 @@ test('Drive approval is enforced by the database and suspended users lose docume
  await updateAccount(nationalStaff,0,{suspended:true});await actor(nationalStaff);
  assert.equal((await db.query('select * from public.cvoa_drive_items')).rows.length,0);
  await failure(()=>driveDirectory(),/Active account/);
+}));
+
+const uroRules={version:'URO-2026.10-present-v1',denominator:'eligible_present',speaking_seconds:120,configured:true,remote_authorized:false,notice_hours:24,notice_authority:'Fixture governing notice provision',voting_authority:'Fixture voting body provision',recusal_counts_quorum:true};
+async function uroSetup(jurisdiction='national',extra={}){
+ const b=await rpc('select public.uro_body_setup(null,$1::jsonb) data',[JSON.stringify({name:'Test governing body',jurisdiction,state:jurisdiction==='state'?'IN':null,post_id:jurisdiction==='post'?post:null,chair_id:national,secretary_id:officer,members:[],...extra,rules:{...(extra.rules||uroRules),configured:false}})]);
+ const candidates=(await db.query('select * from public.uro_candidates($1)',[b])).rows;
+ const members=candidates.filter(c=>[national,officer,member].includes(c.profile_id)).map(c=>({...c,voting:true}));
+ await rpc('select public.uro_body_setup($1,$2::jsonb) data',[b,JSON.stringify({name:'Test governing body',rules:uroRules,chair_id:national,secretary_id:officer,members,...extra})]);
+ const s=await rpc('select public.uro_create($1,$2::jsonb) data',[b,JSON.stringify({title:'URO test meeting',type:'regular',scheduled_at:new Date().toISOString()})]);return {b,s};
+}
+async function uroState(s){return rpc('select public.uro_state($1) data',[s])}
+async function uroCommand(s,action,data={}){const state=await uroState(s);return rpc('select public.uro_command($1,$2,$3::jsonb,$4) data',[s,action,JSON.stringify(data),state.session.version])}
+async function uroStart(s){const state=await uroState(s);for(const p of state.participants)await uroCommand(s,'attendance',{id:p.id,presence:'present'});await uroCommand(s,'start');const a=await uroCommand(s,'agenda',{title:'Prepared decision',classification:'decision',readiness:'ready_for_decision',late_reason:'Urgent fixture business'});await uroCommand(s,'open_item',{id:a});return a}
+async function uroMotion(s,kind='main',context={}){const id=await uroCommand(s,'propose',{kind,text:'Exact decision text',context});await actor(officer);await uroCommand(s,'second',{id});await actor(national);await uroCommand(s,'introduce',{id});await uroCommand(s,'stage',{state:'final_question'});await uroCommand(s,'open_vote',{id,method:'digital'});return id}
+test('URO complete majority vote includes abstentions and preserves original decision text',()=>as(national,async()=>{
+ const {s}=await uroSetup();await uroStart(s);const id=await uroMotion(s);
+ await uroCommand(s,'vote',{id,choice:'yes'});await actor(officer);await uroCommand(s,'vote',{id,choice:'yes'});await actor(member);await uroCommand(s,'vote',{id,choice:'abstain'});await actor(national);await uroCommand(s,'close_vote',{id});
+ const state=await uroState(s),p=state.proposals.find(p=>p.id===id);assert.equal(p.status,'adopted');assert.equal(p.result.denominator,3);assert.equal(p.result.required,2);assert.equal(p.result.abstain,1);assert.equal(state.decisions[0].text,'Exact decision text');
+ await failure(()=>db.query("update public.uro_decisions set text='Forged' where id=$1",[state.decisions[0].id]),/permission denied/);
+}));
+test('URO exact two thirds passes and missing votes remain in denominator',()=>as(national,async()=>{
+ const {s}=await uroSetup();await uroStart(s);const id=await uroMotion(s,'close_debate');await uroCommand(s,'vote',{id,choice:'yes'});await actor(officer);await uroCommand(s,'vote',{id,choice:'yes'});await actor(national);await uroCommand(s,'close_vote',{id,opportunity_confirmed:true});const p=(await uroState(s)).proposals[0];assert.equal(p.status,'adopted');assert.equal(p.result.required,2);assert.equal(p.result.not_cast,1);
+}));
+test('URO a majority of votes cast is insufficient without majority present',()=>as(national,async()=>{
+ const {s}=await uroSetup();await uroStart(s);const id=await uroMotion(s);await uroCommand(s,'vote',{id,choice:'yes'});await actor(national);await uroCommand(s,'close_vote',{id,opportunity_confirmed:true});assert.equal((await uroState(s)).proposals[0].status,'defeated');
+}));
+test('URO state and post oversight remains scoped and does not grant a vote',()=>as(national,async()=>{
+ const {s,b}=await uroSetup('post');await actor(uid(5));assert.equal((await uroState(s)).body.id,b);await failure(()=>uroCommand(s,'propose',{kind:'main',text:'Unauthorized'}),/Voting member/);await failure(()=>uroCommand(s,'start'),/Assigned Chair/);await actor(guest);await failure(()=>uroState(s),/Meeting access/);
+}));
+test('URO private notes and secret ballots are not exposed to National observers',()=>as(national,async()=>{
+ const {s}=await uroSetup();await uroStart(s);await actor(officer);await uroCommand(s,'note',{body:'Secretary confidential working note'});await actor(national);assert.equal((await uroState(s)).notes.length,0);await failure(()=>db.query('select * from public.uro_private_notes'),/permission denied/);
+ const id=await uroCommand(s,'propose',{kind:'main',text:'Secret choice'});await actor(officer);await uroCommand(s,'second',{id});await actor(national);await uroCommand(s,'introduce',{id});await uroCommand(s,'stage',{state:'final_question'});await uroCommand(s,'open_vote',{id,method:'secret'});await actor(member);await uroCommand(s,'vote',{id,choice:'no'});await actor(national);const state=await uroState(s);assert.equal(state.my_ballots.length,0);assert.equal(state.roll_calls.length,0);assert.ok(!JSON.stringify(state.events).includes('"choice"'));await failure(()=>db.query('select * from public.uro_ballots'),/permission denied/);
+}));
+test('URO freezes electorate, detects stale writes and blocks uncertified publication',()=>as(national,async()=>{
+ const {s}=await uroSetup();await uroStart(s);const id=await uroMotion(s),state=await uroState(s);await failure(()=>uroCommand(s,'attendance',{id:state.participants[0].id,presence:'left'}),/open vote/);await failure(()=>rpc('select public.uro_command($1,$2,$3::jsonb,1) data',[s,'vote',JSON.stringify({id,choice:'yes'})]),/changed/);await failure(()=>uroCommand(s,'publish_record'),/Certify/);
+}));
+test('URO quorum loss blocks binding business and guests do not count',()=>as(national,async()=>{
+ const {s}=await uroSetup();await uroCommand(s,'guest',{name:'Visiting observer'});const state=await uroState(s);await uroCommand(s,'attendance',{id:state.participants.find(p=>p.profile_id===national).id,presence:'present'});await uroCommand(s,'attendance',{id:state.participants.find(p=>p.guest).id,presence:'present'});await uroCommand(s,'start');assert.equal((await uroState(s)).quorum.present,1);await failure(()=>uroCommand(s,'propose',{kind:'main',text:'No quorum'}),/quorum/);
+}));
+test('URO certification, publication and correction remain distinct and author enforced',()=>as(national,async()=>{
+ const {s}=await uroSetup();await uroStart(s);await uroCommand(s,'adjourn',{action_review_confirmed:true});await failure(()=>uroCommand(s,'certify'),/Secretary/);await actor(officer);await uroCommand(s,'certify');await uroCommand(s,'correct_record',{target:'Attendance spelling',previous:'Old',new:'Correct name',reason:'Verified spelling',authority:'Secretary factual correction'});const state=await uroState(s);assert.equal(state.session.minutes_state,'certified');assert.equal(state.session.published_at,null);assert.match(state.session.minutes,/CORRECTION ADDENDA/);assert.equal(state.corrections.length,1);await uroCommand(s,'publish_record');assert.ok((await uroState(s)).session.published_at);
+}));
+test('URO email notice jobs are authorized, idempotent and hidden from ordinary readers',()=>as(national,async()=>{
+ const {s}=await uroSetup();const job=await rpc('select public.uro_prepare_notice($1) data',[s]);assert.equal(await rpc('select public.uro_prepare_notice($1) data',[s]),job);await failure(()=>db.query('select email from public.uro_notice_deliveries'),/permission denied/);await failure(()=>rpc('select public.uro_finish_notice($1) data',[job]),/permission denied/);await actor(member);await failure(()=>rpc('select public.uro_prepare_notice($1) data',[s]),/Assigned Chair or Secretary/);
+}));
+test('URO amendments require germaneness and default to majority rather than two thirds',()=>as(national,async()=>{
+ const {s}=await uroSetup();await uroStart(s);const parent=await uroCommand(s,'propose',{kind:'main',text:'Original proposal'}),id=await uroCommand(s,'propose',{kind:'amendment',parent_id:parent,text:'Amended exact text'});await failure(()=>uroCommand(s,'introduce',{id}),/germane/);await uroCommand(s,'introduce',{id,germaneness_reason:'Directly adjusts the pending proposal'});assert.equal((await uroState(s)).proposals.find(p=>p.id===id).threshold,'majority');await failure(()=>uroCommand(s,'propose',{kind:'amendment',parent_id:id,text:'Nested amendment'}),/One amendment/);
+}));
+test('URO Chair challenge asks to sustain and requires two thirds NO to reverse',()=>as(national,async()=>{
+ const {s}=await uroSetup();await uroStart(s);await actor(member);const challenge=await uroCommand(s,'challenge',{kind:'point_of_procedure',body:'Procedure objection'});await actor(national);await uroCommand(s,'rule',{id:challenge,ruling:'Chair finding'});await actor(member);const id=await uroCommand(s,'propose',{kind:'chair_challenge',text:'Challenge existing ruling',context:{challenge_id:challenge}});await actor(officer);await uroCommand(s,'second',{id});await actor(national);await uroCommand(s,'introduce',{id});await uroCommand(s,'open_vote',{id,method:'digital'});await uroCommand(s,'vote',{id,choice:'no'});await actor(officer);await uroCommand(s,'vote',{id,choice:'no'});await actor(member);await uroCommand(s,'vote',{id,choice:'abstain'});await actor(national);await uroCommand(s,'close_vote',{id});const state=await uroState(s);assert.equal(state.challenges[0].disposition,'overturned');assert.equal(state.proposals[0].current_text,'Shall the ruling of the Chair be sustained?');
+}));
+test('URO missing recusal authority blocks affected votes and archived facts cannot be edited',()=>as(national,async()=>{
+ const {s}=await uroSetup('national',{rules:{...uroRules,recusal_counts_quorum:null}});await uroStart(s);await actor(member);await uroCommand(s,'recuse',{reason:'Declared conflict'});await actor(national);assert.equal((await uroState(s)).quorum.recusal_rule_missing,true);await failure(()=>uroCommand(s,'propose',{kind:'main',text:'Conflicted vote'}),/quorum/);await uroCommand(s,'adjourn',{action_review_confirmed:true});await actor(officer);await uroCommand(s,'certify');await failure(()=>uroCommand(s,'agenda',{title:'Silent changed record',classification:'discussion'}),/Archived/);
+}));
+test('URO unfinished business carries forward and appears in staff queue',()=>as(national,async()=>{
+ const {s,b}=await uroSetup('post');const agenda=await uroStart(s);await uroCommand(s,'action',{title:'Complete assignment',owner_id:officer,due_date:'2020-01-01'});await uroCommand(s,'adjourn',{action_review_confirmed:true});const queue=await rpc('select public.cvoa_action_queue() data');assert.ok(queue.items.some(i=>i.path===`/meetings/session/${s}`));const next=await rpc('select public.uro_create($1,$2::jsonb) data',[b,JSON.stringify({title:'Follow up',type:'regular',scheduled_at:'2030-01-01T00:00:00Z'})]);assert.ok((await uroState(next)).agenda.some(a=>a.source_agenda_id===agenda));
+}));
+test('URO delivery completion records actual accepted recipients without duplicating notice events',()=>as(national,async()=>{
+ const {s}=await uroSetup(),job=await rpc('select public.uro_prepare_notice($1) data',[s]);
+ await db.exec("set local role service_role; select set_config('request.jwt.claim.role','service_role',true)");
+ await db.query("update public.uro_notice_deliveries set state='sent',sent_at=now() where job_id=$1",[job]);const result=await rpc('select public.uro_finish_notice($1) data',[job]);assert.equal(result.sent,3);assert.equal(result.incomplete,0);await rpc('select public.uro_finish_notice($1) data',[job]);
+ await db.exec("set local role authenticated; select set_config('request.jwt.claim.role','authenticated',true)");
+ const state=await uroState(s);assert.equal(state.notices.length,1);assert.equal(state.events.filter(e=>e.action==='NoticeDeliveryRecorded').length,1);await uroCommand(s,'agenda',{title:'Updated packet',classification:'discussion'});assert.notEqual(await rpc('select public.uro_prepare_notice($1) data',[s]),job);
 }));
