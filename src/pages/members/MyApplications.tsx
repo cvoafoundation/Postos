@@ -1,3 +1,4 @@
+import ApplicantQuestionnaire from "@/components/vetting/ApplicantQuestionnaire";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/layout/AppShell";
 import { useWorkspace } from "@/lib/workspaces";
@@ -47,6 +48,7 @@ export default function MyApplications() {
             <p className="text-xs text-muted">
               Submitted {a.created_at.slice(0, 10)}
             </p>
+            <ApplicantQuestionnaire applicationId={a.id} />
             <ApplicationTimeline
               applicationId={a.id}
               initialUpdates={a.updates}
