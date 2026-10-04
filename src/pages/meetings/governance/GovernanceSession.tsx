@@ -413,7 +413,7 @@ export default function GovernanceSession() {
         <strong>{s.state?.replaceAll("_", " ")}</strong>
         <span
           className={
-            q.satisfied ? "text-status-ready" : "text-status-attention"
+            q.satisfied ? "text-status-active" : "text-status-attention"
           }
         >
           Quorum: {q.present} present / {q.required} required
@@ -1179,7 +1179,7 @@ export default function GovernanceSession() {
                       className={
                         data.my_ballots.some(
                           (b: RecordData) =>
-                            b.proposal_id === p.id && b.choice === choice,
+                            b.proposal_id === p.id && b.round === p.vote_round && b.choice === choice,
                         )
                           ? "btn-gold"
                           : "btn-ghost"
