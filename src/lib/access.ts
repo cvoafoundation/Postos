@@ -78,6 +78,8 @@ export function scopeLabel(scope: AccessScope) {
     return scope.state ? `State · ${scope.state}` : "State assignment missing";
   if (scope.role === "delegate")
     return `${scope.post_name ?? "Post designation required"} · ${scope.state ?? "State derived from designated post"}`;
+  if (scope.role === "member") return "Member services · no staff authority";
+  if (scope.role === "guest_applicant") return "Own application · no staff authority";
   return (
     scope.post_name ?? (scope.post_id ? "Assigned post" : "No post assignment")
   );

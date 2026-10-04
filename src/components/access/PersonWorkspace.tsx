@@ -260,7 +260,7 @@ export default function PersonWorkspace({
                     {m.membership_status.replaceAll("_", " ")}
                   </p>
                   <p className="text-muted mt-1">
-                    {m.post_name ?? "National at large"} · Service verification:{" "}
+                    {m.post_name ?? (m.post_id ? 'Assigned post' : 'At-large member (no post)')} · Service verification:{" "}
                     {m.dd214_review_status ?? "Not recorded"}
                   </p>
                   <p className="text-muted">

@@ -21,7 +21,6 @@ import {
   UserPlus,
   Loader2,
   ShieldCheck,
-  Link2,
   AlertCircle,
 } from "lucide-react";
 const ROLES = Object.entries(ROLE_LABELS).map(([value, label]) => ({
@@ -238,15 +237,15 @@ export default function UserManagement() {
               ))}
             </div>
           ) : (
-            <div className="grid xl:grid-cols-2 gap-4">
+            <div className="panel overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-border text-xs text-muted"><tr>{["Person", "Membership", "Affiliation", "Access role", "Account", ""].map(label => <th key={label} scope="col" className="px-4 py-3 font-medium">{label}</th>)}</tr></thead><tbody>
               {visible.map((a) => (
-                <AccountCard
+                <AccountRowView
                   key={a.profile.id}
                   account={a}
                   onOpen={() => setSelected({ profile: a.profile.id })}
                 />
               ))}
-            </div>
+            </tbody></table></div>
           )}
           {(filter === "unlinked" ? memberRows : visible).length === 0 && (
             <div className="panel p-6 text-sm text-muted">
@@ -290,65 +289,17 @@ export default function UserManagement() {
     </div>
   );
 }
-function AccountCard({
-  account: a,
-  onOpen,
-}: {
-  account: AccountRow;
-  onOpen: () => void;
-}) {
+function AccountRowView({ account: a, onOpen }: { account: AccountRow; onOpen: () => void }) {
   const issues = accountIssues(a);
   return (
-    <section className="panel p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-display text-xl">{a.profile.full_name}</h2>
-          <p className="text-xs text-muted break-all mt-1">{a.profile.email}</p>
-        </div>
-        <span
-          className={`text-xs ${a.profile.access_suspended ? "text-status-attention" : "text-status-active"}`}
-        >
-          {activationLabel({
-            ...a,
-            access_suspended: a.profile.access_suspended,
-          })}
-        </span>
-      </div>
-      <div className="mt-4 text-sm flex gap-2">
-        <Link2 size={16} className="shrink-0 text-gold mt-1" />
-        <div>
-          {a.memberships.length ? (
-            a.memberships.map((m) => (
-              <p key={m.id}>
-                {m.membership_type} · {m.membership_status.replaceAll("_", " ")}{" "}
-                · {m.post_name ?? "National at large"}
-              </p>
-            ))
-          ) : (
-            <p className="text-muted">
-              No linked membership · account-only record
-            </p>
-          )}
-        </div>
-      </div>
-      <ul className="mt-3 space-y-2 text-sm">
-        {a.scopes.map((s) => (
-          <li key={s.scope_id}>
-            <span>{ROLE_LABELS[s.role]}</span>
-            <span className="block text-xs text-muted">{scopeLabel(s)}</span>
-          </li>
-        ))}
-      </ul>
-      {issues.length > 0 && (
-        <div className="mt-3 flex gap-2 text-xs text-status-developing">
-          <AlertCircle size={15} className="shrink-0" />
-          <span>{issues.join(" · ")}</span>
-        </div>
-      )}
-      <button className="btn-ghost mt-4 text-sm" onClick={onOpen}>
-        Open person & access workspace →
-      </button>
-    </section>
+    <tr className="border-b border-border last:border-0 hover:bg-white/5 align-top">
+      <td className="px-4 py-3"><button className="text-left font-medium text-gold" onClick={onOpen}>{a.profile.full_name}</button><p className="text-xs text-muted mt-1">{a.profile.email}</p>{a.profile.is_test_account && <span className="text-xs text-status-attention">Test account</span>}</td>
+      <td className="px-4 py-3">{a.memberships.length ? a.memberships.map(m => <p key={m.id}>{m.membership_type?.replaceAll('_', ' ')} · {m.membership_status.replaceAll('_', ' ')}</p>) : <span className="text-muted">No linked membership</span>}</td>
+      <td className="px-4 py-3">{a.memberships.length ? a.memberships.map(m => <p key={m.id}>{m.post_name ?? (m.post_id ? 'Assigned post' : 'At-large member (no post)')}</p>) : <span className="text-muted">—</span>}</td>
+      <td className="px-4 py-3">{a.scopes.map(s => <div key={s.scope_id} className="mb-1"><span>{ROLE_LABELS[s.role]}</span><p className="text-xs text-muted">{scopeLabel(s)}</p></div>)}</td>
+      <td className="px-4 py-3"><span className={a.profile.access_suspended ? 'text-status-attention' : 'text-muted'}>{activationLabel({...a, access_suspended:a.profile.access_suspended})}</span>{issues.length > 0 && <p className="text-xs text-status-developing mt-1">{issues.join(' · ')}</p>}</td>
+      <td className="px-4 py-3"><button className="btn-ghost text-xs whitespace-nowrap" onClick={onOpen}>Manage</button></td>
+    </tr>
   );
 }
 
