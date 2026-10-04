@@ -794,3 +794,17 @@ test('state overview includes support and activity counts only for assigned post
  assert.equal(posts[0].id, post);
  for (const key of ['overdue_actions','draft_meetings','active_campaigns','support_requests']) assert.equal(typeof posts[0][key], 'number');
 }));
+
+test('health source records remain scoped for National, state and local staff', async () => {
+  const ids = [uid(901), uid(902)];
+  await db.exec(`insert into public.community_service_events(id,post_id,title,event_date) values('${ids[0]}','${post}','Indiana service',current_date),('${ids[1]}','${otherPost}','Ohio service',current_date);`);
+  try {
+    for (const [actor, expected] of [[national, ids], [stateCommander, [ids[0]]], [officer, [ids[0]]]]) {
+      await as(actor, async () => {
+        assert.deepEqual((await db.query('select id from public.community_service_events order by id')).rows.map(r => r.id), expected);
+      });
+    }
+  } finally {
+    await db.exec(`delete from public.community_service_events where id in ('${ids[0]}','${ids[1]}')`);
+  }
+});
