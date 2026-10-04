@@ -38,7 +38,7 @@ const NATIONAL_ONLY_ITEMS: NavItem[] = [
   { to: '/vetting', label: 'Vetting System', icon: ClipboardCheck },
   { to: '/users', label: 'Accounts & Access', icon: UserCog },
   { to: '/state', label: 'States & Posts', icon: HeartPulse },
-  { to: '/drive', label: 'NCC Drive', icon: HardDrive },
+  { to: '/drive', label: 'Documents & Files', icon: HardDrive },
 ]
 
 // Shared by post officers/commanders — everything a plain member sees,
@@ -47,7 +47,7 @@ const NATIONAL_ONLY_ITEMS: NavItem[] = [
 // "Posts") instead of being separate top-level items each reinventing
 // their own "which post am I looking at" logic.
 const SHARED_ITEMS: NavItem[] = [
-  { to: '/shared-files', label: 'Post Drive', icon: HardDrive },
+  { to: '/shared-files', label: 'Documents & Files', icon: HardDrive },
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
   { to: '/meetings', label: 'Meetings', icon: CalendarCheck, section: 'meetings' },
   { to: '/members', label: 'Membership Roster', icon: IdCard, section: 'membership_roster' },
@@ -63,7 +63,7 @@ const SHARED_ITEMS: NavItem[] = [
 // A plain paying member — their card, their post's own drive drop, who
 // their officers and fellow members are, and Veterans Congress.
 const MEMBER_ITEMS: NavItem[] = [
-  { to: '/shared-files', label: 'Post Drive', icon: HardDrive },
+  { to: '/shared-files', label: 'Documents & Files', icon: HardDrive },
   { to: '/post-officers', label: 'Post Officers', icon: Users },
   { to: '/post-members', label: 'Post Members', icon: IdCard },
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
@@ -103,7 +103,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   const navItems = [
     { to: '/', label: isNational ? 'National Dashboard' : isState ? 'State Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
-    ...(isState ? [{ to: '/health', label: 'State Posts', icon: HeartPulse }, { to: '/members', label: 'State Membership Roster', icon: IdCard }, { to: '/fundraising', label: 'State Fundraising', icon: HandCoins }, { to: '/congress', label: 'Veterans Congress', icon: Landmark }] : []),
+    ...(isState ? [{ to: '/drive', label: 'Documents & Files', icon: HardDrive }, { to: '/health', label: 'State Posts', icon: HeartPulse }, { to: '/members', label: 'State Membership Roster', icon: IdCard }, { to: '/fundraising', label: 'State Fundraising', icon: HandCoins }, { to: '/congress', label: 'Veterans Congress', icon: Landmark }] : []),
     // National always gets the full toolset too, on top of their own-only
     // items above — they manage every post's modules directly. A plain
     // member gets the small member set. A guest_applicant (not yet
@@ -111,6 +111,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     // personal membership and application actions remain available while pending.
     // Appointments add workspaces; personal membership remains available.
     ...(isPlainMember ? MEMBER_ITEMS : isPostOfficer || isNational ? SHARED_ITEMS : [])
+      .filter(item => !(isNational && item.to === '/shared-files'))
       .map((item) =>
         item.to === '/health' && !isNational && profile?.post_id
           ? { ...item, to: `/health/${profile.post_id}` }
