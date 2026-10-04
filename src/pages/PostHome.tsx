@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { computePostHealth, type PostHealthResult } from '@/lib/postHealth'
+import { usePostHealth, healthColor } from '@/lib/usePostHealth'
 import type { Post } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { CalendarCheck, Users, HandCoins, HeartPulse, IdCard } from 'lucide-react'
@@ -15,7 +15,8 @@ export default function PostHome() {
   const [memberCount, setMemberCount] = useState(0)
   const [sponsorPipelineValue, setSponsorPipelineValue] = useState(0)
   const [checklistPct, setChecklistPct] = useState<number | null>(null)
-  const [health, setHealth] = useState<PostHealthResult | null>(null)
+  const healthData = usePostHealth(post?.status === 'active_post' ? [post.id] : [])
+  const health = post ? healthData.scores[post.id] : undefined
   const [lastMeeting, setLastMeeting] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -43,38 +44,6 @@ export default function PostHome() {
       setChecklistPct(items.length > 0 ? Math.round((items.filter((i) => i.is_complete).length / items.length) * 100) : null)
       setLastMeeting((meetingsRes.data ?? [])[0]?.meeting_date ?? null)
 
-      if (postData && (postData as Post).status === 'active_post') {
-        const [foundingRes, sponsorsAllRes, meetingsAllRes, recruitsRes, membersAllRes, delegateRes, votesRes, sigsRes, reviewRes, serviceRes, txRes] =
-          await Promise.all([
-            supabase.from('founding_team_members').select('*').eq('post_id', postId),
-            supabase.from('sponsors').select('*').eq('post_id', postId),
-            supabase.from('meeting_records').select('meeting_date').eq('post_id', postId),
-            supabase.from('recruits').select('*').eq('post_id', postId),
-            supabase.from('members').select('*').eq('post_id', postId),
-            supabase.from('congress_delegates').select('*').eq('post_id', postId),
-            supabase.from('resolution_votes').select('id, voter_post_id').eq('voter_post_id', postId),
-            supabase.from('governance_signatures').select('*').eq('post_id', postId),
-            supabase.from('annual_reviews').select('*').eq('post_id', postId).eq('review_year', new Date().getFullYear()).single(),
-            supabase.from('community_service_events').select('*').eq('post_id', postId),
-            supabase.from('financial_transactions').select('*').eq('post_id', postId),
-          ])
-        setHealth(
-          computePostHealth({
-            post: postData as Post,
-            foundingTeam: (foundingRes.data ?? []) as any[],
-            sponsors: (sponsorsAllRes.data ?? []) as any[],
-            meetingDates: ((meetingsAllRes.data ?? []) as any[]).map((m) => m.meeting_date),
-            recruits: (recruitsRes.data ?? []) as any[],
-            members: (membersAllRes.data ?? []) as any[],
-            hasDelegate: ((delegateRes.data ?? []) as any[]).length > 0,
-            delegateVotesCast: ((votesRes.data ?? []) as any[]).length,
-            governanceSignatures: (sigsRes.data ?? []) as any[],
-            annualReview: (reviewRes.data as any) ?? null,
-            communityServiceEvents: (serviceRes.data ?? []) as any[],
-            financialTransactions: (txRes.data ?? []) as any[],
-          })
-        )
-      }
       setLoading(false)
     }
     load()
@@ -95,6 +64,7 @@ export default function PostHome() {
   return (
     <div>
       <ActionQueue />
+      {healthData.error && <p role="alert" className="text-status-attention mb-4">Health score unavailable: {healthData.error}</p>}
       <div className="mb-8">
         <div className="eyebrow mb-1">{post.city ? `${post.city}, ` : ''}{post.state}</div>
         <h1 className="font-display text-3xl tracking-wide">{post.name}</h1>
@@ -116,11 +86,11 @@ export default function PostHome() {
           <div className="font-display text-sm mt-1">{lastMeeting ?? 'None yet'}</div>
           <div className="eyebrow mt-1">Last Meeting</div>
         </button>
-        {post.status === 'active_post' && health ? (
-          <button onClick={() => navigate(`/health/${post.id}`)} className="panel p-4 text-left hover:border-gold transition-colors">
+        {post.status === 'active_post' ? (
+          <button onClick={() => navigate(`/health/${post.id}`)} className={`panel border-l-4 p-4 text-left hover:border-gold transition-colors ${healthColor(health?.overall)}`}>
             <HeartPulse className="text-gold mb-2" size={18} />
-            <div className="font-display text-2xl">{health.score}</div>
-            <div className="eyebrow mt-1">Post Health</div>
+            <div className="font-display text-2xl">{health ? `${health.score}/100` : healthData.loading ? "Loading…" : "Unavailable"}</div>
+            <div className="eyebrow mt-1">Post Health{health ? ` · ${health.overall}` : ""}</div>
           </button>
         ) : (
           <button onClick={() => navigate(`/health/${post.id}`)} className="panel p-4 text-left hover:border-gold transition-colors">
