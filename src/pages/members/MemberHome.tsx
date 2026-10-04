@@ -55,7 +55,7 @@ export default function MemberHome() {
         .eq('profile_id', profile.id)
         .order('membership_status', { ascending: true }) // 'active' sorts before 'pending_payment'
         .order('created_at', { ascending: false }),
-      supabase.from('posts').select('*').eq('status', 'active_post').order('name'),
+      supabase.rpc('cvoa_public_posts'),
     ]).then(([m, p]) => {
       const rows = (m.data ?? []) as Member[]
       setMember(rows.find((r) => r.membership_status === 'active') ?? rows[0] ?? null)

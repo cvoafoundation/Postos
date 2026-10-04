@@ -50,13 +50,10 @@ export default function MyMembership() {
               .eq("profile_id", profile.id)
               .order("id"),
           ),
-          readAllRows<Post>(() =>
-            supabase
-              .from("posts")
-              .select("id,name,state,status")
-              .eq("status", "active_post")
-              .order("id"),
-          ),
+          supabase.rpc('cvoa_public_posts').then(({ data, error }) => {
+            if (error) throw error;
+            return (data ?? []) as Post[];
+          }),
           readAllRows<ChangeRequest>(() =>
             supabase
               .from("membership_change_requests")

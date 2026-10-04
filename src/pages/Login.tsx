@@ -17,10 +17,7 @@ export default function Login() {
 
   useEffect(() => {
     supabase
-      .from('posts')
-      .select('*')
-      .eq('status', 'active_post')
-      .order('name')
+      .rpc('cvoa_public_posts')
       .then(({ data }: any) => setPosts((data ?? []) as Post[]))
   }, [])
 

@@ -44,6 +44,12 @@ serve(async (req) => {
 
   const body = (await req.json()) as RequestBody
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
+  const { data: { user: actor }, error: authError } = token ? await supabase.auth.getUser(token) : { data: { user: null }, error: null }
+  if (authError || !actor) return new Response(JSON.stringify({ error: 'Sign in to generate post documents.' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  const { data: permitted, error: permissionError } = await supabase.rpc('cvoa_service_authorized', { p_actor: actor.id, p_post: body.post_id ?? null, p_capability: 'manage_post' })
+  if (permissionError || !permitted) return new Response(JSON.stringify({ error: 'Generation is restricted to National or staff assigned to this post.' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
 
   const { data: module, error: moduleError } = await supabase
     .from('build_a_post_modules')
@@ -121,7 +127,7 @@ serve(async (req) => {
       post_id: body.post_id,
       title: `${module.name} — ${templateValues.post_name}`,
       content,
-      generated_by: body.generated_by ?? null,
+      generated_by: actor.id,
     })
     .select()
     .single()

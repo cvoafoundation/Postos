@@ -89,6 +89,8 @@ Deno.serve(async (req) => {
     const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
     const { data: { user }, error } = token ? await supabase.auth.getUser(token) : { data: { user: null }, error: null }
     if (error || !user || member.profile_id !== user.id) return new Response(JSON.stringify({ error: 'Sign in to manage your own membership.' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    const { data: accessAllowed, error: accessError } = await supabase.rpc('cvoa_service_authorized', { p_actor: user.id, p_post: null, p_capability: 'personal' })
+    if (accessError || !accessAllowed) return new Response(JSON.stringify({ error: 'Account access is suspended or unavailable.' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     if (action === 'discard_checkout') {
       const { data: attempt, error: attemptError } = await supabase.from('membership_checkout_attempts').select('token,session_id').eq('member_id',member.id).maybeSingle()
       if (attemptError) throw attemptError

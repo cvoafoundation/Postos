@@ -108,7 +108,8 @@ export default function StateHome() {
                     <dd>{p.open_actions}</dd>
                   </div>
                 </dl>
-                <div className="flex gap-4">
+                <div className="flex flex-wrap gap-4">
+                  <Link className="text-sm text-gold" to={`/post-overview/${p.id}`}>Post operations →</Link>
                   <Link
                     className="text-sm text-gold"
                     to={`/fundraising?post=${p.id}`}

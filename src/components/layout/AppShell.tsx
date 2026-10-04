@@ -9,7 +9,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { profile,isNational } = useAuth()
   const { pathname } = useLocation()
   const personal = ['/my-membership','/member-home','/my-applications'].includes(pathname)
-  const scope = personal ? 'Personal Workspace' : isNational ? 'National · All states and posts' : profile?.role === 'state_commander' ? `State Command · ${profile.state ?? 'Awaiting state assignment'}` : ['post_commander','post_officer'].includes(profile?.role ?? '') ? 'Post Staff · Assigned post' : 'Member Workspace'
+  const scope = personal ? 'Personal Workspace' : isNational ? 'National · All states and posts' : profile?.role === 'state_commander' ? `State Command · ${profile.state ?? 'Awaiting state assignment'}` : ['post_commander','post_officer'].includes(profile?.role ?? '') ? 'Post Staff · Assigned post' : profile?.role === 'delegate' ? `Congress Delegate · ${profile.state ?? 'Assigned post'} voting jurisdiction` : 'Member Workspace'
 
   return (
     <div className="flex min-h-screen bg-base">
