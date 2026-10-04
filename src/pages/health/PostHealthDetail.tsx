@@ -178,13 +178,15 @@ export default function PostHealthDetail() {
   // this, a post could go fully active while its name still says otherwise,
   // which is exactly what was confusing before this page existed.
   async function advanceStatus(next: PostStatus) {
-    if (!postId || !post) return
+    if (!postId || !post || !isNational) return
+    if (next === 'active_post' && !window.confirm(`Launch ${post.name} as an Active Post? Confirm National has approved its launch. The post will appear in active operations; outstanding checklist items remain visible.`)) return
     setAdvancing(true)
     const patch: { status: PostStatus; name?: string } = { status: next }
     if (next === 'active_post' && post.name.endsWith(' (Forming)')) {
       patch.name = post.name.slice(0, -' (Forming)'.length)
     }
-    await supabase.from('posts').update(patch).eq('id', postId)
+    const { error } = await supabase.from('posts').update(patch).eq('id', postId).select('id').single()
+    if (error) { setAdvancing(false); window.alert(`Status was not changed: ${error.message}`); return }
     setAdvancing(false)
     load()
   }
@@ -277,6 +279,7 @@ export default function PostHealthDetail() {
               )}
             </div>
 
+            {isNational && post.status !== 'charter_ready' && <div className="panel p-4 mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-display text-lg">Ready to launch?</h2><p className="text-sm text-muted">National can approve launch directly when requirements have been reviewed. Unfinished checklist work stays on record.</p></div><button className="btn-gold" disabled={advancing} onClick={() => advanceStatus('active_post')}>Launch as Active Post</button></div>}
             <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
               <div>
                 <div className="eyebrow mb-1">Shareable Link</div>

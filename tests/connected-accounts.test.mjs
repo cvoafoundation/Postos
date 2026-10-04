@@ -70,6 +70,7 @@ before(async () => {
       "utf8",
     ),
   );
+  await db.exec(fs.readFileSync('supabase/migrations/20261004203000_state_post_operations.sql', 'utf8'));
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${uid(5)}','state@example.test',now()),('${uid(6)}','delegate@example.test',now()),('${uid(7)}','tribunal@example.test',now()),('${uid(8)}','national-staff@example.test',now());
   insert into public.profiles(id,full_name,email,role,state,post_id) values('${uid(5)}','State','state@example.test','state_commander','IN',null),('${uid(6)}','Delegate','delegate@example.test','delegate',null,'${post}'),('${uid(7)}','Tribunal','tribunal@example.test','ethics_tribunal',null,null),('${uid(8)}','National Staff','national-staff@example.test','national_staff',null,null);
   insert into public.congress_delegates(profile_id,post_id) values('${uid(6)}','${post}');
@@ -785,3 +786,11 @@ test("member preferences cannot be attributed to another post and resolution spo
  assert.equal(result.rows[0].role,'member');
  assert.equal(result.rows[0].post_id,post);
  }));
+
+test('state overview includes support and activity counts only for assigned posts', () => as(uid(5), async () => {
+ const result = await db.query('select public.cvoa_state_workspace() as workspace');
+ const posts = result.rows[0].workspace.posts;
+ assert.equal(posts.length, 1);
+ assert.equal(posts[0].id, post);
+ for (const key of ['overdue_actions','draft_meetings','active_campaigns','support_requests']) assert.equal(typeof posts[0][key], 'number');
+}));

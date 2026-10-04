@@ -18,6 +18,10 @@ interface StatePost {
   active_members: number;
   last_meeting: string | null;
   open_actions: number;
+  overdue_actions: number;
+  draft_meetings: number;
+  active_campaigns: number;
+  support_requests: number;
 }
 export default function StateHome() {
   const { isNational } = useAuth();
@@ -27,6 +31,13 @@ export default function StateHome() {
   }>("cvoa_state_workspace");
   const [state, setState] = useState("");
   const visible = data?.posts.filter((p) => !state || p.state === state) ?? [];
+  const needs = (p: StatePost) => [
+    p.support_requests > 0 ? `${p.support_requests} open support request(s)` : '',
+    p.overdue_actions > 0 ? `${p.overdue_actions} overdue task(s)` : '',
+    p.draft_meetings > 0 ? `${p.draft_meetings} meeting report(s) awaiting publication` : '',
+    p.status !== 'active_post' ? `Launch stage: ${POST_STATUS_LABELS[p.status]}` : '',
+    !p.last_meeting ? 'No published meeting report' : '',
+  ].filter(Boolean);
   return (
     <div>
       <PageHeader
@@ -83,10 +94,15 @@ export default function StateHome() {
               No posts are assigned to this state yet.
             </p>
           )}
-          <div className="grid md:grid-cols-2 gap-4">
+          <section className="panel p-5 mb-6">
+            <h2 className="font-display text-xl">Posts needing support</h2>
+            <p className="text-xs text-muted mt-1 mb-3">Recorded work and reporting gaps; contact the post to confirm what help is needed.</p>
+            {visible.filter(p => needs(p).length).length === 0 ? <p className="text-sm text-muted">No support flags recorded.</p> : <ul className="space-y-3">{visible.filter(p => needs(p).length).sort((a,b) => (b.support_requests + b.overdue_actions) - (a.support_requests + a.overdue_actions)).map(p => <li key={p.id} className="text-sm"><Link className="text-gold font-medium" to={`/post-overview/${p.id}`}>{p.name} →</Link><p className="text-muted">{needs(p).join(' · ')}</p></li>)}</ul>}
+          </section>
+          <div className="space-y-4">
             {visible.map((p) => (
               <section key={p.id} className="panel p-5">
-                <h2 className="font-display text-xl">{p.name}</h2>
+                <h2 className="font-display text-xl"><Link className="text-gold hover:underline" to={`/post-overview/${p.id}`}>{p.name} →</Link></h2>
                 <p className="text-sm text-muted">
                   {p.city}, {p.state} · {POST_STATUS_LABELS[p.status]}
                 </p>
@@ -103,13 +119,12 @@ export default function StateHome() {
                     <dt className="text-muted">Last published meeting</dt>
                     <dd>{p.last_meeting ?? "Awaiting report"}</dd>
                   </div>
-                  <div>
-                    <dt className="text-muted">Open tasks</dt>
-                    <dd>{p.open_actions}</dd>
-                  </div>
+                  <div><dt className="text-muted">Open tasks / overdue</dt><dd>{p.open_actions} / {p.overdue_actions ?? 0}</dd></div>
+                  <div><dt className="text-muted">Fundraising campaigns underway</dt><dd>{p.active_campaigns ?? 0}</dd></div>
+                  <div><dt className="text-muted">Open support requests</dt><dd>{p.support_requests ?? 0}</dd></div>
                 </dl>
                 <div className="flex flex-wrap gap-4">
-                  <Link className="text-sm text-gold" to={`/post-overview/${p.id}`}>Post operations →</Link>
+                  <Link className="text-sm text-gold" to={`/post-overview/${p.id}`}>Open post dashboard →</Link>
                   <Link
                     className="text-sm text-gold"
                     to={`/fundraising?post=${p.id}`}
