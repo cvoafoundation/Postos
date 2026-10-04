@@ -144,6 +144,16 @@ export default function MyMembership() {
       setMessage('Unfinished checkout cleared. You can choose renewal or lifetime membership.');setPurchase(null);
     } catch(e) {setError((e as Error).message)} finally {setBusy(false)}
   }
+  async function withdrawRequest(id: string) {
+    if (busy || !window.confirm('Withdraw this pending request? Your current affiliation will remain in place.')) return;
+    setBusy(true); setError(null);
+    try {
+      const result = await supabase.rpc('cvoa_withdraw_post_change', { p_request: id });
+      if (result.error) throw result.error;
+      setMessage('Request withdrawn. You can submit a new request.');
+      setVersion(v => v + 1);
+    } catch(e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
   async function changePost(e: FormEvent) {
     e.preventDefault();
     if (!member || busy) return;
@@ -158,7 +168,7 @@ export default function MyMembership() {
       if (r.error) throw r.error;
       setReason("");
       setMessage(
-        "Request submitted to National. Your current post remains in place until approval.",
+        "Request submitted for review. Your current post remains in place until approval.",
       );
       setVersion((v) => v + 1);
       await refreshProfile();
@@ -295,7 +305,7 @@ export default function MyMembership() {
               <p className="text-sm">
                 Current:{" "}
                 {posts.find((p) => p.id === member.post_id)?.name ??
-                  (member.post_id ? "Assigned post" : "National at large")}
+                  (member.post_id ? "Assigned post" : "At-large member (no post)")}
               </p>
               <p className="text-xs text-muted mt-2 mb-4">
                 Post affiliation and staff appointments are separate. A transfer
@@ -311,7 +321,7 @@ export default function MyMembership() {
                       value={target}
                       onChange={(e) => setTarget(e.target.value)}
                     >
-                      <option value="">National at large</option>
+                      <option value="">At-large member (no post)</option>
                       {posts
                         .filter((p) => p.id !== member.post_id)
                         .map((p) => (
@@ -341,7 +351,7 @@ export default function MyMembership() {
               )}
               {pending && (
                 <p className="text-sm text-gold">
-                  An affiliation request is awaiting National review.
+                  Your request is awaiting the receiving post commander’s review, or National’s review for at-large status.
                 </p>
               )}
               <ul className="space-y-3 mt-4">
@@ -354,9 +364,11 @@ export default function MyMembership() {
                       {posts.find((p) => p.id === r.target_post_id)?.name ??
                         (r.target_post_id
                           ? "Requested post"
-                          : "National at large")}{" "}
+                          : "At-large member (no post)")}{" "}
                       · <span className="capitalize">{r.status}</span>
                     </p>
+                    <p className="text-xs text-muted mt-1">Submitted {new Date(r.created_at).toLocaleDateString()}</p>
+                    {r.status === "pending" && <button className="btn-ghost mt-2" disabled={busy} onClick={() => withdrawRequest(r.id)}>Withdraw request</button>}
                     {r.review_note && (
                       <p className="text-muted mt-1">{r.review_note}</p>
                     )}
