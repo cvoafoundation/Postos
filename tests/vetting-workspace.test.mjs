@@ -215,16 +215,24 @@ test("non-National cannot save/read scorecards or request questionnaires", () =>
     );
     await failure(() => request(), /National questionnaire/);
   }));
-test("direct scorecard inserts cannot bypass attributed RPC", () =>
+test("legacy inserts stamp the real National reviewer instead of trusting browser attribution", () =>
   as(national, async () => {
     await seed();
+    const row = (
+      await db.query(
+        "insert into public.vetting_scorecards(application_id,scored_by) values($1,$2) returning scored_by",
+        [app, member],
+      )
+    ).rows[0];
+    assert.equal(row.scored_by, national);
+    await claims(member);
     await failure(
       () =>
         db.query(
-          `insert into public.vetting_scorecards(application_id,scored_by) values($1,$2)`,
-          [app, member],
+          "insert into public.vetting_scorecards(application_id) values($1)",
+          [app],
         ),
-      /permission denied/,
+      /National|row-level/,
     );
   }));
 test("scorecard data limits and recommendation are validated", () =>

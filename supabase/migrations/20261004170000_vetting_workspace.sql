@@ -5,6 +5,20 @@ alter table public.vetting_scorecards add column follow_up_tasks text;
 -- Existing reviews, including partial/anonymous legacy entries, are preserved.
 revoke insert,update,delete on public.vetting_scorecards from anon,authenticated;
 
+-- Keep the released legacy form working during the coordinated frontend rollout.
+-- Every authenticated direct insert is still National-only and attributed by the server.
+create function public.cvoa_stamp_vetting_reviewer() returns trigger
+language plpgsql set search_path='' as $$
+begin
+ if current_user in ('anon','authenticated') then
+   if auth.uid() is null or not public.is_national_role() then raise exception 'National vetting access required'; end if;
+   new.scored_by:=auth.uid();
+ end if;
+ return new;
+end $$;
+create trigger cvoa_scorecard_reviewer before insert on public.vetting_scorecards for each row execute function public.cvoa_stamp_vetting_reviewer();
+grant insert on public.vetting_scorecards to authenticated;
+
 create table public.post_application_questionnaires (
  application_id uuid primary key references public.post_applications(id) on delete cascade,
  answers jsonb not null default '{}'::jsonb, workflow_version bigint not null default 1,
