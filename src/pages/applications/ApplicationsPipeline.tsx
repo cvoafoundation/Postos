@@ -314,6 +314,9 @@ function ApplicationCard({
             Complete scorecard
           </button>
         )}
+        {['application_submitted', 'interview_scheduled', 'vetting', 'approved'].includes(a.status) && (
+          <Link className="btn-ghost text-xs" to={`/vetting?application=${a.id}`}>Vetting workspace & exports</Link>
+        )}
         {isLaunch && a.post_id ? (
           <Link className="btn-gold text-xs" to={`/health/${a.post_id}`}>
             Open post workspace
@@ -373,6 +376,7 @@ function PipelineEditor({
   const [notes, setNotes] = useState(kind === 'interview' ? (interview?.notes ?? '') : '')
   const [completed, setCompleted] = useState(!!interview?.completed_at)
   const [scores, setScores] = useState<Record<string, string>>({})
+  const [scorecardId] = useState(() => crypto.randomUUID())
   const [reason, setReason] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
@@ -435,11 +439,10 @@ function PipelineEditor({
       else if (kind === 'score') {
         if (SCORE_FIELDS.some((f) => !scores[f] || Number(scores[f]) < 1 || Number(scores[f]) > 10))
           throw new Error('Enter a score from 1 to 10 for all five categories.')
-        result = await supabase.from('vetting_scorecards').insert({
-          application_id: a.id,
-          scored_by: profile?.id,
-          ...Object.fromEntries(SCORE_FIELDS.map((f) => [`${f}_score`, Number(scores[f])])),
-          notes: notes.trim() || null,
+        result = await supabase.rpc('cvoa_save_vetting_scorecard', {
+          p_id: scorecardId, p_application: a.id,
+          p_scores: Object.fromEntries(SCORE_FIELDS.map((f) => [f, Number(scores[f])])),
+          p_notes: notes, p_answers: {}, p_recommendation: 'needs_follow_up', p_follow_up: '',
         })
       } else
         result = await supabase.rpc('cvoa_move_application', {
