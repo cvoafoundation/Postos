@@ -17,10 +17,7 @@ export default function PostMembersDirectory() {
       return
     }
     supabase
-      .from('members')
-      .select('*')
-      .eq('post_id', profile.post_id)
-      .order('full_name')
+      .rpc('cvoa_post_member_directory')
       .then(({ data }: any) => {
         setMembers((data ?? []) as Member[])
         setLoading(false)

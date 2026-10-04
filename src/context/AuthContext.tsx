@@ -127,7 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await supabase.rpc('link_member_profile')
 
             await supabase.from('pending_profile_signups').delete().eq('id', pending.id)
-            applyProfile((newProfile as Profile) ?? null)
+            const { data: refreshed } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+            applyProfile((refreshed as Profile) ?? (newProfile as Profile) ?? null)
             finishLoading()
             return
           }

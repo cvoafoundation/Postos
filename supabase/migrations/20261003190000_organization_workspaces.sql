@@ -225,7 +225,7 @@ begin
  from public.uro_meetings u where u.status='in_progress' and public.cvoa_can_oversee_post(u.post_id)
  union all
  select 'renewal:'||m.id,'Membership expires: '||case when pr.role='state_commander' then p.name else m.full_name end,m.expires_at,'membership',
- case when pr.role='state_commander' then '/state' else '/public.members?highlight='||m.id end
+ case when pr.role='state_commander' then '/state' else '/members?highlight='||m.id end
  from public.members m left join public.posts p on p.id=m.post_id where m.membership_type='annual' and m.membership_status='active'
  and m.expires_at <= current_date+30 and public.cvoa_can_oversee_post(m.post_id)
  union all
@@ -337,4 +337,7 @@ end; $$;
 revoke all on function public.cvoa_renew_subscription(text,text,date,timestamptz) from public,anon,authenticated;
 grant execute on function public.cvoa_renew_subscription(text,text,date,timestamptz) to service_role;
 revoke all on function public.cvoa_stamp_application_owner() from public,anon,authenticated;
+-- Safe boolean predicate used by anonymous pending-membership intake policies.
+-- With no authenticated identity it returns false and exposes no records.
+grant execute on function public.cvoa_can_manage_post(uuid) to anon;
 commit;
