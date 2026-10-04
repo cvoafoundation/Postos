@@ -38,7 +38,6 @@ const NATIONAL_ONLY_ITEMS: NavItem[] = [
   { to: '/vetting', label: 'Vetting System', icon: ClipboardCheck },
   { to: '/users', label: 'Accounts & Access', icon: UserCog },
   { to: '/state', label: 'States & Posts', icon: HeartPulse },
-  { to: '/membership-requests', label: 'Affiliation Requests', icon: IdCard },
   { to: '/drive', label: 'NCC Drive', icon: HardDrive },
 ]
 
