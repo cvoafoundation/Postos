@@ -1,169 +1,215 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { PageHeader } from '@/components/layout/AppShell'
-import { EmptyState } from '@/components/ui/EmptyState'
 import { CongressSubNav } from './CongressSubNav'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
-import type { CongressDelegate, FoundingTeamMember } from '@/lib/types'
 
-interface DelegateRow extends CongressDelegate {
+interface DelegateRow {
+  id: string
+  profile_id: string
   profile_name: string
   post_name: string
-  votes_cast: number
-  resolutions_sponsored: number
+  is_alternate: boolean
+  term_start: string
+  term_end: string
+  certification_reference: string | null
+  seated: boolean
 }
-
+interface Candidate {
+  id: string
+  name: string
+  post_id: string | null
+}
 export default function Delegates() {
-  const { profile, isNational } = useAuth()
-  const [rows, setRows] = useState<DelegateRow[]>([])
-  const [candidates, setCandidates] = useState<FoundingTeamMember[]>([])
-  const [ownDelegate, setOwnDelegate] = useState<CongressDelegate | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-
+  const { isNational } = useAuth()
+  const [rows, setRows] = useState<DelegateRow[]>([]),
+    [candidates, setCandidates] = useState<Candidate[]>([])
+  const [error, setError] = useState<string | null>(null),
+    [saving, setSaving] = useState(false),
+    [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({
+    profile: '',
+    start: '',
+    end: '',
+    reference: '',
+    combatCount: '',
+    presiding: false,
+    attested: false,
+  })
   async function load() {
     setLoading(true)
-    const [delegatesRes, profilesRes, postsRes, votesRes, resolutionsRes] = await Promise.all([
-      supabase.from('congress_delegates').select('*'),
-      supabase.from('profiles').select('id, full_name'),
-      supabase.from('posts').select('id, name'),
-      supabase.from('resolution_votes').select('voter_id'),
-      supabase.from('resolutions').select('submitted_by'),
+    const results = await Promise.all([
+      supabase.rpc('cvoa_delegate_registry'),
+      isNational ? supabase.rpc('cvoa_governance_candidates') : Promise.resolve({ data: [], error: null }),
     ])
-
-    const profileMap: Record<string, string> = {}
-    for (const p of (profilesRes.data ?? []) as any[]) profileMap[p.id] = p.full_name
-    const postMap: Record<string, string> = {}
-    for (const p of (postsRes.data ?? []) as any[]) postMap[p.id] = p.name
-
-    const voteCounts: Record<string, number> = {}
-    for (const v of (votesRes.data ?? []) as any[]) {
-      if (!v.voter_id) continue
-      voteCounts[v.voter_id] = (voteCounts[v.voter_id] ?? 0) + 1
-    }
-    const sponsorCounts: Record<string, number> = {}
-    for (const r of (resolutionsRes.data ?? []) as any[]) {
-      if (!r.submitted_by) continue
-      sponsorCounts[r.submitted_by] = (sponsorCounts[r.submitted_by] ?? 0) + 1
-    }
-
-    const delegates = (delegatesRes.data ?? []) as CongressDelegate[]
-    setRows(
-      delegates.map((d) => ({
-        ...d,
-        profile_name: (d.profile_id ? profileMap[d.profile_id] : undefined) ?? 'Unassigned',
-        post_name: postMap[d.post_id] ?? 'Unknown Post',
-        votes_cast: (d.profile_id ? voteCounts[d.profile_id] : undefined) ?? 0,
-        resolutions_sponsored: (d.profile_id ? sponsorCounts[d.profile_id] : undefined) ?? 0,
-      }))
-    )
-
-    if (!isNational && profile?.post_id) {
-      setOwnDelegate(delegates.find((d) => d.post_id === profile.post_id && !d.is_alternate) ?? null)
-      const { data: team } = await supabase
-        .from('founding_team_members')
-        .select('*')
-        .eq('post_id', profile.post_id)
-        .eq('verification_status', 'verified')
-        .not('profile_id', 'is', null)
-      setCandidates((team ?? []) as FoundingTeamMember[])
-    }
-
+    setRows(results[0].data ?? [])
+    setCandidates(results[1].data ?? [])
+    setError(results.find((r) => r.error)?.error?.message ?? null)
     setLoading(false)
   }
-
   useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNational, profile?.post_id])
-
-  async function setDelegate(profileId: string) {
-    if (!profile?.post_id) return
+    void load()
+  }, [isNational])
+  async function certify(e: FormEvent) {
+    e.preventDefault()
     setSaving(true)
-    if (ownDelegate) {
-      await supabase.from('congress_delegates').update({ profile_id: profileId }).eq('id', ownDelegate.id)
-    } else {
-      await supabase.from('congress_delegates').insert({ post_id: profile.post_id, profile_id: profileId, is_alternate: false })
-    }
+    const result = await supabase.rpc('cvoa_certify_delegate', {
+      p_profile: form.profile,
+      p_start: form.start,
+      p_end: form.end,
+      p_reference: form.reference,
+      p_combat_members: Number(form.combatCount),
+      p_presiding: form.presiding,
+    })
     setSaving(false)
-    load()
+    if (result.error) {
+      setError(result.error.message)
+      return
+    }
+    setForm({ ...form, profile: '', attested: false })
+    void load()
   }
-
   return (
     <div>
-      <PageHeader eyebrow="Module 8" title="Veterans Congress" />
+      <PageHeader eyebrow="Legislative branch · Article IX" title="Congress Delegates" />
       <CongressSubNav />
-
-      {!isNational && profile?.post_id && (
-        <div className="panel p-5 mb-6">
-          <div className="eyebrow mb-2">Your Post's Delegate</div>
-          <p className="text-xs text-muted mb-3 max-w-xl">
-            One delegate per post carries your chapter's formal vote and voice in Congress — on delegate votes,
-            constitutional amendments, and floor debate. Choose from your verified officers below.
+      <div className="panel p-5 mb-6">
+        <p className="text-sm">
+          Each chartered post elects one delegate per ten Combat Members in good standing, rounded up.
+          Delegates serve staggered two-year terms. Chapter elections and the certified Combat Member roster
+          determine seat entitlement.
+        </p>
+        <p className="text-xs text-muted mt-2">
+          Formal ballots require a current, certified primary seat. Legacy or expired entries remain visible
+          for correction and cannot vote. Alternates require a recorded substitution procedure before formal
+          voting.
+        </p>
+      </div>
+      {error && (
+        <p role="alert" className="text-status-attention mb-4">
+          {error}
+        </p>
+      )}
+      {isNational && (
+        <form onSubmit={certify} className="panel p-5 mb-6 space-y-3">
+          <div className="eyebrow">Record election certification · Adjutant General</div>
+          <p className="text-xs text-muted">
+            Record completed elections under §9.1 and Appendix B1. Verify candidate eligibility, election
+            notice, the 25% participation quorum and results before certification. This form records the
+            election; it does not elect or appoint a delegate.
           </p>
-          {ownDelegate?.profile_id ? (
-            <div className="flex items-center justify-between border border-hairline rounded-sm p-3 mb-3">
-              <div className="text-sm">
-                Currently: <span className="text-gold">{rows.find((r) => r.id === ownDelegate.id)?.profile_name}</span>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-status-developing mb-3">No delegate designated yet — your post's formal vote can't be cast until one is.</p>
-          )}
-          {candidates.length === 0 ? (
-            <p className="text-xs text-muted">
-              No verified officers with an account yet — verify a founding team member with an account first
-              (Founding Team page), then they'll show up here to choose from.
-            </p>
-          ) : (
-            <select
-              className="input-field"
-              value={ownDelegate?.profile_id ?? ''}
-              disabled={saving}
-              onChange={(e) => e.target.value && setDelegate(e.target.value)}
-            >
-              <option value="">Choose your delegate…</option>
-              {candidates.map((c) => (
-                <option key={c.id} value={c.profile_id!}>
+          <select
+            required
+            aria-label="Elected delegate"
+            className="input-field"
+            value={form.profile}
+            onChange={(e) => setForm({ ...form, profile: e.target.value })}
+          >
+            <option value="">Select elected delegate</option>
+            {candidates
+              .filter((c) => c.post_id)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
-            </select>
-          )}
-        </div>
+          </select>
+          <label className="block text-sm">
+            Certified Combat Members in the post
+            <input
+              required
+              min="1"
+              type="number"
+              className="input-field mt-1"
+              value={form.combatCount}
+              onChange={(e) => setForm({ ...form, combatCount: e.target.value })}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm">
+              Term starts
+              <input
+                required
+                type="date"
+                className="input-field mt-1"
+                value={form.start}
+                onChange={(e) => setForm({ ...form, start: e.target.value })}
+              />
+            </label>
+            <label className="text-sm">
+              Term ends
+              <input
+                required
+                type="date"
+                className="input-field mt-1"
+                value={form.end}
+                onChange={(e) => setForm({ ...form, end: e.target.value })}
+              />
+            </label>
+          </div>
+          <input
+            required
+            aria-label="Election and roster certification reference"
+            placeholder="Election minutes and certified roster reference"
+            className="input-field"
+            value={form.reference}
+            onChange={(e) => setForm({ ...form, reference: e.target.value })}
+          />
+          <label className="flex gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.presiding}
+              onChange={(e) => setForm({ ...form, presiding: e.target.checked })}
+            />
+            The election record also establishes this delegate as Congress Presiding Officer.
+          </label>
+          <label className="flex gap-2 text-sm">
+            <input
+              required
+              type="checkbox"
+              checked={form.attested}
+              onChange={(e) => setForm({ ...form, attested: e.target.checked })}
+            />
+            I verified Combat Member eligibility, the certified roster and the election record.
+          </label>
+          <button disabled={saving || !form.attested} className="btn-gold">
+            {saving ? 'Recording…' : 'Record certified election'}
+          </button>
+        </form>
       )}
-
-      <div className="panel overflow-hidden">
+      <div className="panel overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr>
-              <th className="table-head">Delegate</th>
-              <th className="table-head">Post</th>
-              <th className="table-head">Alternate</th>
-              <th className="table-head">Term</th>
-              <th className="table-head">Votes Cast</th>
-              <th className="table-head">Resolutions Sponsored</th>
+              {['Delegate', 'Post', 'Credential', 'Term', 'Election record'].map((h) => (
+                <th key={h} className="table-head">
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((d) => (
               <tr key={d.id}>
-                <td className="table-cell">{d.profile_name}</td>
-                <td className="table-cell text-muted">{d.post_name}</td>
-                <td className="table-cell">{d.is_alternate ? 'Yes' : 'No'}</td>
-                <td className="table-cell text-muted font-mono text-xs">
+                <td className="table-cell">{d.profile_name ?? 'Unassigned'}</td>
+                <td className="table-cell">{d.post_name}</td>
+                <td className="table-cell">
+                  {d.is_alternate ? 'Alternate' : d.seated ? 'Seated' : 'Certification required / expired'}
+                </td>
+                <td className="table-cell text-xs">
                   {d.term_start ?? '—'} → {d.term_end ?? '—'}
                 </td>
-                <td className="table-cell font-mono">{d.votes_cast}</td>
-                <td className="table-cell font-mono">{d.resolutions_sponsored}</td>
+                <td className="table-cell text-xs">
+                  {d.certification_reference ?? 'Legacy record — review required'}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {!loading && rows.length === 0 && (
-          <div className="p-4">
-            <EmptyState title="No delegates yet" />
-          </div>
+        {loading ? (
+          <p className="p-4">Loading credentials…</p>
+        ) : (
+          !rows.length && <p className="p-4 text-muted">No delegate elections recorded.</p>
         )}
       </div>
     </div>

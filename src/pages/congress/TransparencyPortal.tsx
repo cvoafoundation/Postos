@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { RESOLUTION_STATUS_LABELS, type CongressAnnouncement, type LegislativeBill, type Resolution } from '@/lib/types'
+import {
+  RESOLUTION_STATUS_LABELS,
+  type CongressAnnouncement,
+  type LegislativeBill,
+  type Resolution,
+} from '@/lib/types'
 import { format } from 'date-fns'
 
 export default function TransparencyPortal() {
@@ -13,17 +18,27 @@ export default function TransparencyPortal() {
   useEffect(() => {
     async function load() {
       const [resRes, annRes, billsRes, votesRes] = await Promise.all([
-        supabase.from('resolutions').select('*').in('status', ['passed', 'implemented', 'rejected']).order('created_at', { ascending: false }),
-        supabase.from('congress_announcements').select('*').eq('category', 'Official Position').order('created_at', { ascending: false }),
+        supabase
+          .from('resolutions')
+          .select('*')
+          .in('status', ['passed', 'implemented', 'rejected'])
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('congress_announcements')
+          .select('*')
+          .eq('category', 'Official Position')
+          .order('created_at', { ascending: false }),
         supabase.from('legislative_bills').select('*').order('created_at', { ascending: false }),
-        supabase.from('resolution_votes').select('resolution_id, vote'),
+        supabase.from('resolution_votes').select('resolution_id, vote, vote_type'),
       ])
       setPassed((resRes.data ?? []) as Resolution[])
       setPositions((annRes.data ?? []) as CongressAnnouncement[])
       setBills((billsRes.data ?? []) as LegislativeBill[])
 
+      const voteTypes = new Map((resRes.data ?? []).map((r) => [r.id, r.vote_type]))
       const counts: Record<string, { yes: number; no: number }> = {}
       for (const v of (votesRes.data ?? []) as any[]) {
+        if (v.vote_type !== voteTypes.get(v.resolution_id)) continue
         if (!counts[v.resolution_id]) counts[v.resolution_id] = { yes: 0, no: 0 }
         v.vote ? counts[v.resolution_id].yes++ : counts[v.resolution_id].no++
       }
@@ -102,7 +117,9 @@ export default function TransparencyPortal() {
                       <td className="table-cell font-mono text-xs">
                         {voteCounts[r.id] ? `${voteCounts[r.id].yes} - ${voteCounts[r.id].no}` : '—'}
                       </td>
-                      <td className="table-cell text-muted text-xs">{format(new Date(r.created_at), 'MMM d, yyyy')}</td>
+                      <td className="table-cell text-muted text-xs">
+                        {format(new Date(r.created_at), 'MMM d, yyyy')}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

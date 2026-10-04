@@ -181,14 +181,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsDelegate(false)
       return
     }
-    // Exactly one delegate (and optionally an alternate) is designated per
-    // post — this is what actually gates casting a formal Congress vote,
-    // not just being any officer at that post.
-    supabase
-      .from('congress_delegates')
-      .select('id')
-      .eq('profile_id', profile.id)
-      .then(({ data }) => setIsDelegate(!!data && data.length > 0))
+    let active = true
+    supabase.rpc('cvoa_is_seated_delegate').then(({ data }) => {
+      if (active) setIsDelegate(data === true)
+    })
+    return () => { active = false }
   }, [profile?.id])
 
   function hasRole(...roles: UserRole[]) {

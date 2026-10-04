@@ -22,7 +22,6 @@ const UroActionItemReport = lazy(() => import('@/pages/meetings/uro/UroActionIte
 const RecruitingPipeline = lazy(() => import('@/pages/recruiting/RecruitingPipeline'))
 const SponsorsCRM = lazy(() => import('@/pages/sponsors/SponsorsCRM'))
 const VeteransCongress = lazy(() => import('@/pages/congress/VeteransCongress'))
-const CongressMemberView = lazy(() => import('@/pages/congress/CongressMemberView'))
 const ResolutionDetail = lazy(() => import('@/pages/congress/ResolutionDetail'))
 const Committees = lazy(() => import('@/pages/congress/Committees'))
 const Delegates = lazy(() => import('@/pages/congress/Delegates'))
@@ -201,11 +200,7 @@ function AuthenticatedApp() {
         <Route path="/congress/resolutions/:id" element={<ResolutionDetail />} />
         <Route
           path="/congress/committees"
-          element={
-            <RoleGuard roles={[]}>
-              <Committees />
-            </RoleGuard>
-          }
+          element={<Committees />}
         />
         <Route path="/congress/delegates" element={<Delegates />} />
         <Route
@@ -218,11 +213,7 @@ function AuthenticatedApp() {
         />
         <Route
           path="/congress/calendar"
-          element={
-            <RoleGuard roles={[]}>
-              <CongressCalendar />
-            </RoleGuard>
-          }
+          element={<CongressCalendar />}
         />
         <Route
           path="/health"
@@ -325,8 +316,7 @@ function AuthenticatedApp() {
 }
 
 function CongressRoute() {
-  const { isNational } = useAuth()
-  return isNational ? <VeteransCongress /> : <CongressMemberView />
+  return <VeteransCongress />
 }
 
 function HomeRoute() {
