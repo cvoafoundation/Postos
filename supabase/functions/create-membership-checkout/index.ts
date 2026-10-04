@@ -37,6 +37,7 @@ interface RequestBody {
   post_id: string | null
   membership_type: 'annual' | 'lifetime'
   auto_renew?: boolean
+  action?: 'join' | 'renew' | 'upgrade' | 'discard_checkout'
 }
 
 Deno.serve(async (req) => {
@@ -63,6 +64,8 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'A member ID and valid membership type are required.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
   const amountCents = PRICES[body.membership_type]
+  const action = body.action ?? 'join'
+  if (!['join','renew','upgrade','discard_checkout'].includes(action)) return new Response(JSON.stringify({ error: 'Invalid membership action.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   if (!amountCents) {
     return new Response(JSON.stringify({ error: 'Invalid membership type.' }), {
       status: 400,
@@ -72,15 +75,37 @@ Deno.serve(async (req) => {
 
   // Lifetime never auto-renews — one payment, done forever. Auto-renew only
   // makes sense (and is only honored) for annual.
-  const isAutoRenew = body.membership_type === 'annual' && !!body.auto_renew
+  const isAutoRenew = action === 'join' && body.membership_type === 'annual' && !!body.auto_renew
 
   const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
-  const { data: member, error: memberError } = await supabase.from('members').select('id, post_id, membership_type').eq('id', body.member_id).single()
+  const { data: member, error: memberError } = await supabase.from('members').select('id, post_id, membership_type, membership_status, profile_id, auto_renew, stripe_subscription_id').eq('id', body.member_id).single()
   if (memberError || !member) return new Response(JSON.stringify({ error: 'Membership record not found. Please contact CVOA.' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-  if (member.membership_type !== body.membership_type || (member.post_id ?? null) !== (body.post_id ?? null)) {
+  if ((action !== 'upgrade' && action !== 'discard_checkout' && member.membership_type !== body.membership_type) || (member.post_id ?? null) !== (body.post_id ?? null)) {
     return new Response(JSON.stringify({ error: 'Checkout details do not match the saved membership.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+  if (action !== 'join') {
+    const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
+    const { data: { user }, error } = token ? await supabase.auth.getUser(token) : { data: { user: null }, error: null }
+    if (error || !user || member.profile_id !== user.id) return new Response(JSON.stringify({ error: 'Sign in to manage your own membership.' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    if (action === 'discard_checkout') {
+      const { data: attempt, error: attemptError } = await supabase.from('membership_checkout_attempts').select('token,session_id').eq('member_id',member.id).maybeSingle()
+      if (attemptError) throw attemptError
+      if (attempt?.session_id) {
+        const existing = await stripe.checkout.sessions.retrieve(attempt.session_id)
+        if (existing.status === 'complete') return new Response(JSON.stringify({ error: 'Payment is already complete. Wait for membership confirmation before another checkout.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        if (existing.status === 'open') await stripe.checkout.sessions.expire(existing.id)
+        const cleanup = await supabase.from('membership_checkout_attempts').delete().eq('member_id',member.id).eq('token',attempt.token)
+        if (cleanup.error) throw cleanup.error
+      } else if(attempt) return new Response(JSON.stringify({ error: 'Checkout is being created. Wait a moment, then retry.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ success:true }), { headers: { ...corsHeaders, 'Content-Type':'application/json' } })
+    }
+    if (member.membership_type === 'lifetime' && member.membership_status === 'active') return new Response(JSON.stringify({ error: 'Your lifetime membership is already active.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    if ((action === 'renew' && body.membership_type !== 'annual') || (action === 'upgrade' && body.membership_type !== 'lifetime')) return new Response(JSON.stringify({ error: 'Membership action and price do not match.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    if (member.auto_renew || member.stripe_subscription_id) return new Response(JSON.stringify({ error: 'Cancel future automatic billing before starting a manual renewal or lifetime upgrade.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  } else if (member.membership_status === 'active' || member.membership_status === 'lapsed') {
+    return new Response(JSON.stringify({ error: 'Use My Membership to renew or upgrade this existing membership.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
   // Prices are set here on the server; browser-supplied amounts are ignored.
   const site = new URL(SITE_URL)
@@ -92,7 +117,30 @@ Deno.serve(async (req) => {
     member_id: body.member_id,
     post_id: body.post_id ?? '', // Stripe metadata values must be strings; empty = no post (national at-large member)
     membership_type: body.membership_type,
+    action,
   }
+
+  // Serialize session creation for a member, reuse open checkouts, and use the
+  // reservation token as Stripe's idempotency key. A second kind of checkout
+  // must explicitly discard the unpaid one before it can start.
+  let reservation: {token:string;session_id:string|null;busy:boolean} | null = null
+  for(let attempt=0;attempt<2;attempt++) {
+    const r=await supabase.rpc('cvoa_reserve_checkout',{p_member:member.id})
+    if(r.error) throw r.error
+    reservation=r.data
+    if(!reservation || reservation.busy) return new Response(JSON.stringify({error:'Checkout is already being created. Wait a moment and retry.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
+    if(!reservation.session_id) break
+    const existing=await stripe.checkout.sessions.retrieve(reservation.session_id)
+    if(existing.status==='complete') return new Response(JSON.stringify({error:'Payment is complete and awaiting membership confirmation.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
+    if(existing.status==='open') {
+      if(existing.metadata?.membership_type===body.membership_type && existing.metadata?.action===action && existing.mode===(isAutoRenew?'subscription':'payment')) return new Response(JSON.stringify({url:existing.url}),{headers:{...corsHeaders,'Content-Type':'application/json'}})
+      return new Response(JSON.stringify({error:'A different checkout is open. Clear the unfinished checkout in My Membership before changing your selection.'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
+    }
+    const cleanup=await supabase.from('membership_checkout_attempts').delete().eq('member_id',member.id).eq('token',reservation.token)
+    if(cleanup.error) throw cleanup.error
+    reservation=null
+  }
+  if(!reservation) throw new Error('Could not reserve checkout.')
 
   const session = isAutoRenew
     ? await stripe.checkout.sessions.create({
@@ -113,7 +161,7 @@ Deno.serve(async (req) => {
         subscription_data: { metadata: commonMetadata },
         success_url: `${SITE_URL}/membership-payment-result?status=success`,
         cancel_url: `${SITE_URL}/membership-payment-result?status=cancelled`,
-      })
+      }, {idempotencyKey:`membership-${reservation.token}`})
     : await stripe.checkout.sessions.create({
         mode: 'payment',
         payment_method_types: ['card'],
@@ -132,7 +180,8 @@ Deno.serve(async (req) => {
         metadata: commonMetadata,
         success_url: `${SITE_URL}/membership-payment-result?status=success`,
         cancel_url: `${SITE_URL}/membership-payment-result?status=cancelled`,
-      })
+      }, {idempotencyKey:`membership-${reservation.token}`})
+
 
   const { error: paymentError } = await supabase.from('membership_payments').insert({
     member_id: body.member_id,
@@ -145,6 +194,7 @@ Deno.serve(async (req) => {
 
   if (paymentError) {
     await stripe.checkout.sessions.expire(session.id)
+    await supabase.from('membership_checkout_attempts').delete().eq('member_id',member.id).eq('token',reservation.token)
     return new Response(JSON.stringify({ error: 'Could not record the checkout. Please retry; no payment has been taken.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
@@ -152,9 +202,13 @@ Deno.serve(async (req) => {
     const { error } = await supabase.from('members').update({ auto_renew: true }).eq('id', body.member_id)
     if (error) {
       await stripe.checkout.sessions.expire(session.id)
+      await supabase.from('membership_checkout_attempts').delete().eq('member_id',member.id).eq('token',reservation.token)
       return new Response(JSON.stringify({ error: 'Could not save auto-renew settings. Please retry.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
   }
+
+  const savedAttempt=await supabase.from('membership_checkout_attempts').update({session_id:session.id}).eq('member_id',member.id).eq('token',reservation.token).select('member_id').single()
+  if(savedAttempt.error) { await stripe.checkout.sessions.expire(session.id); throw savedAttempt.error }
 
   return new Response(JSON.stringify({ url: session.url }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },

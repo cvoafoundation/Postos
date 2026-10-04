@@ -4,8 +4,8 @@
 //   1. Marks the payment as paid and activates the member (sets
 //      membership_status to 'active', joined_at if not already set, and
 //      expires_at one year out for annual / null forever for lifetime).
-//   2. Emails command@combatvetsofamerica.org and maddymarked@gmail.com with
-//      the new/renewing member's full name, address, and membership number.
+//   2. Sends staff a generic payment notice directing them to the protected
+//      membership roster. Member information stays inside CVOA.ONE.
 // This is what makes the whole flow hands-off — nobody has to manually mark
 // someone as paid after checking a bank statement, and nobody has to
 // remember to tell the card maker a new member signed up.
@@ -31,7 +31,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 import Stripe from 'npm:stripe@14.21.0'
 import nodemailer from 'npm:nodemailer@6.9.16'
 
-const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_KEY')!
+const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY') ?? Deno.env.get('STRIPE_KEY')!
 const STRIPE_WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -40,9 +40,9 @@ const WORKSPACE_APP_PASSWORD = Deno.env.get('WORKSPACE_APP_PASSWORD')
 
 const NOTIFY_RECIPIENTS = ['command@combatvetsofamerica.org', 'maddymarked@gmail.com']
 
-async function sendMembershipNotification(member: { full_name: string; address: string | null; membership_number: string | null; membership_type: string }) {
+async function sendMembershipNotification() {
   if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
-    console.warn('WORKSPACE_EMAIL/WORKSPACE_APP_PASSWORD not set — skipping membership notification email (dry run):', member)
+    console.warn('Membership recorded; notification email is not configured.')
     return
   }
   const transporter = nodemailer.createTransport({
@@ -54,119 +54,59 @@ async function sendMembershipNotification(member: { full_name: string; address: 
   await transporter.sendMail({
     from: `CVOA Post OS <${WORKSPACE_EMAIL}>`,
     to: NOTIFY_RECIPIENTS.join(', '),
-    subject: `New ${member.membership_type} membership: ${member.full_name}`,
-    html: `<p>A membership payment just cleared:</p>
-             <ul>
-               <li><strong>Name:</strong> ${member.full_name}</li>
-               <li><strong>Address:</strong> ${member.address ?? 'Not provided'}</li>
-               <li><strong>Membership Number:</strong> ${member.membership_number ?? 'Pending assignment'}</li>
-               <li><strong>Type:</strong> ${member.membership_type}</li>
-             </ul>`,
+    subject: 'CVOA membership payment received',
+    html: '<p>A membership payment has been recorded.</p><p>Sign in to <a href="https://cvoa.one/members">CVOA.ONE Membership Roster</a> to review the member record.</p>',
   })
 }
 
 Deno.serve(async (req) => {
-  const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
-  const signature = req.headers.get('stripe-signature')!
-  const body = await req.text()
-
+  if (req.method !== 'POST') return new Response('Use POST.', { status:405 })
+  const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion:'2023-10-16' })
   let event: Stripe.Event
+  try { event = await stripe.webhooks.constructEventAsync(await req.text(), req.headers.get('stripe-signature') ?? '', STRIPE_WEBHOOK_SECRET) }
+  catch { return new Response('Invalid webhook signature.', { status:400 }) }
+  const supabase = createClient(SUPABASE_URL,SERVICE_ROLE_KEY)
   try {
-    event = await stripe.webhooks.constructEventAsync(body, signature, STRIPE_WEBHOOK_SECRET)
-  } catch (err) {
-    return new Response(`Webhook signature verification failed: ${err}`, { status: 400 })
-  }
-
-  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
-
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.Checkout.Session
-    const memberId = session.metadata?.member_id
-    const membershipType = session.metadata?.membership_type as 'annual' | 'lifetime' | undefined
-
-    const { error: paymentUpdateError } = await supabase
-      .from('membership_payments')
-      .update({
-        status: 'paid',
-        paid_at: new Date().toISOString(),
-        stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+      const session = event.data.object as Stripe.Checkout.Session
+      if (session.payment_status !== 'paid') return new Response(JSON.stringify({ received:true }), { headers:{'Content-Type':'application/json'} })
+      const memberId = session.metadata?.member_id
+      const type = session.metadata?.membership_type
+      if (!memberId || !['annual','lifetime'].includes(type ?? '') || session.currency !== 'usd' || session.amount_total !== (type === 'lifetime' ? 49999 : 4999)) throw new Error('Checkout amount or metadata does not match membership pricing.')
+      const { data: applied,error } = await supabase.rpc('cvoa_fulfill_membership', {
+        p_session:session.id,p_member:memberId,p_type:type,
+        p_intent:typeof session.payment_intent === 'string' ? session.payment_intent : null,
+        p_subscription:session.mode === 'subscription' && typeof session.subscription === 'string' ? session.subscription : null,
+        p_paid_at:new Date(event.created*1000).toISOString(),
       })
-      .eq('stripe_checkout_session_id', session.id)
-
-    if (paymentUpdateError) {
-      console.error('DEBUG membership_payments update failed:', JSON.stringify(paymentUpdateError))
+      if(error) throw error
+      if(applied) {
+        try { await sendMembershipNotification() }
+        catch { console.error('Membership recorded; notification delivery failed.') }
+      }
     }
-
-    if (memberId) {
-      const now = new Date()
-      const expiresAt =
-        membershipType === 'lifetime' ? null : new Date(now.setFullYear(now.getFullYear() + 1)).toISOString().slice(0, 10)
-
-      const patch: Record<string, unknown> = {
-        membership_status: 'active',
-        joined_at: new Date().toISOString().slice(0, 10),
-        expires_at: expiresAt,
-      }
-      if (session.mode === 'subscription' && typeof session.subscription === 'string') {
-        patch.stripe_subscription_id = session.subscription
-      }
-
-      console.log('DEBUG about to update member:', memberId, 'with patch:', JSON.stringify(patch))
-
-      const { data: updatedMember, error: memberUpdateError } = await supabase
-        .from('members')
-        .update(patch)
-        .eq('id', memberId)
-        .select()
-        .single()
-
-      if (memberUpdateError) {
-        console.error('DEBUG members update failed:', JSON.stringify(memberUpdateError))
-      }
-
-      if (updatedMember) {
-        await sendMembershipNotification({
-          full_name: updatedMember.full_name,
-          address: updatedMember.address,
-          membership_number: updatedMember.membership_number,
-          membership_type: updatedMember.membership_type,
+    if (event.type === 'invoice.payment_succeeded') {
+      const invoice = event.data.object as Stripe.Invoice
+      if(invoice.billing_reason === 'subscription_cycle' && typeof invoice.subscription === 'string') {
+        if(invoice.currency !== 'usd' || invoice.amount_paid !== 4999) throw new Error('Unexpected recurring membership amount.')
+        const periodEnd = Math.max(...invoice.lines.data.map(line => line.period.end))
+        if(!Number.isFinite(periodEnd)) throw new Error('Recurring invoice period is missing.')
+        const r = await supabase.rpc('cvoa_renew_subscription', {
+          p_invoice:invoice.id,p_subscription:invoice.subscription,
+          p_period_end:new Date(periodEnd*1000).toISOString().slice(0,10),
+          p_paid_at:new Date(event.created*1000).toISOString(),
         })
+        if(r.error) throw r.error
       }
     }
-  }
-
-  // This is the actual auto-renew mechanism: Stripe charges the saved card
-  // automatically every year for an active subscription, and fires this
-  // event each time it succeeds — including the very first charge, which
-  // this skips (billing_reason distinguishes it) since checkout.session.completed
-  // already activated the membership above.
-  if (event.type === 'invoice.payment_succeeded') {
-    const invoice = event.data.object as Stripe.Invoice
-    if (invoice.billing_reason === 'subscription_cycle' && typeof invoice.subscription === 'string') {
-      const { data: member } = await supabase
-        .from('members')
-        .select('*')
-        .eq('stripe_subscription_id', invoice.subscription)
-        .single()
-
-      if (member) {
-        const newExpiry = new Date()
-        newExpiry.setFullYear(newExpiry.getFullYear() + 1)
-        await supabase
-          .from('members')
-          .update({ membership_status: 'active', expires_at: newExpiry.toISOString().slice(0, 10) })
-          .eq('id', member.id)
-      }
+    if(event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object as Stripe.Subscription
+      const r=await supabase.from('members').update({ auto_renew:false,stripe_subscription_id:null }).eq('stripe_subscription_id',subscription.id)
+      if(r.error) throw r.error
     }
+    return new Response(JSON.stringify({ received:true }), { headers:{'Content-Type':'application/json'} })
+  } catch {
+    console.error('Membership webhook persistence failed; Stripe should retry.',event.id)
+    return new Response('Membership update failed; retry this event.', { status:500 })
   }
-
-  // A subscription actually ending (cancelled, or payment ultimately failed
-  // and Stripe gave up retrying) — stop treating it as auto-renewing, but
-  // don't touch membership_status; they already paid through expires_at.
-  if (event.type === 'customer.subscription.deleted') {
-    const subscription = event.data.object as Stripe.Subscription
-    await supabase.from('members').update({ auto_renew: false, stripe_subscription_id: null }).eq('stripe_subscription_id', subscription.id)
-  }
-
-  return new Response(JSON.stringify({ received: true }), { headers: { 'Content-Type': 'application/json' } })
 })

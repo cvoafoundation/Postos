@@ -1,9 +1,15 @@
 import { useState, type ReactNode } from 'react'
 import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
+import { useAuth } from '@/context/AuthContext'
+import { Link, useLocation } from 'react-router-dom'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const { profile,isNational } = useAuth()
+  const { pathname } = useLocation()
+  const personal = ['/my-membership','/member-home','/my-applications'].includes(pathname)
+  const scope = personal ? 'Personal Workspace' : isNational ? 'National · All states and posts' : profile?.role === 'state_commander' ? `State Command · ${profile.state ?? 'Awaiting state assignment'}` : ['post_commander','post_officer'].includes(profile?.role ?? '') ? 'Post Staff · Assigned post' : 'Member Workspace'
 
   return (
     <div className="flex min-h-screen bg-base">
@@ -20,7 +26,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <main className="flex-1 min-w-0">
-          <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-8">{children}</div>
+          <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-8">
+            <div className="flex flex-wrap gap-3 items-center justify-between border-b border-hairline pb-3 mb-6 text-xs">
+              <span className="text-muted">{scope}</span>
+              {isNational && !personal && <Link className="text-gold" to="/state">States → Posts → Members</Link>}
+            </div>
+            {children}
+          </div>
         </main>
       </div>
     </div>

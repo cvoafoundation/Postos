@@ -1,0 +1,50 @@
+# CVOA ONE organization workspaces
+
+This release implements the seven UX gaps identified on October 3, 2026. It is prepared in `feature/organization-workspaces`; it requires a coordinated database, Edge Function, and frontend release. It has **not been deployed to production**.
+
+## What each person gets
+
+| Workspace | Scope | Actions |
+|---|---|---|
+| National | All states and posts | Overview, existing post management, affiliation decisions, application feedback/document requests, fundraising management, escalation responses, account appointments. |
+| State command | Posts whose state matches the commander's assigned state | Read membership totals, meeting-report dates, outstanding work and fundraising; submit issues to National. No appointment or affiliation approval authority. |
+| Post staff | Their assigned operational post | Existing roster/minutes/tools plus campaign goals, owners, deadlines, received income, expenses and results. Action queue links to their work. |
+| Personal | The signed-in person's linked membership and applications | Complete payment, renew annual membership, purchase lifetime membership, cancel future automatic billing, request a post affiliation change, track a post application, reply and attach documents. Staff retain this workspace. |
+
+Ethics Tribunal access and private secretary notes retain their existing independent boundaries. National sees the need for unpublished minutes in its queue; the existing private-draft policy is preserved. Formal Congress voting continues to use delegate designation checks.
+
+## Implemented workflows
+
+1. **State home:** State Commander now lands on State Overview. National can browse all states. An unassigned state commander receives an instruction to have National assign the state in Accounts & Access. State and post escalations are recorded, visible within their scope, and resolved with a National response.
+2. **Personal membership:** renewals and upgrades target the existing member ID. Annual renewal adds one year after the current paid-through date, or from payment date if expired. Lifetime costs **$499.99 / 49,999 USD cents**, with no automatic credit or proration. The UI explains this before checkout. Active lifetime members are never offered another renewal. Automatic billing must first be cancelled to prevent overlapping subscription charges. Membership number and original join date remain intact.
+3. **Post affiliation:** active members request an active post or National at-large affiliation. One pending request per membership is allowed. National approves or declines with a visible explanation. The membership stays unchanged while review is pending. Approval updates member affiliation and ordinary-member account affiliation atomically; staff appointments stay attached to their operational post.
+4. **Post applications:** applicants can return to My Post Applications, see pipeline status and National updates, send replies, and attach a private PDF/JPEG/PNG up to 10 MB. Legacy applications match a verified Auth email. New authenticated application submissions have their owner and email stamped by the database. National uses the existing application detail dialog to post feedback and document requests. Updates are stored in the portal; this release adds no automatic update emails.
+5. **Facility planning:** navigation and headings distinguish the facility/equipment/budget playbook from applying to start a post. Existing `/build-a-post` URLs keep working.
+6. **Fundraising:** campaigns/events have a goal in cents, responsible owner, deadline, status, received income, expenses, net raised, progress and results. Closing requires an outcome note. Financial entries preserve history; correcting entries reconcile errors. Campaign records require reconciliation with the existing post ledger and do not automatically duplicate ledger transactions. This release does not add event ticket sales or an additional payment processor.
+7. **Connected member record:** the roster dialog shows membership, post affiliation, verification, real email-confirmation and last-sign-in indicators, system appointment/scope, founding-team positions and recent membership payments. Only National gets the Accounts & Access management link. No Auth passwords/tokens are returned.
+8. **Action queues:** National, state command and post staff see scoped minutes, expiring memberships, upcoming meetings, overdue tasks, campaign deadlines, and National-only application/affiliation/escalation reviews. Counts are calculated in PostgreSQL; the queue reports its total and shows up to 100 items ordered by due date.
+
+## Database and payment safeguards
+
+New tables have RLS; caller identities are taken from Auth, not browser-provided role claims. Scoped RPCs use an empty search path with qualified references and revoked anonymous/public execution. Payment fulfillment is service-only, atomic, and replay-safe. A checkout reservation and Stripe idempotency key prevent concurrent duplicate sessions; matching open sessions are reused, and owners can clear an unfinished checkout before changing their selection. Actual Stripe payment status, USD currency and fixed amount are verified before fulfillment. Critical persistence failures return HTTP 500 for Stripe retries. Notification delivery failures do not undo a recorded payment; notification delivery is not a durable queued system in this release.
+
+The migration adds an own-member read policy so national at-large memberships and staff whose personal membership is at another post remain accessible. The prerequisite migration corrects the identified legacy role, post-write and public-intake policies. The October 3 live audit confirmed unsafe profile and operational policies. The prerequisite migration `20261003185000_live_permission_hardening.sql` now prevents direct self-promotion, scopes post writes and operational reads, gates appointment approval, limits public intake to pending records, requires verified emails for account linking, and supplies narrow member/officer directory RPCs. It also adds the missing live `members.auto_renew` column. These changes require deployment before the workspaces.
+
+## Validation
+
+- Production TypeScript/Vite build passes.
+- 90 regression tests pass, including the earlier invitation/price tests, Edge Function payment tests, and execution of this migration in PGlite's PostgreSQL runtime.
+- Database tests use an isolated Supabase-shaped fixture, simulated Auth claims, and actual authenticated/service roles. They exercise state/post isolation, cross-member denial, transfer approval, application ownership, private documents, campaign restrictions, account summaries, atomic fulfillment and webhook replay behavior.
+- These checks establish code and migration behavior against that fixture. They do not establish compatibility with uninspected live policies, triggers, existing duplicate data, or live Stripe settings.
+- Authenticated browser verification remains pending. No real memberships, payments, subscription cancellations, invitations or production data changes were made during development.
+
+## Coordinated deployment order
+
+1. Apply `20261003185000_live_permission_hardening.sql` before the workspace migration. The live audit confirmed matching policy names, no profile guard trigger, and missing `auto_renew`. Both migrations completed a production-schema transaction rehearsal ending in ROLLBACK; no changes from that rehearsal were retained. Eleven additional tests execute both migrations against the full source schema and verify privilege denial, permitted National administration, safe public signup, officer approvals and directory privacy.
+2. Check `membership_payments` for duplicate non-null `stripe_checkout_session_id` values. Reconcile duplicates deliberately; the migration's unique index aborts rather than choosing/deleting records. Reconcile pre-existing cases where a payment is already marked paid but member activation failed. Legacy paid checkout replay is acknowledged without extending a membership again.
+3. Apply `supabase/migrations/20261003190000_organization_workspaces.sql` in a staging project or equivalent migration review environment, then production. It is transactional and intended to run once through the migration system. It adds tables, functions, indexes, an application owner column/trigger, an own-member read policy and a private storage bucket/policies. Check that existing public application intake remains compatible with the ownership trigger.
+4. Deploy these matching functions: `create-membership-checkout`, `cancel-membership-subscription`, and `stripe-webhook`. The webhook uses `--no-verify-jwt` and verifies the Stripe signature itself. Retain the existing Stripe/Workspace/SITE_URL secrets. Enable `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `invoice.payment_succeeded`, and `customer.subscription.deleted` at the webhook endpoint.
+5. Test with Stripe test mode in staging: initial signup, expired and early annual renewal, lifetime upgrade, automatic billing cancellation, and duplicate webhook delivery. Confirm the same member number/ID and original join date survive. Annual renewal/upgrade checkout requires the authenticated owner. The frontend changes must follow the database and function release; deploying the frontend first exposes missing-RPC errors.
+6. Merge the matching frontend release and verify the production deployment. Walk through National, assigned/unassigned State Commander, Post Commander, Post Officer, Member, pending applicant and Ethics Tribunal accounts. Confirm another state's/post's records remain inaccessible via direct RPC/API requests.
+
+The earlier audit's staff invitation parity, broad database policy fixes, dashboard aggregation and other legacy findings remain separate outstanding work. Supabase dashboard access was restored for the live inspection and rollback rehearsal. Permanent migration deployment, Edge Function deployment and authenticated browser verification remain pending.

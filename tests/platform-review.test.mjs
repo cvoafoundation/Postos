@@ -32,14 +32,14 @@ test('empty administrative lists stop after one request', async () => {
 function edgeFixture(file, options = {}) {
   const state = {
     env: { STRIPE_SECRET_KEY: 'test-only', SITE_URL: 'https://cvoa.one', SUPABASE_URL: 'https://example.test', SUPABASE_SERVICE_ROLE_KEY: 'test-only' },
-    member: { id: 'member-1', membership_type: 'lifetime', post_id: null, stripe_subscription_id: 'sub-1' },
+    member: { id: 'member-1', membership_type: 'lifetime', membership_status:'pending_payment', post_id: null, stripe_subscription_id: 'sub-1' },
     caller: { role: 'national_commander', post_id: null }, user: { id: 'admin' }, calls: [], ...options,
   }
   let handler
   const query = (table) => {
     let operation = 'select', payload
     const q = {
-      select() { return q }, eq() { return q },
+      select() { return q }, eq() { return q }, delete() { operation='delete'; return q }, maybeSingle() { return Promise.resolve({data:state.existingAttempt??null}) },
       insert(data) { operation = 'insert'; payload = data; return q },
       update(data) { operation = 'update'; payload = data; return q },
       single() { return Promise.resolve(result()) },
@@ -48,13 +48,14 @@ function edgeFixture(file, options = {}) {
     function result() {
       if (operation === 'select') return { data: table === 'profiles' ? state.caller : state.member }
       state.calls.push([table, operation, payload])
-      return { error: operation === 'insert' ? state.paymentError ?? null : state.updateError ?? null }
+      return { error: operation === 'insert' && table === 'membership_payments' ? state.paymentError ?? null : table === 'members' ? state.updateError ?? null : null }
     }
     return q
   }
   class Stripe {
     checkout = { sessions: {
-      create: async (payload) => { state.calls.push(['checkout', payload]); return { id: 'session-1', url: 'https://checkout.stripe.com/test-only' } },
+      retrieve: async () => state.existingSession ?? { status:'expired' },
+      create: async (payload, options) => { state.calls.push(['idempotency',options]); state.calls.push(['checkout', payload]); return { id: 'session-1', url: 'https://checkout.stripe.com/test-only' } },
       expire: async (id) => { state.calls.push(['expire', id]) },
     } }
     subscriptions = { cancel: async (id) => { state.calls.push(['cancel', id]); if (state.stripeError) throw state.stripeError } }
@@ -62,7 +63,7 @@ function edgeFixture(file, options = {}) {
   const source = fs.readFileSync(file, 'utf8').replace(/^import .*$/gm, '')
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText
   vm.runInNewContext(js, {
-    createClient: () => ({ from: query, auth: { getUser: async () => ({ data: { user: state.user } }) } }),
+    createClient: () => ({ rpc: async () => ({data:state.reservations?.shift()??state.reservation??{token:'reservation-test',session_id:null,busy:false}}), from: query, auth: { getUser: async () => ({ data: { user: state.user } }) } }),
     Stripe, Deno: { env: { get: (key) => state.env[key] }, serve: (fn) => { handler = fn } }, Response, Request, URL, console,
   })
   return { state, async invoke(body, headers = { Authorization: 'Bearer test-only' }, method = 'POST') {
@@ -163,3 +164,35 @@ test('standard administrative guards still allow National access', () => {
   assert.equal(renderGuard('national_commander'), 'CONFIDENTIAL_INBOX')
   assert.equal(renderGuard('member', false).includes('CONFIDENTIAL_INBOX'), false)
 })
+
+const selfMember = { id:'member-1',membership_type:'annual',membership_status:'active',profile_id:'admin',post_id:null,auto_renew:false,stripe_subscription_id:null }
+test('renewal checkout requires the authenticated owner of the existing membership',async()=>{
+ const f=edgeFixture(checkoutFile,{member:{...selfMember,profile_id:'another-account'}})
+ assert.equal((await f.invoke({member_id:'member-1',membership_type:'annual',action:'renew'})).status,403)
+ assert.equal(f.state.calls.length,0)
+})
+test('annual owner can upgrade for 49,999 cents without changing membership before payment',async()=>{
+ const f=edgeFixture(checkoutFile,{member:selfMember})
+ assert.equal((await f.invoke({member_id:'member-1',membership_type:'lifetime',action:'upgrade'})).status,200)
+ assert.equal(f.state.calls.find(([n])=>n==='checkout')[1].line_items[0].price_data.unit_amount,49999)
+ assert.equal(f.state.calls.some(([n,op])=>n==='members'&&op==='update'),false)
+})
+test('existing active membership cannot use the anonymous join path to buy twice',async()=>{
+ const f=edgeFixture(checkoutFile,{member:selfMember})
+ assert.equal((await f.invoke({member_id:'member-1',membership_type:'annual'})).status,409)
+})
+test('manual checkout prevents overlapping automatic billing',async()=>{
+ const f=edgeFixture(checkoutFile,{member:{...selfMember,stripe_subscription_id:'active-sub'}})
+ assert.equal((await f.invoke({member_id:'member-1',membership_type:'lifetime',action:'upgrade'})).status,409)
+})
+test('member can cancel only their own automatic billing',async()=>{
+ const f=edgeFixture(cancelFile,{caller:{role:'member',post_id:null},member:{...selfMember,stripe_subscription_id:'active-sub'}})
+ assert.equal((await f.invoke({member_id:'member-1'})).status,200)
+ assert.ok(f.state.calls.some(([n])=>n==='cancel'))
+})
+
+test('checkout reservation prevents simultaneous session creation',async()=>{const f=edgeFixture(checkoutFile,{reservation:{busy:true}});assert.equal((await f.invoke({member_id:'member-1',membership_type:'lifetime'})).status,409);assert.equal(f.state.calls.some(([n])=>n==='checkout'),false)})
+test('retry reuses the open matching checkout without inserting another payment',async()=>{const f=edgeFixture(checkoutFile,{reservation:{token:'x',session_id:'existing',busy:false},existingSession:{id:'existing',status:'open',mode:'payment',url:'https://checkout.stripe.com/existing',metadata:{membership_type:'lifetime',action:'join'}}});const r=await f.invoke({member_id:'member-1',membership_type:'lifetime'});assert.equal(r.status,200);assert.equal(r.body.url,'https://checkout.stripe.com/existing');assert.equal(f.state.calls.some(([n])=>n==='membership_payments'),false)})
+test('changing an open checkout selection requires clearing the old unpaid session',async()=>{const f=edgeFixture(checkoutFile,{reservation:{token:'x',session_id:'existing',busy:false},existingSession:{id:'existing',status:'open',mode:'payment',metadata:{membership_type:'annual',action:'renew'}}});assert.equal((await f.invoke({member_id:'member-1',membership_type:'lifetime'})).status,409)})
+test('Stripe creation uses the database reservation as an idempotency key',async()=>{const f=edgeFixture(checkoutFile);await f.invoke({member_id:'member-1',membership_type:'lifetime'});assert.equal(f.state.calls.find(([n])=>n==='idempotency')[1].idempotencyKey,'membership-reservation-test')})
+test('owner can expire an unfinished checkout before changing price selection',async()=>{const f=edgeFixture(checkoutFile,{member:selfMember,existingAttempt:{token:'x',session_id:'existing'},existingSession:{id:'existing',status:'open'}});assert.equal((await f.invoke({member_id:'member-1',membership_type:'annual',action:'discard_checkout'})).status,200);assert.ok(f.state.calls.some(([n])=>n==='expire'))})

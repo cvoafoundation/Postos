@@ -1,3 +1,4 @@
+import ActionQueue from '@/components/workspaces/ActionQueue'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
@@ -93,6 +94,7 @@ export default function PostHome() {
 
   return (
     <div>
+      <ActionQueue />
       <div className="mb-8">
         <div className="eyebrow mb-1">{post.city ? `${post.city}, ` : ''}{post.state}</div>
         <h1 className="font-display text-3xl tracking-wide">{post.name}</h1>

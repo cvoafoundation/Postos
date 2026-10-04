@@ -1,3 +1,4 @@
+import ActionQueue from '@/components/workspaces/ActionQueue'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
@@ -167,7 +168,8 @@ export default function Dashboard() {
   return (
     <div>
       {error && <p role="alert" className="panel p-3 mb-4 text-status-attention text-sm">Dashboard data could not be loaded: {error} <button onClick={() => window.location.reload()} className="underline">Reload</button></p>}
-      <PageHeader eyebrow="National Command" title="Global Dashboard" />
+      <PageHeader eyebrow="National Command" title="National Dashboard" />
+      <ActionQueue />
 
       <div className="mb-6">
         <div className="eyebrow mb-2">Pipeline</div>

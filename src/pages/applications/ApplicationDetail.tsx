@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
+import ApplicationTimeline from '@/components/workspaces/ApplicationTimeline'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -217,6 +218,7 @@ export function ApplicationDetailModal({
   return (
     <Modal title={application.name} onClose={onClose}>
       <div className="space-y-5">
+        <ApplicationTimeline applicationId={application.id} reviewer />
         <div className="flex items-center justify-between">
           <StatusBadge label={POST_STATUS_LABELS[application.status]} tone="developing" />
           <span className="font-mono text-[11px] text-muted">

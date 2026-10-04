@@ -142,6 +142,7 @@ export default function UserManagement() {
                 <th className="table-head">Email</th>
                 <th className="table-head">Role</th>
                 <th className="table-head">Title</th>
+                <th className="table-head">Assigned State</th>
                 <th className="table-head">Account Post</th>
                 <th className="table-head">Membership</th>
                 <th className="table-head"></th>
@@ -178,6 +179,9 @@ export default function UserManagement() {
                         placeholder="—"
                         onBlur={(e) => e.target.value !== (p.title ?? '') && updateAccount(p, { title: e.target.value || null })}
                       />
+                    </td>
+                    <td className="table-cell">
+                      {p.role === 'state_commander' ? <input aria-label={`Assigned state for ${p.full_name}`} className="input-field text-xs py-1 w-20" maxLength={2} placeholder="IN" key={`${p.id}-${p.state ?? ''}-${savingId === p.id}`} defaultValue={p.state ?? ''} disabled={savingId === p.id} onBlur={e => { const state = e.target.value.trim().toUpperCase(); if (state && !/^[A-Z]{2}$/.test(state)) { setError('Use a two-letter assigned state code.'); return } if(state !== (p.state ?? '')) void updateAccount(p,{ state:state || null }) }} /> : <span className="text-muted">—</span>}
                     </td>
                     <td className="table-cell">
                       <select

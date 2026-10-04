@@ -26,10 +26,7 @@ export default function PostOfficers() {
       return
     }
     supabase
-      .from('founding_team_members')
-      .select('*')
-      .eq('post_id', profile.post_id)
-      .neq('position', 'member')
+      .rpc('cvoa_post_officer_directory')
       .then(({ data }: any) => {
         setOfficers((data ?? []) as FoundingTeamMember[])
         setLoading(false)

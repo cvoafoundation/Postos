@@ -47,7 +47,7 @@ export default function BuildAPost() {
     <div>
       <PageHeader
         eyebrow="Module 10 — The Playbook"
-        title="Build A Post"
+        title="Facility Planning"
         action={
           isNational && posts.length > 0 ? (
             <select
