@@ -94,7 +94,7 @@ export function computePostHealth(inputs: PostHealthInputs): PostHealthResult {
   }
 
   // 3. Meeting compliance
-  const lastMeeting = meetingDates.sort().slice(-1)[0] ?? null
+  const lastMeeting = meetingDates.filter(date => Number.isFinite(new Date(date).getTime()) && daysAgo(date) >= 0).sort().slice(-1)[0] ?? null
   const meetingStatus: DimensionStatus = !lastMeeting ? 'red' : daysAgo(lastMeeting) <= 30 ? 'green' : daysAgo(lastMeeting) <= 60 ? 'yellow' : 'red'
   dimensions.push({
     key: 'meetings',
