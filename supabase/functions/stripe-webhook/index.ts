@@ -4,8 +4,8 @@
 //   1. Marks the payment as paid and activates the member (sets
 //      membership_status to 'active', joined_at if not already set, and
 //      expires_at one year out for annual / null forever for lifetime).
-//   2. Emails command@combatvetsofamerica.org and maddymarked@gmail.com with
-//      the new/renewing member's full name, address, and membership number.
+//   2. Sends staff a generic payment notice directing them to the protected
+//      membership roster. Member information stays inside CVOA.ONE.
 // This is what makes the whole flow hands-off — nobody has to manually mark
 // someone as paid after checking a bank statement, and nobody has to
 // remember to tell the card maker a new member signed up.
@@ -40,9 +40,7 @@ const WORKSPACE_APP_PASSWORD = Deno.env.get('WORKSPACE_APP_PASSWORD')
 
 const NOTIFY_RECIPIENTS = ['command@combatvetsofamerica.org', 'maddymarked@gmail.com']
 
-const escapeHtml = (value: string) => value.replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]!))
-
-async function sendMembershipNotification(member: { full_name: string; address: string | null; membership_number: string | null; membership_type: string }) {
+async function sendMembershipNotification() {
   if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
     console.warn('Membership recorded; notification email is not configured.')
     return
@@ -56,14 +54,8 @@ async function sendMembershipNotification(member: { full_name: string; address: 
   await transporter.sendMail({
     from: `CVOA Post OS <${WORKSPACE_EMAIL}>`,
     to: NOTIFY_RECIPIENTS.join(', '),
-    subject: `New ${escapeHtml(member.membership_type)} membership: ${escapeHtml(member.full_name)}`,
-    html: `<p>A membership payment just cleared:</p>
-             <ul>
-               <li><strong>Name:</strong> ${escapeHtml(member.full_name)}</li>
-               <li><strong>Address:</strong> ${escapeHtml(member.address ?? 'Not provided')}</li>
-               <li><strong>Membership Number:</strong> ${escapeHtml(member.membership_number ?? 'Pending assignment')}</li>
-               <li><strong>Type:</strong> ${escapeHtml(member.membership_type)}</li>
-             </ul>`,
+    subject: 'CVOA membership payment received',
+    html: '<p>A membership payment has been recorded.</p><p>Sign in to <a href="https://cvoa.one/members">CVOA.ONE Membership Roster</a> to review the member record.</p>',
   })
 }
 
@@ -89,11 +81,8 @@ Deno.serve(async (req) => {
       })
       if(error) throw error
       if(applied) {
-        const r = await supabase.from('members').select('full_name,address,membership_number,membership_type').eq('id',memberId).single()
-        if(!r.error && r.data) {
-          try { await sendMembershipNotification(r.data) }
-          catch { console.error('Membership recorded; notification delivery failed.') }
-        }
+        try { await sendMembershipNotification() }
+        catch { console.error('Membership recorded; notification delivery failed.') }
       }
     }
     if (event.type === 'invoice.payment_succeeded') {
