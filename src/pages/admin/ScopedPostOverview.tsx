@@ -13,8 +13,9 @@ interface Overview {
     title: string;
     meeting_date: string;
     status: string;
+    native?: boolean;
   }[];
-  tasks: { id: string; description: string; due_date: string | null }[];
+  tasks: { id: string; description: string; due_date: string | null; path?: string }[];
   campaigns: { id: string; title: string; status: string }[];
 }
 export default function ScopedPostOverview() {
@@ -62,15 +63,17 @@ export default function ScopedPostOverview() {
         .eq("post_id", assignedPost)
         .order("created_at", { ascending: false })
         .limit(10),
+      supabase.from('uro_sessions').select('id,title,scheduled_at,minutes_state,phase,uro_bodies!inner(post_id)').eq('uro_bodies.post_id',assignedPost).order('scheduled_at',{ascending:false}).limit(10),
+      supabase.from('uro_actions').select('id,title,due_date,meeting_id,uro_sessions!inner(uro_bodies!inner(post_id))').eq('uro_sessions.uro_bodies.post_id',assignedPost).neq('status','completed').order('due_date').limit(20),
     ])
-      .then(([post, minutes, tasks, campaigns]) => {
-        for (const result of [post, minutes, tasks, campaigns])
+      .then(([post, minutes, tasks, campaigns, governanceMinutes, governanceActions]) => {
+        for (const result of [post, minutes, tasks, campaigns, governanceMinutes, governanceActions])
           if (result.error) throw result.error;
         if (active)
           setData({
             post: post.data,
-            minutes: minutes.data ?? [],
-            tasks: tasks.data ?? [],
+            minutes: [...(minutes.data??[]),...(governanceMinutes.data??[]).map(m=>({...m,meeting_date:m.scheduled_at.slice(0,10),status:m.phase==='archive'?m.minutes_state:m.phase,native:true}))].sort((a,b)=>b.meeting_date.localeCompare(a.meeting_date)).slice(0,10),
+            tasks: [...(tasks.data??[]),...(governanceActions.data??[]).map(a=>({...a,description:a.title,path:`/meetings/session/${a.meeting_id}`}))],
             campaigns: campaigns.data ?? [],
           } as Overview);
       })
@@ -144,7 +147,7 @@ export default function ScopedPostOverview() {
                 <ul className="space-y-3 text-sm mt-3">
                   {data.minutes.map((m) => (
                     <li key={m.id}>
-                      <span>{m.title}</span>
+                      <Link className="text-gold" to={m.native?`/meetings/session/${m.id}`:`/meetings/uro/${m.id}/view`}>{m.title}</Link>
                       <span className="text-muted block">
                         {m.meeting_date} · {m.status.replaceAll("_", " ")}
                       </span>
@@ -161,7 +164,7 @@ export default function ScopedPostOverview() {
                 <ul className="space-y-3 text-sm mt-3">
                   {data.tasks.map((t) => (
                     <li key={t.id}>
-                      {t.description}
+                      {t.path?<Link className="text-gold" to={t.path}>{t.description}</Link>:t.description}
                       <span className="text-muted block">
                         {t.due_date
                           ? `Due ${t.due_date}`
