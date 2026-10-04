@@ -17,7 +17,7 @@ interface Overview {
 }
 export default function ScopedPostOverview() {
   const { postId } = useParams(),
-    { profile } = useAuth();
+    { profile, isNational } = useAuth();
   const assignedPost = postId ?? profile?.post_id;
   const [data, setData] = useState<Overview | null>(null),
     [loading, setLoading] = useState(true),
@@ -109,6 +109,7 @@ export default function ScopedPostOverview() {
               {data.post.status.replaceAll("_", " ")}
             </p>
             <div className="flex flex-wrap gap-4 mt-3 text-sm">
+              {isNational && <Link className="btn-gold" to={`/health/${assignedPost}`}>Manage post & launch →</Link>}
               <Link className="text-gold" to="/congress">
                 Veterans Congress →
               </Link>
