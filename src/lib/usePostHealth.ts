@@ -24,9 +24,10 @@ export function usePostHealth(postIds: string[], version = 0) {
       read('posts', '*', 'id'), read('founding_team_members', 'id,post_id,position,name'), read('sponsors', 'id,post_id,stage,sponsorship_value'),
       read('meeting_records', 'id,post_id,meeting_date'),
       readAllRows<any>(() => supabase.from('uro_meetings').select('id,post_id,meeting_date').in('post_id', ids).eq('status', 'published').order('id')),
+      readAllRows<any>(()=>supabase.from('uro_sessions').select('id,started_at,uro_bodies!inner(post_id)').in('uro_bodies.post_id',ids).not('published_at','is',null).order('id')),
       read('members', 'id,post_id,membership_status,joined_at'), read('congress_delegates', 'id,post_id,term_start,term_end,is_alternate'), read('resolution_votes', 'id,voter_post_id', 'voter_post_id'),
       read('governance_signatures', 'id,post_id,signed_at,signer_name,form_type'), read('annual_reviews'), read('community_service_events', 'id,post_id,event_date'), read('financial_transactions', 'id,post_id,transaction_type,amount'),
-    ]).then(([posts, officers, sponsors, legacyMinutes, publishedMinutes, members, delegates, votes, signatures, reviews, service, transactions]) => {
+    ]).then(([posts, officers, sponsors, legacyMinutes, publishedMinutes, governanceMinutes, members, delegates, votes, signatures, reviews, service, transactions]) => {
       const indexes = new Map<any[], Map<string, any[]>>()
       const rowsFor = (rows: any[], id: string, key = 'post_id') => {
         let index = indexes.get(rows)
@@ -40,7 +41,7 @@ export function usePostHealth(postIds: string[], version = 0) {
         }
         return index.get(id) ?? []
       }
-      const minutes = [...legacyMinutes, ...publishedMinutes]
+      const minutes = [...legacyMinutes, ...publishedMinutes, ...governanceMinutes.map(m=>({post_id:m.uro_bodies.post_id,meeting_date:m.started_at?.slice(0,10)}))]
       const today = new Date().toISOString().slice(0, 10)
       const currentDelegates = delegates.filter(d => !d.is_alternate && (!d.term_start || d.term_start <= today) && (!d.term_end || d.term_end >= today))
       const next: Record<string, PostHealthResult> = {}
