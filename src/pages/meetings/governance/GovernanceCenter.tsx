@@ -4,13 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import BodySetup from "./BodySetup";
 import { GovernanceForm, options } from "./Forms";
-import {
-  actionState,
-  iso,
-  phaseLabel,
-  timestamp,
-  type RecordData,
-} from "./model";
+import { actionState, iso, timestamp, type RecordData } from "./model";
 export default function GovernanceCenter() {
   const { profile } = useAuth(),
     navigate = useNavigate();
@@ -23,12 +17,14 @@ export default function GovernanceCenter() {
     [registry, setRegistry] = useState<RecordData | null>(null),
     [term, setTerm] = useState(""),
     [tab, setTab] = useState("actions"),
-    [interim, setInterim] = useState(false);
+    [interim, setInterim] = useState(false),
+    [showRegister, setShowRegister] = useState(false),
+    [status, setStatus] = useState("all");
   async function load() {
     const { data, error } = await supabase.rpc("uro_directory");
     if (error) throw error;
     setDirectory(data);
-    setBodyId((v) => v || data.bodies?.[0]?.id || "");
+    setBodyId((v) => v);
   }
   useEffect(() => {
     let alive = true;
@@ -40,7 +36,7 @@ export default function GovernanceCenter() {
       if (error) setError(error.message);
       else {
         setDirectory(data);
-        setBodyId(data.bodies?.[0]?.id || "");
+        setBodyId("");
       }
     });
     return () => {
@@ -50,7 +46,7 @@ export default function GovernanceCenter() {
   useEffect(() => {
     let alive = true;
     setRegistry(null);
-    if (!bodyId) return;
+    if (!bodyId || !showRegister) return;
     const timer = setTimeout(() => {
       supabase
         .rpc("uro_registry", { p_body: bodyId, p_term: term })
@@ -64,18 +60,26 @@ export default function GovernanceCenter() {
       alive = false;
       clearTimeout(timer);
     };
-  }, [bodyId, term, directory]);
+  }, [bodyId, term, directory, showRegister]);
   const body = directory?.bodies?.find((b: RecordData) => b.id === bodyId),
     sessions =
-      directory?.sessions?.filter((s: RecordData) => s.body_id === bodyId) ||
-      [];
+      directory?.sessions?.filter(
+        (s: RecordData) =>
+          (!bodyId || s.body_id === bodyId) &&
+          (status === "all" ||
+            (status === "completed"
+              ? !!s.ended_at
+              : status === "live"
+                ? !!s.started_at && !s.ended_at
+                : !s.started_at)),
+      ) || [];
   return (
     <div className="space-y-6">
       <div className="flex justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-3xl">Meetings &amp; Governance</h1>
+          <h1 className="font-display text-3xl">Meetings</h1>
           <p className="text-muted">
-            Unified Rules of Order. Prepare, review, meet, execute, archive.
+            Schedule a meeting, run it with URO, and read the record.
           </p>
         </div>
         <Link className="btn-ghost" to="/meetings/legacy">
@@ -97,73 +101,129 @@ export default function GovernanceCenter() {
               value={bodyId}
               onChange={(e) => setBodyId(e.target.value)}
             >
-              <option value="">Choose a governing body</option>
+              <option value="">All meetings in my scope</option>
               {directory.bodies?.map((b: RecordData) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
               ))}
             </select>
+            <select
+              aria-label="Meeting status"
+              className="input-field max-w-xs"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="live">In progress</option>
+              <option value="completed">Completed</option>
+            </select>
             {directory.national ||
             directory.states?.length ||
             directory.posts?.length ? (
               <button
-                className="btn-ghost"
+                className="btn-gold"
                 onClick={() => {
-                  setCreating(true);
-                  setSetup(true);
+                  const available =
+                    directory.bodies?.filter((b: RecordData) => b.manage) || [];
+                  if (!available.length) {
+                    setCreating(true);
+                    setSetup(true);
+                  } else {
+                    if (!body?.manage) setBodyId(available[0].id);
+                    setSchedule(true);
+                  }
                 }}
               >
-                Create governing body
+                Start Meeting
               </button>
             ) : null}
-            {body?.manage && (
-              <>
+          </div>
+          <details className="panel p-4">
+            <summary>Meeting settings</summary>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {directory.national ||
+              directory.states?.length ||
+              directory.posts?.length ? (
                 <button
                   className="btn-ghost"
                   onClick={() => {
-                    setCreating(false);
+                    setCreating(true);
                     setSetup(true);
                   }}
                 >
-                  Rules &amp; voting roster
+                  Set up a meeting group
                 </button>
-                <button className="btn-gold" onClick={() => setSchedule(true)}>
-                  Schedule meeting
-                </button>
-                <button className="btn-ghost" onClick={() => setInterim(true)}>
-                  Record interim action
-                </button>
-              </>
-            )}
-          </div>
-          {!body && (
-            <p className="panel p-5">
-              Choose or create a governing body. Access to a workspace does not
-              automatically confer voting rights.
+              ) : null}
+              {body?.manage && (
+                <>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => {
+                      setCreating(false);
+                      setSetup(true);
+                    }}
+                  >
+                    Chair, secretary &amp; voting roster
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setInterim(true)}
+                  >
+                    Record interim action
+                  </button>
+                </>
+              )}
+            </div>
+            <p className="text-muted mt-3">
+              Choose a group to edit its one-time settings. Starting a meeting
+              prepares its agenda and attendance; the Chair calls it to order
+              when ready.
             </p>
-          )}
-          {body && (
+          </details>
+          {directory && (
             <>
               <section className="panel p-5">
-                <h2 className="font-display text-xl">{body.name}</h2>
-                <p className="text-muted">
-                  {body.jurisdiction} •{" "}
-                  {body.rules?.configured
-                    ? "Rules confirmed"
-                    : "Confirm governing documents and voting roster before call to order"}
-                </p>
+                <h2 className="font-display text-xl">
+                  {body?.name || "Meetings in my scope"}
+                </h2>
                 <div className="divide-y divide-hairline">
                   {sessions.map((s: RecordData) => (
                     <Link
                       className="block py-4 hover:text-gold"
-                      to={`/meetings/session/${s.id}`}
+                      aria-disabled={s.readable === false}
+                      onClick={e => { if (s.readable === false) e.preventDefault(); }}
+                      to={
+                        s.readable === false
+                          ? "/meetings"
+                          : `/meetings/session/${s.id}`
+                      }
                       key={s.id}
                     >
                       <strong>{s.title}</strong>
+                      {s.readable === false && (
+                        <span className="text-sm text-muted">
+                          {" "}
+                          • Record available after publication
+                        </span>
+                      )}
                       <p className="text-sm text-muted">
-                        {timestamp(s.scheduled_at)} • {s.phase} •{" "}
-                        {phaseLabel(s)}
+                        {timestamp(s.scheduled_at)} •{" "}
+                        {
+                          directory.bodies?.find(
+                            (b: RecordData) => b.id === s.body_id,
+                          )?.name
+                        }{" "}
+                        •{" "}
+                        {s.ended_at
+                          ? "Completed"
+                          : s.started_at
+                            ? "In progress"
+                            : "Scheduled"}
+                        {s.ended_at && !s.published_at
+                          ? " • Minutes awaiting publication"
+                          : ""}
                       </p>
                     </Link>
                   ))}
@@ -172,8 +232,14 @@ export default function GovernanceCenter() {
                   )}
                 </div>
               </section>
-              <section className="panel p-5 space-y-4">
-                <h2 className="font-display text-xl">Governance register</h2>
+              <details
+                className="panel p-5 space-y-4"
+                onToggle={(e) => setShowRegister(e.currentTarget.open)}
+              >
+                <summary>Search decisions and assignments</summary>
+                {!bodyId && (
+                  <p>Choose a meeting group above to search its records.</p>
+                )}
                 <input
                   className="input-field"
                   aria-label="Search governance records"
@@ -227,7 +293,7 @@ export default function GovernanceCenter() {
                 {registry && !registry[tab]?.length && (
                   <p className="text-muted">No matching records.</p>
                 )}
-              </section>
+              </details>
             </>
           )}
         </>
@@ -312,9 +378,20 @@ export default function GovernanceCenter() {
       )}
       {schedule && (
         <GovernanceForm
-          title="Schedule meeting"
+          title="Start Meeting"
           onClose={() => setSchedule(false)}
           fields={[
+            {
+              key: "body_id",
+              label: "National, state or post meeting group",
+              type: "select",
+              required: true,
+              options:
+                directory?.bodies
+                  ?.filter((b: RecordData) => b.manage)
+                  .map((b: RecordData) => ({ value: b.id, label: b.name })) ||
+                [],
+            },
             { key: "title", label: "Meeting title", required: true },
             {
               key: "type",
@@ -337,23 +414,17 @@ export default function GovernanceCenter() {
               label: "Purpose or emergency justification",
               type: "textarea",
             },
-            {
-              key: "packet_deadline",
-              label: "Packet review deadline",
-              type: "datetime-local",
-            },
-            {
-              key: "agenda_deadline",
-              label: "Agenda submission deadline",
-              type: "datetime-local",
-            },
-            {
-              key: "amendment_deadline",
-              label: "Amendment submission deadline",
-              type: "datetime-local",
-            },
           ]}
-          initial={{ title: `${body?.name} meeting`, type: "regular" }}
+          initial={{
+            body_id: bodyId,
+            title: `${body?.name || "CVOA"} meeting`,
+            type: "regular",
+            scheduled_at: new Date(
+              Date.now() - new Date().getTimezoneOffset() * 60000,
+            )
+              .toISOString()
+              .slice(0, 16),
+          }}
           onSubmit={async (v) => {
             const data = { ...v };
             for (const key of [
@@ -365,7 +436,7 @@ export default function GovernanceCenter() {
             ])
               data[key] = iso(v[key] || "");
             const { data: id, error } = await supabase.rpc("uro_create", {
-              p_body: bodyId,
+              p_body: v.body_id,
               p_data: data,
             });
             if (error) throw error;
