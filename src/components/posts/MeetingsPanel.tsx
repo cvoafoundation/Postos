@@ -1,57 +1,68 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { EmptyState } from '@/components/ui/EmptyState'
-import { supabase } from '@/lib/supabase'
-import type { MeetingRecord } from '@/lib/types'
-import { ArrowRight } from 'lucide-react'
-import { format } from 'date-fns'
-
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { supabase } from "@/lib/supabase";
+import { WorkspaceStatus } from "@/components/workspaces/WorkspaceStatus";
+import type { PostDashboard } from "@/pages/posts/model";
 export function MeetingsPanel({ postId }: { postId: string }) {
-  const navigate = useNavigate()
-  const [records, setRecords] = useState<MeetingRecord[]>([])
-  const [loading, setLoading] = useState(true)
-
+  const [data, setData] = useState<PostDashboard | null>(null),
+    [error, setError] = useState<string | null>(null),
+    [loading, setLoading] = useState(true),
+    [version, setVersion] = useState(0);
   useEffect(() => {
-    setLoading(true)
-    supabase
-      .from('meeting_records')
-      .select('*')
-      .eq('post_id', postId)
-      .order('meeting_date', { ascending: false })
-      .then(({ data }) => {
-        setRecords((data ?? []) as MeetingRecord[])
-        setLoading(false)
-      })
-  }, [postId])
-
-  if (loading) return <p className="text-sm text-muted">Loading…</p>
-
+    let active = true;
+    setData(null);
+    setError(null);
+    setLoading(true);
+    void supabase
+      .rpc("cvoa_post_dashboard", { p_post: postId })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) setError(error.message);
+        else setData(data as PostDashboard);
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [postId, version]);
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-muted">
-          {records.length} meeting record{records.length !== 1 ? 's' : ''} on file, most recent first.
-        </p>
-        <button onClick={() => navigate(`/meetings?post=${postId}`)} className="btn-ghost flex items-center gap-2 text-sm shrink-0">
-          Open Full Meetings Tool <ArrowRight size={14} />
-        </button>
-      </div>
-
-      {records.length === 0 ? (
-        <EmptyState title="No meetings submitted yet" hint="Submit minutes from the full Meetings tool." />
-      ) : (
-        <div className="space-y-2">
-          {records.slice(0, 8).map((r) => (
-            <div key={r.id} className="panel p-3 flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <div className="text-sm text-ink truncate">{r.title}</div>
-                <div className="text-xs text-muted capitalize">{r.meeting_type.replaceAll('_', ' ')}</div>
-              </div>
-              <span className="text-xs text-muted font-mono shrink-0">{format(new Date(r.meeting_date), 'MMM d, yyyy')}</span>
-            </div>
-          ))}
-        </div>
+    <section>
+      <Link
+        className="btn-ghost inline-block mb-4"
+        to={`/meetings?post=${postId}`}
+      >
+        Open Meetings
+      </Link>
+      <WorkspaceStatus
+        loading={loading}
+        error={error}
+        retry={() => setVersion((v) => v + 1)}
+      />
+      {data && (
+        <>
+          <p className="text-xs text-muted mb-3">
+            Most recent meeting records across URO and legacy tools.
+          </p>
+          {data.meetings.length ? (
+            <ul className="divide-y divide-hairline">
+              {data.meetings.map((m) => (
+                <li key={m.path} className="py-3 text-sm">
+                  <Link className="text-gold" to={m.path}>
+                    {m.title}
+                  </Link>
+                  <p className="text-xs text-muted">
+                    {new Date(m.meeting_at).toLocaleString()} ·{" "}
+                    {m.status.replaceAll("_", " ")} ·{" "}
+                    {m.published_at ? "Published minutes" : m.minutes_state}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted">No meeting records available.</p>
+          )}
+        </>
       )}
-    </div>
-  )
+    </section>
+  );
 }

@@ -79,6 +79,7 @@ before(async () => {
   await db.exec(fs.readFileSync('supabase/migrations/20261005150000_meeting_access.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261005160000_sponsorship_workflow.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261005170000_post_development.sql', 'utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20261005190000_post_dashboard.sql', 'utf8'));
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${uid(5)}','state@example.test',now()),('${uid(6)}','delegate@example.test',now()),('${uid(7)}','tribunal@example.test',now()),('${uid(8)}','national-staff@example.test',now());
   insert into public.profiles(id,full_name,email,role,state,post_id) values('${uid(5)}','State','state@example.test','state_commander','IN',null),('${uid(6)}','Delegate','delegate@example.test','delegate',null,'${post}'),('${uid(7)}','Tribunal','tribunal@example.test','ethics_tribunal',null,null),('${uid(8)}','National Staff','national-staff@example.test','national_staff',null,null);
   insert into public.congress_delegates(profile_id,post_id) values('${uid(6)}','${post}');
@@ -1242,3 +1243,80 @@ test('Voiding a duplicate or incorrect fundraising entry preserves history and o
  await actor(officer);await db.query('select public.cvoa_launch_void_entry($1,$2)',[e.id,'Duplicate sponsor receipt']);await db.query('select public.cvoa_launch_void_entry($1,$2)',[e.id,'Repeated request']);
  assert.equal((await rpc('select public.cvoa_launch_totals($1) data',[post])).received_cents,0);assert.ok((await db.query('select * from public.fundraising_entries where id=$1',[e.id])).rows[0].voided_at);assert.equal((await db.query('select count(*)::int n from public.financial_transactions where post_id=$1',[post])).rows[0].n,2);
 }));
+
+test('Post dashboard is scoped to staff oversight, denies members and delegates, and separates management authority', async()=>{
+ await as(national,async()=>{const r=await db.query(`select public.cvoa_post_dashboard('${post}') as dashboard`);assert.equal(r.rows[0].dashboard.can_manage,true);assert.equal(r.rows[0].dashboard.post.id,post);assert.ok(Array.isArray(r.rows[0].dashboard.meetings));assert.ok(Array.isArray(r.rows[0].dashboard.tasks));});
+ await as(uid(5),async()=>{const r=await db.query(`select public.cvoa_post_dashboard('${post}') as dashboard`);assert.equal(r.rows[0].dashboard.can_manage,false);});
+ for(const actor of [uid(5),officer])await as(actor,async()=>{await assert.rejects(db.query(`select public.cvoa_post_dashboard('${otherPost}')`),/outside your appointed jurisdiction/)});
+ for(const actor of [member,uid(6),uid(7)])await as(actor,async()=>{await assert.rejects(db.query(`select public.cvoa_post_dashboard('${post}')`),/outside your appointed jurisdiction/)});
+ await as(null,async()=>{await assert.rejects(db.query(`select public.cvoa_post_dashboard('${post}')`),/permission denied/)},'anon');
+});
+test('Post dashboard combines current URO meetings and actions with legacy records without importing future receipts into received totals',async()=>{
+ await as(national,async()=>{
+  await db.exec(`reset role;insert into public.uro_bodies(id,name,jurisdiction,post_id) values('${uid(9001)}','Post A current body','post','${post}');
+   insert into public.uro_sessions(id,body_id,title,type,scheduled_at,rules) values('${uid(9002)}','${uid(9001)}','Scheduled current meeting','regular',now()+interval '2 days','{}');
+   insert into public.uro_actions(meeting_id,title,due_date) values('${uid(9002)}','Unassigned current action',current_date-2);
+   insert into public.uro_action_items(meeting_id,post_id,description,owner_name,due_date) select id,post_id,'Legacy current action','Recorded owner',current_date-1 from public.uro_meetings where post_id='${post}' limit 1;
+   insert into public.sponsor_payments(post_id,amount,payment_method,payment_date,recorded_by) values('${post}',25,'cash',current_date,'${national}'),('${post}',100,'cash',current_date+5,'${national}');set local role authenticated;`);
+  const r=await db.query(`select public.cvoa_post_dashboard('${post}') as d`),d=r.rows[0].d;
+  assert.ok(d.meetings.some(m=>m.title==='Scheduled current meeting'&&m.status==='scheduled'&&!m.published_at));
+  assert.ok(d.tasks.some(t=>t.title==='Unassigned current action'&&!t.owner));assert.ok(d.tasks.some(t=>t.title==='Legacy current action'&&t.owner==='Recorded owner'));assert.equal(d.sponsorship.received,25);
+ });
+});
+test('Current health evidence requires verified linked staff, nets actual sponsor refunds, and limits Congress to eligible recent formal votes',async()=>{
+ await as(national,async()=>{
+  await db.exec(`reset role;insert into public.founding_team_members(post_id,name,position,profile_id,dd214_reviewed,combat_service_verified,membership_approved,verification_status) values('${post}','Linked Commander','commander','${officer}',true,true,true,'verified'),('${post}','Unlinked Officer','adjutant',null,true,true,true,'verified');
+   insert into public.sponsors(id,post_id,company,stage,sponsorship_value) values('${uid(9011)}','${post}','Actual sponsor','won',9999);
+   insert into public.sponsor_payments(post_id,sponsor_id,amount,payment_method,recorded_by) values('${post}','${uid(9011)}',50,'cash','${national}');set local role authenticated;`);
+  const r=await db.query(`select public.cvoa_post_health_evidence(array['${post}'::uuid]) as e`),e=r.rows[0].e[post];
+  assert.equal(e.current_officers.length,1);assert.equal(e.current_officers[0].profile_id,officer);assert.equal(e.sponsor_receipts[0].amount,50);assert.equal(e.has_delegate,true);assert.ok(e.eligible_votes>=1);assert.equal(e.votes_cast,0);
+ });
+ await as(officer,async()=>{await assert.rejects(db.query(`select public.cvoa_post_health_evidence(array['${post}'::uuid,'${otherPost}'::uuid])`),/outside your appointed jurisdiction/)});
+});
+test('Annual completion requires every item and evidence; changing a completed checklist reopens it',async()=>{
+ await as(officer,async()=>{await assert.rejects(db.query(`insert into public.annual_reviews(post_id,review_year,completed_at) values('${post}',2091,now())`),/Complete all review items/)});
+ await as(officer,async()=>{
+  await db.exec(`insert into public.annual_reviews(post_id,review_year,bylaws_reviewed,financial_audit_complete,officer_roster_current,required_filings_current,notes,completed_at) values('${post}',2091,true,true,true,true,'Evidence: post drive review packet',now());`);
+  let r=await db.query(`select completed_at,reviewed_by from public.annual_reviews where post_id='${post}' and review_year=2091`);assert.ok(r.rows[0].completed_at);assert.equal(r.rows[0].reviewed_by,officer);
+  await db.exec(`update public.annual_reviews set bylaws_reviewed=false where post_id='${post}' and review_year=2091`);
+  r=await db.query(`select completed_at,reviewed_by from public.annual_reviews where post_id='${post}' and review_year=2091`);assert.equal(r.rows[0].completed_at,null);assert.equal(r.rows[0].reviewed_by,null);
+ });
+});
+test('Governance signatures require linked current officer identities and cannot be forged with a matching name',async()=>{
+ await as(officer,async()=>{await assert.rejects(db.query(`insert into public.governance_signatures(post_id,signer_name,form_type,signed_at) values('${post}','Officer','conflict_of_interest',now())`),/Select a linked officer/)});
+ await as(officer,async()=>{
+  await db.exec(`reset role;insert into public.founding_team_members(post_id,name,position,profile_id) values('${post}','Officer roster name','commander','${officer}');set local role authenticated;
+   insert into public.governance_signatures(post_id,profile_id,signer_name,form_type,signed_at,recorded_by) values('${post}','${officer}','Spoofed identity','conflict_of_interest',now(),'${national}');`);
+  const r=await db.query(`select signer_name,recorded_by from public.governance_signatures where post_id='${post}' and profile_id='${officer}'`);assert.equal(r.rows[0].signer_name,'Officer');assert.equal(r.rows[0].recorded_by,officer);
+ });
+});
+test('Post archive is National-only, audited, reversible, preserves records and blocks public campaign checkout',async()=>{
+ for(const actor of [officer,uid(5),member])await as(actor,async()=>{await assert.rejects(db.query(`select public.cvoa_post_archive('${post}',true,'Recorded archive reason')`),/National administration required/)});
+ await as(national,async()=>{await assert.rejects(db.query(`update public.posts set archived_at=now(),archived_reason='Bypass archive' where id='${post}'`),/audited National archive/)});
+ await as(national,async()=>{
+  const camp=await db.query(`select public.cvoa_launch_campaign('${post}',null,'{"title":"Archived campaign","goal_cents":10000,"published":true,"owner_name":"National lead","deadline":"2030-01-01","story":"Published campaign story"}') as id`),campaign=camp.rows[0].id;
+  await db.query(`update public.fundraising_campaigns set status='active' where id='${campaign}'`);
+  const slug=(await db.query(`select public_slug from public.fundraising_campaigns where id='${campaign}'`)).rows[0].public_slug;
+  const before=(await db.query(`select count(*) from public.members where post_id='${post}'`)).rows[0].count;
+  await db.exec(`select public.cvoa_post_archive('${post}',true,'Temporarily inactive operations')`);
+  const d=(await db.query(`select public.cvoa_post_dashboard('${post}') as d`)).rows[0].d;assert.ok(d.post.archived_at);assert.equal(d.archive_history.length,1);
+  assert.equal((await db.query(`select count(*) from public.members where post_id='${post}'`)).rows[0].count,before);
+  assert.equal((await db.query(`select public.cvoa_public_campaign('${slug}') as d`)).rows[0].d,null);
+  await db.exec('savepoint checkout_attempt;set local role service_role');
+  await assert.rejects(db.query(`select public.cvoa_campaign_request('${slug}',100,'${uid(9042)}')`),/not accepting donations/);
+  await db.exec('rollback to savepoint checkout_attempt;set local role authenticated');
+  await db.exec(`select public.cvoa_post_archive('${post}',false,'Return to active operations')`);
+  const restored=(await db.query(`select public.cvoa_post_dashboard('${post}') as d`)).rows[0].d;assert.equal(restored.post.archived_at,null);assert.equal(restored.archive_history.length,2);
+ });
+});
+test('Operational health settings are National-only, validated, audited and protected against stale saves',async()=>{
+ await as(officer,async()=>{await assert.rejects(db.query(`select public.cvoa_save_health_policy(1,'{}','Policy review')`),/National policy administration required/)});
+ await as(national,async()=>{
+  const current=(await db.query(`select settings,version from public.post_health_policy where id`)).rows[0];
+  await db.query('select public.cvoa_save_health_policy($1,$2,$3)',[current.version,JSON.stringify({...current.settings,membership_green:50,membership_yellow:20,confirmed:true}),'Approved operational indicators']);
+  const evidence=(await db.query(`select public.cvoa_post_health_evidence(array['${post}'::uuid]) as e`)).rows[0].e;assert.equal(evidence[post].policy.membership_green,50);
+  assert.equal((await db.query(`select count(*)::int n from public.post_health_policy_history`)).rows[0].n,1);
+  await db.exec('savepoint stale_policy');await assert.rejects(db.query('select public.cvoa_save_health_policy($1,$2,$3)',[current.version,JSON.stringify(current.settings),'Stale saved version']),/policy changed/);await db.exec('rollback to savepoint stale_policy');
+  await db.exec('savepoint bad_policy');await assert.rejects(db.query('select public.cvoa_save_health_policy($1,$2,$3)',[current.version+1,JSON.stringify({...current.settings,meeting_green_days:60,meeting_yellow_days:30}),'Invalid reversed thresholds']),/Yellow thresholds/);await db.exec('rollback to savepoint bad_policy');
+ });
+});

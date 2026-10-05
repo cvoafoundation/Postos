@@ -24,13 +24,21 @@ export default function StateEscalations({
     [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ post: "", subject: "", message: "" }),
     [responses, setResponses] = useState<Record<string, string>>({});
+  const postIds = posts
+    .map((p) => p.id)
+    .sort()
+    .join(",");
   async function load() {
     setLoading(true);
     setError(null);
     try {
       setRows(
         await readAllRows<Escalation>(() =>
-          supabase.from("state_escalations").select("*").order("id"),
+          supabase
+            .from("state_escalations")
+            .select("*")
+            .in("post_id", postIds.split(",").filter(Boolean))
+            .order("id"),
         ),
       );
     } catch (e) {
@@ -41,20 +49,18 @@ export default function StateEscalations({
   }
   useEffect(() => {
     void load();
-  }, [profile?.id, profile?.role, profile?.state, profile?.post_id]);
+  }, [profile?.id, profile?.role, profile?.state, profile?.post_id, postIds]);
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const r = await supabase
-        .from("state_escalations")
-        .insert({
-          post_id: form.post,
-          author_id: profile?.id,
-          subject: form.subject.trim(),
-          message: form.message.trim(),
-        });
+      const r = await supabase.from("state_escalations").insert({
+        post_id: form.post,
+        author_id: profile?.id,
+        subject: form.subject.trim(),
+        message: form.message.trim(),
+      });
       if (r.error) throw r.error;
       setForm({ ...form, subject: "", message: "" });
       await load();
@@ -85,7 +91,11 @@ export default function StateEscalations({
   return (
     <section className="panel p-5 mt-6">
       <h2 className="font-display text-2xl">Escalations to National</h2>
-      <p className="text-sm text-muted mt-2">Saved to National’s review queue in States &amp; Posts. National can respond here and close the request. This does not send an email automatically.</p>
+      <p className="text-sm text-muted mt-2">
+        Saved to National’s review queue in States &amp; Posts. National can
+        respond here and close the request. This does not send an email
+        automatically.
+      </p>
       <WorkspaceStatus loading={loading} error={error} retry={load} />
       {posts.length > 0 && (
         <form onSubmit={submit} className="space-y-3 mt-4">
