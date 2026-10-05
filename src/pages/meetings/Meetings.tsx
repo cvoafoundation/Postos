@@ -187,7 +187,7 @@ export default function Meetings() {
             )}
             {(profile?.post_id || (isNational && selectedPostForMeeting)) && (
               <button onClick={startGuidedMeeting} disabled={startingMeeting} className="btn-gold flex items-center gap-2 disabled:opacity-50">
-                <Plus size={16} /> {startingMeeting ? 'Starting…' : 'Start Guided Meeting'}
+                <Plus size={16} /> {startingMeeting ? 'Starting…' : 'Start legacy meeting'}
               </button>
             )}
           </div>
@@ -207,7 +207,7 @@ export default function Meetings() {
 
       {(profile?.post_id || (isNational && selectedPostForMeeting)) && myUroMeetings.length > 0 && (
         <div className="panel p-4 mb-6">
-          <div className="eyebrow mb-3">{isNational ? `Guided Meetings — ${allPosts.find((p) => p.id === selectedPostForMeeting)?.name ?? ''}` : 'Your Guided Meetings'}</div>
+          <div className="eyebrow mb-3">{isNational ? `Guided Meetings — ${allPosts.find((p) => p.id === selectedPostForMeeting)?.name ?? ''}` : 'Your legacy guided meetings'}</div>
           <div className="space-y-1.5">
             {myUroMeetings.map((m) => (
               <button

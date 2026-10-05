@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { readAllRows } from '@/lib/readAllRows'
@@ -11,6 +12,8 @@ const DocumentEditor=lazy(()=>import('./DocumentEditor'))
 type View='files'|'shared'|'recent'|'starred'|'templates'|'trash'
 export default function DocumentDrive() {
  const {profile,isNational}=useAuth()
+ const [queryParams]=useSearchParams(),linkedItem=queryParams.get('item')
+ const openedLink=useRef('')
  const [workspaces,setWorkspaces]=useState<DriveWorkspace[]>([]),[recipients,setRecipients]=useState<{id:string;name:string;kind:string}[]>([])
  const [workspace,setWorkspace]=useState(''),[parent,setParent]=useState<DriveItem|null>(null),[trail,setTrail]=useState<DriveItem[]>([]),[view,setView]=useState<View>('files')
  const [items,setItems]=useState<DriveItem[]>([]),[favorites,setFavorites]=useState<string[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState<string|null>(null),[busy,setBusy]=useState(false),[version,setVersion]=useState(0)
@@ -73,6 +76,17 @@ export default function DocumentDrive() {
    }catch(e){if(active)setError((e as Error).message)}finally{if(active)setLoading(false)}
   })();return()=>{active=false}
  },[workspace,parent?.id,view,version,profile?.id,profile?.role,profile?.state,profile?.post_id])
+ useEffect(()=>{
+  if(!linkedItem||loading||openedLink.current===`${profile?.id}:${linkedItem}`)return
+  openedLink.current=`${profile?.id}:${linkedItem}`
+  let active=true
+  void supabase.from('cvoa_drive_items').select('*').eq('id',linkedItem).is('deleted_at',null).single().then(({data,error})=>{
+   if(!active)return
+   if(error){setError('This linked document is unavailable or has not been shared with your workspace.');return}
+   void open(data as DriveItem)
+  })
+  return()=>{active=false}
+ },[linkedItem,loading,profile?.id])
  async function action(fn:()=>Promise<void>){if(busy)return;setBusy(true);setError(null);try{await fn();refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function create(kind:'folder'|'document'){
   const name=window.prompt(kind==='folder'?'Folder name':'Document title');if(!name?.trim())return

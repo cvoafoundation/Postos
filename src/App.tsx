@@ -13,6 +13,8 @@ const PublicChecklist = lazy(() => import('@/pages/checklist/PublicChecklist'))
 const PublicRecruitSignup = lazy(() => import('@/pages/recruiting/PublicRecruitSignup'))
 const BecomeASponsor = lazy(() => import('@/pages/sponsors/BecomeASponsor'))
 const Toolkit = lazy(() => import('@/pages/toolkit/Toolkit'))
+const GovernanceCenter = lazy(() => import('@/pages/meetings/governance/GovernanceCenter'))
+const GovernanceSession = lazy(() => import('@/pages/meetings/governance/GovernanceSession'))
 const Meetings = lazy(() => import('@/pages/meetings/Meetings'))
 const UroMeetingWizard = lazy(() => import('@/pages/meetings/uro/UroMeetingWizard'))
 const UroMeetingView = lazy(() => import('@/pages/meetings/uro/UroMeetingView'))
@@ -137,8 +139,10 @@ function AuthenticatedApp() {
             </RoleGuard>
           }
         />
+        <Route path="/meetings" element={<GovernanceCenter />} />
+        <Route path="/meetings/session/:sessionId" element={<GovernanceSession />} />
         <Route
-          path="/meetings"
+          path="/meetings/legacy"
           element={
             <RoleGuard roles={['post_commander', 'post_officer']}>
               <Meetings />
