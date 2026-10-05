@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Modal } from "@/components/ui/Modal";
 export interface FieldSpec {
   key: string;
   label: string;
   type?:
     | "text"
+    | "email"
     | "textarea"
     | "number"
     | "date"
@@ -15,6 +16,7 @@ export interface FieldSpec {
   required?: boolean;
   hint?: string;
   min?: number;
+  step?: number;
 }
 export function GovernanceForm({
   title,
@@ -22,7 +24,9 @@ export function GovernanceForm({
   initial = {},
   onSubmit,
   onClose,
+  children,
 }: {
+  children?: ReactNode;
   title: string;
   fields: FieldSpec[];
   initial?: Record<string, any>;
@@ -102,6 +106,7 @@ export function GovernanceForm({
                 className="input-field mt-1"
                 type={f.type ?? "text"}
                 min={f.min}
+                step={f.step}
                 required={f.required}
                 value={value[f.key] ?? ""}
                 onChange={(e) =>
@@ -115,6 +120,7 @@ export function GovernanceForm({
             )}
           </label>
         ))}
+        {children}
         {error && (
           <p className="text-status-attention" role="alert">
             {error}

@@ -77,6 +77,7 @@ before(async () => {
   await db.exec(fs.readFileSync('supabase/migrations/20261004220000_document_workspaces.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261004230000_uro_governance.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261005150000_meeting_access.sql', 'utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20261005160000_sponsorship_workflow.sql', 'utf8'));
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${uid(5)}','state@example.test',now()),('${uid(6)}','delegate@example.test',now()),('${uid(7)}','tribunal@example.test',now()),('${uid(8)}','national-staff@example.test',now());
   insert into public.profiles(id,full_name,email,role,state,post_id) values('${uid(5)}','State','state@example.test','state_commander','IN',null),('${uid(6)}','Delegate','delegate@example.test','delegate',null,'${post}'),('${uid(7)}','Tribunal','tribunal@example.test','ethics_tribunal',null,null),('${uid(8)}','National Staff','national-staff@example.test','national_staff',null,null);
   insert into public.congress_delegates(profile_id,post_id) values('${uid(6)}','${post}');
@@ -1082,4 +1083,63 @@ test('Meetings: post members browse upcoming metadata and read published records
  await actor(officer);await uroCommand(s,'publish_record');await actor(member);assert.ok((await uroState(s)).session.minutes);assert.equal((await uroState(s)).permissions.manage,false);
  await failure(()=>uroCommand(s,'publish_record'),/Certify/);await actor(guest);await failure(()=>uroState(s),/Meeting access/);
  await actor(stateCommander);assert.equal((await uroState(s)).body.post_id,post);
+}));
+
+
+async function sponsorFixture(){const r=await db.query("insert into public.sponsors(post_id,company,stage,sponsorship_value) values($1,'Sponsor example','identified',100) returning *",[post]);return r.rows[0]}
+async function sponsorSave(s,data){return rpc('select public.cvoa_sponsor_save($1,$2,$3::jsonb) data',[s.id,s.workflow_version,JSON.stringify(data)])}
+
+test('Sponsorship members manage only their affiliated post and states remain scoped',()=>as(national,async()=>{
+ const s=await sponsorFixture();await actor(member);assert.equal((await db.query('select * from public.sponsors where id=$1',[s.id])).rows.length,1);
+ const updated=await sponsorSave(s,{sponsorship_value:250.75});assert.equal(Number(updated.sponsorship_value),250.75);
+ await failure(()=>sponsorSave(s,{sponsorship_value:500}),/changed/);
+ await failure(()=>db.query("update public.sponsors set stage='won' where id=$1",[s.id]),/permission denied/);
+ await actor(stateCommander);assert.equal((await db.query('select * from public.sponsors where id=$1',[s.id])).rows.length,1);
+ await actor(guest);assert.equal((await db.query('select * from public.sponsors where id=$1',[s.id])).rows.length,0);await failure(()=>sponsorSave(updated,{sponsorship_value:1}),/workspace/);
+}));
+
+test('Sponsorship advancement requires contact evidence, valid meetings and a saved proposal',()=>as(national,async()=>{
+ let s=await sponsorFixture();await failure(()=>sponsorSave(s,{stage:'contacted',person:'Manager',summary:'Discussed',email:'manager@example.test'}),/Record who/);
+ s=await sponsorSave(s,{stage:'contacted',person:'Manager',method:'phone',summary:'Discussed support and a follow-up',email:'manager@example.test'});
+ assert.equal((await db.query('select * from public.sponsor_activity where sponsor_id=$1',[s.id])).rows.length,1);
+ await failure(()=>sponsorSave(s,{stage:'meeting_scheduled',meeting_with:'Manager',meeting_start:'2030-01-02T13:00:00Z',meeting_end:'2030-01-02T12:00:00Z'}),/Choose a meeting/);
+ s=await sponsorSave(s,{stage:'meeting_scheduled',meeting_with:'Manager',meeting_start:'2030-01-02T13:00:00Z',meeting_end:'2030-01-02T14:00:00Z'});
+ await failure(()=>sponsorSave(s,{stage:'proposal_sent'}),/Write or upload/);
+ s=await sponsorSave(s,{stage:'proposal_sent',proposal_text:'Community sponsorship proposal'});assert.equal(s.proposal_text,'Community sponsorship proposal');
+ await failure(()=>sponsorSave(s,{proposal_storage_path:otherPost+'/foreign.pdf'}),/Upload the proposal/);
+}));
+
+test('Sponsorship offline records cannot forge card receipts or another post',()=>as(national,async()=>{
+ const s=await sponsorFixture();await actor(member);
+ await failure(()=>db.query("insert into public.sponsor_payments(post_id,sponsor_id,amount,payment_method,recorded_by) values($1,$2,10,'card',$3)",[post,s.id,member]),/row-level security/);
+ await failure(()=>db.query("insert into public.sponsor_payments(post_id,sponsor_id,amount,payment_method,recorded_by) values($1,$2,10,'cash',$3)",[otherPost,s.id,member]),/row-level security/);
+ await db.query("insert into public.sponsor_payments(post_id,sponsor_id,amount,payment_method,recorded_by) values($1,$2,10,'cash',$3)",[post,s.id,member]);
+}));
+
+test('Sponsorship Stripe fulfillment is service-only, exact, idempotent and independent of later pledge edits',()=>as(national,async()=>{
+ let s=await sponsorFixture();await actor(member);const id=uid(9920);
+ const request=await rpc('select public.cvoa_sponsor_request($1,$2,$3) data',[s.id,49.99,id]);assert.equal(request.amount_cents,4999);
+ await failure(()=>rpc('select public.cvoa_sponsor_request($1,$2,$3) data',[s.id,19.99,id]),/do not match/);
+ s=await sponsorSave(s,{sponsorship_value:500});
+ await failure(()=>rpc("select public.cvoa_fulfill_sponsor_payment($1,'cs_test_example',4999,'usd','pi_example',now(),false) data",[id]),/permission denied/);
+ await db.exec('reset role');await db.query("update public.sponsor_checkout_requests set session_id='cs_test_example',status='open',livemode=false where id=$1",[id]);
+ await db.exec('set local role service_role');
+ await failure(()=>rpc("select public.cvoa_fulfill_sponsor_payment($1,'cs_test_example',5000,'usd','pi_example',now(),false) data",[id]),/does not match/);
+ await failure(()=>rpc("select public.cvoa_fulfill_sponsor_payment($1,'cs_test_example',4999,'eur','pi_example',now(),false) data",[id]),/does not match/);
+ await failure(()=>rpc("select public.cvoa_fulfill_sponsor_payment($1,'cs_test_example',4999,'usd','pi_example',now(),true) data",[id]),/does not match/);
+ assert.equal(await rpc("select public.cvoa_fulfill_sponsor_payment($1,'cs_test_example',4999,'usd','pi_example',now(),false) data",[id]),true);
+ assert.equal(await rpc("select public.cvoa_fulfill_sponsor_payment($1,'cs_test_example',4999,'usd','pi_example',now(),false) data",[id]),false);
+ await rpc("select public.cvoa_sponsor_refund('pi_example',2500) data");await rpc("select public.cvoa_sponsor_refund('pi_example',2500) data");
+ await db.exec('set local role authenticated');await actor(member);
+ const payments=(await db.query('select * from public.sponsor_payments where checkout_request_id=$1',[id])).rows;assert.equal(payments.length,1);assert.equal(Number(payments[0].amount),49.99);assert.equal(Number(payments[0].refunded_amount),25);assert.equal(payments[0].stripe_livemode,false);
+ await actor(national);assert.equal((await db.query('delete from public.sponsor_payments where checkout_request_id=$1 returning id',[id])).rows.length,0);
+}));
+
+test('Sponsorship files follow the sponsor post and public interest cannot forge a closed deal',()=>as(national,async()=>{
+ const s=await sponsorFixture();await actor(member);
+ await db.query("insert into storage.objects(bucket_id,name) values('sponsor-agreements',$1)",[s.id+'/proposals/example.pdf']);
+ await actor(guest);assert.equal((await db.query("select * from storage.objects where bucket_id='sponsor-agreements' and name=$1",[s.id+'/proposals/example.pdf'])).rows.length,0);
+ await db.exec("set local role anon; select set_config('request.jwt.claim.role','anon',true)");await actor(null);
+ await failure(()=>db.query("insert into public.sponsors(post_id,company,stage,sponsorship_value) values($1,'Forged','won',1000)",[post]),/row-level security/);
+ await db.query("insert into public.sponsors(post_id,company,stage,sponsorship_value) values($1,'Public interest','identified',100)",[post]);
 }));

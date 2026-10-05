@@ -22,6 +22,7 @@ const UroComplianceDashboard = lazy(() => import('@/pages/meetings/uro/UroCompli
 const UroMotionSearch = lazy(() => import('@/pages/meetings/uro/UroMotionSearch'))
 const UroActionItemReport = lazy(() => import('@/pages/meetings/uro/UroActionItemReport'))
 const RecruitingPipeline = lazy(() => import('@/pages/recruiting/RecruitingPipeline'))
+const SponsorshipPaymentResult = lazy(() => import('@/pages/sponsors/SponsorshipPaymentResult'))
 const SponsorsCRM = lazy(() => import('@/pages/sponsors/SponsorsCRM'))
 const VeteransCongress = lazy(() => import('@/pages/congress/VeteransCongress'))
 const CongressMemberView = lazy(() => import('@/pages/congress/CongressMemberView'))
@@ -78,6 +79,7 @@ export default function App() {
       <Route path="/join-membership/:postId" element={<JoinMembership />} />
       <Route path="/join" element={<JoinCVOA />} />
       <Route path="/verify-membership/:memberId" element={<VerifyMembership />} />
+      <Route path="/sponsorship-payment" element={<SponsorshipPaymentResult />} />
       <Route path="/membership-payment-result" element={<MembershipPaymentResult />} />
       <Route path="/transparency" element={<TransparencyPortal />} />
       {/* Everything else is gated behind auth */}
@@ -200,9 +202,7 @@ function AuthenticatedApp() {
         <Route
           path="/sponsors"
           element={
-            <RoleGuard roles={['post_commander', 'post_officer']}>
-              <SponsorsCRM />
-            </RoleGuard>
+            <SponsorsCRM />
           }
         />
         <Route path="/congress" element={<CongressRoute />} />

@@ -1,332 +1,417 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { PageHeader } from '@/components/layout/AppShell'
-import { KanbanBoard, type KanbanColumn } from '@/components/ui/Kanban'
-import { StatCard } from '@/components/ui/StatCard'
-import { Modal } from '@/components/ui/Modal'
-import { useAuth } from '@/context/AuthContext'
-import { supabase } from '@/lib/supabase'
-import type { Post, Sponsor, SponsorStage, SponsorTier } from '@/lib/types'
-import { Copy, Check, Plus, AlertTriangle } from 'lucide-react'
-import { SponsorDetailModal, RecordPaymentModal } from './SponsorDetail'
-
-const STAGES: { key: SponsorStage; label: string }[] = [
-  { key: 'identified', label: 'Identified' },
-  { key: 'contacted', label: 'Contacted' },
-  { key: 'meeting_scheduled', label: 'Meeting Scheduled' },
-  { key: 'proposal_sent', label: 'Proposal Sent' },
-  { key: 'won', label: 'Won' },
-  { key: 'lost', label: 'Lost' },
-]
-
-function isRenewalSoon(sponsor: Sponsor): boolean {
-  if (!sponsor.agreement_end_date || sponsor.stage !== 'won') return false
-  const daysUntil = (new Date(sponsor.agreement_end_date).getTime() - Date.now()) / 86400000
-  return daysUntil > 0 && daysUntil <= 30
-}
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { PageHeader } from "@/components/layout/AppShell";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
+import { GovernanceForm } from "@/pages/meetings/governance/Forms";
+import { SponsorDetailModal, RecordPaymentModal } from "./SponsorDetail";
+import { SponsorStageForm, CollectSponsorPayment } from "./SponsorWorkflow";
+import { SPONSOR_STAGES, money } from "./sponsorship";
 
 export default function SponsorsCRM() {
-  const { profile, isNational } = useAuth()
-  const [searchParams] = useSearchParams()
-  const [posts, setPosts] = useState<Post[]>([])
-  const [selectedPostId, setSelectedPostId] = useState<string | 'all' | null>(searchParams.get('post') ?? 'all')
-  const [sponsors, setSponsors] = useState<Sponsor[]>([])
-  const [tiers, setTiers] = useState<SponsorTier[]>([])
-  const [showAdd, setShowAdd] = useState(false)
-  const [showDonation, setShowDonation] = useState(false)
-  const [viewing, setViewing] = useState<Sponsor | null>(null)
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (isNational) {
-      supabase.from('posts').select('*').then(({ data }: any) => setPosts((data ?? []) as Post[]))
-    } else if (profile?.post_id) {
-      setSelectedPostId(profile.post_id)
+  const { profile } = useAuth(),
+    [params] = useSearchParams();
+  const [posts, setPosts] = useState<any[]>([]),
+    [postId, setPostId] = useState(params.get("post") || "all"),
+    [sponsors, setSponsors] = useState<any[]>([]),
+    [payments, setPayments] = useState<any[]>([]),
+    [error, setError] = useState(""),
+    [loading, setLoading] = useState(true),
+    [search, setSearch] = useState("");
+  const [adding, setAdding] = useState(false),
+    [viewing, setViewing] = useState<any>(null),
+    [transition, setTransition] = useState<{
+      sponsor: any;
+      stage: string;
+    } | null>(null),
+    [collect, setCollect] = useState<any>(null),
+    [donation, setDonation] = useState(false),
+    [notice, setNotice] = useState("");
+  const load = useCallback(async () => {
+    setError("");
+    const results = await Promise.all([
+      supabase.rpc("cvoa_sponsor_directory"),
+      supabase
+        .from("sponsors")
+        .select("*")
+        .order("updated_at", { ascending: false }),
+      supabase
+        .from("sponsor_payments")
+        .select("*")
+        .order("payment_date", { ascending: false }),
+    ]);
+    const failure = results.find((r) => r.error);
+    if (failure?.error) {
+      setError(failure.error.message);
+      setLoading(false);
+      return;
     }
-    supabase.from('sponsor_tiers').select('*').order('sort_order').then(({ data }: any) => setTiers((data ?? []) as SponsorTier[]))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNational, profile?.post_id])
-
-  async function loadSponsors() {
-    let query = supabase.from('sponsors').select('*')
-    if (selectedPostId && selectedPostId !== 'all') query = query.eq('post_id', selectedPostId)
-    const { data } = await query
-    setSponsors((data ?? []) as Sponsor[])
-  }
-
+    setPosts(results[0].data.posts);
+    setSponsors(results[1].data || []);
+    setPayments(results[2].data || []);
+    setViewing((current: any) =>
+      current
+        ? (results[1].data || []).find((s: any) => s.id === current.id) || null
+        : null,
+    );
+    setLoading(false);
+  }, [profile?.id, profile?.role, profile?.post_id, profile?.state]);
   useEffect(() => {
-    loadSponsors()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPostId])
-
-  async function moveStage(id: string, stage: SponsorStage) {
-    setSponsors((prev) => prev.map((s) => (s.id === id ? { ...s, stage } : s)))
-    await supabase.from('sponsors').update({ stage }).eq('id', id)
-  }
-
-  function copySponsorLink() {
-    if (!selectedPostId || selectedPostId === 'all') return
-    const link = `${window.location.origin}/become-a-sponsor/${selectedPostId}`
-    navigator.clipboard.writeText(link)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const wonRevenue = sponsors.filter((s) => s.stage === 'won').reduce((sum, s) => sum + Number(s.sponsorship_value), 0)
-  const pendingRevenue = sponsors
-    .filter((s) => !['won', 'lost'].includes(s.stage))
-    .reduce((sum, s) => sum + Number(s.sponsorship_value), 0)
-  const renewalCount = sponsors.filter(isRenewalSoon).length
-  const leaderboard = [...sponsors]
-    .filter((s) => s.stage === 'won')
-    .sort((a, b) => Number(b.sponsorship_value) - Number(a.sponsorship_value))
-    .slice(0, 5)
-
-  const columns: KanbanColumn<Sponsor>[] = STAGES.map((s) => ({
-    key: s.key,
-    label: s.label,
-    items: sponsors.filter((sp) => sp.stage === s.key),
-  }))
-
-  const tierByI = (id: string | null) => tiers.find((t) => t.id === id)
-
+    setSponsors([]);
+    setPayments([]);
+    setLoading(true);
+    void load();
+  }, [load]);
+  useEffect(() => {
+    if (!viewing && params.get("sponsor")) {
+      const s = sponsors.find((s) => s.id === params.get("sponsor"));
+      if (s) setViewing(s);
+    }
+  }, [params, sponsors]);
+  const filtered = sponsors.filter(
+      (s) =>
+        (postId === "all" || s.post_id === postId) &&
+        `${s.company} ${s.contact_name || ""}`
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+    ),
+    visiblePayments = payments
+      .filter((p) => p.stripe_livemode !== false)
+      .filter((p) => postId === "all" || p.post_id === postId),
+    received = visiblePayments.reduce(
+      (n, p) => n + Number(p.amount) - Number(p.refunded_amount || 0),
+      0,
+    );
+  const save = async () => {
+    setTransition(null);
+    await load();
+  };
   return (
-    <div>
+    <div className="space-y-5">
       <PageHeader
-        eyebrow="Module 7"
-        title="Sponsorship CRM"
+        title="Sponsorship"
+        eyebrow="Post sponsorship workspace"
         action={
-          isNational && posts.length > 0 ? (
-            <select
-              className="input-field w-64"
-              value={selectedPostId ?? 'all'}
-              onChange={(e) => setSelectedPostId(e.target.value as any)}
-            >
-              <option value="all">All Posts</option>
-              {posts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          ) : undefined
+          <button
+            className="btn-gold"
+            onClick={() => setAdding(true)}
+            disabled={!posts.length}
+          >
+            Add sponsor
+          </button>
         }
       />
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Sponsorship Revenue" value={`$${wonRevenue.toLocaleString()}`} accent="active" />
-        <StatCard label="Pending Revenue" value={`$${pendingRevenue.toLocaleString()}`} accent="developing" />
-        <StatCard label="Renewals Due (30 days)" value={renewalCount} accent={renewalCount > 0 ? 'attention' : 'gold'} />
-        <div className="panel p-5">
-          <div className="eyebrow mb-3">Sponsor Leaderboard</div>
-          {leaderboard.length === 0 ? (
-            <div className="text-sm text-muted">No closed sponsors yet</div>
-          ) : (
-            <ol className="space-y-1.5">
-              {leaderboard.map((s, i) => (
-                <li key={s.id} className="flex justify-between text-sm">
-                  <span>{i + 1}. {s.company}</span>
-                  <span className="font-mono text-gold">${Number(s.sponsorship_value).toLocaleString()}</span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-      </div>
-
-      <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
-        <div>
-          <div className="eyebrow mb-1">Sponsor Interest Link</div>
-          <p className="text-sm text-muted">
-            {selectedPostId === 'all'
-              ? 'Select a specific post above to get its sponsor link.'
-              : 'Share this with local businesses — anyone who fills it out lands in Identified automatically.'}
-          </p>
-        </div>
-        <div className="flex gap-2 shrink-0">
-          <button onClick={() => setShowAdd(true)} className="btn-ghost flex items-center gap-2">
-            <Plus size={16} /> Add Manually
+      <p className="text-muted">
+        Follow each sponsor from first contact to a commitment and payment.
+        Members work within their own post.
+      </p>
+      {error && (
+        <p role="alert" className="panel p-4 text-status-attention">
+          {error}
+          <button className="btn-ghost ml-3" onClick={() => void load()}>
+            Refresh
           </button>
-          <button
-            onClick={() => setShowDonation(true)}
-            disabled={selectedPostId === 'all'}
-            className="btn-ghost flex items-center gap-2 disabled:opacity-40"
-          >
-            <Plus size={16} /> Log a Donation
-          </button>
-          <button
-            onClick={copySponsorLink}
-            disabled={selectedPostId === 'all'}
-            className="btn-gold flex items-center gap-2 disabled:opacity-40"
-          >
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-            {copied ? 'Copied!' : 'Copy Link'}
-          </button>
-        </div>
-      </div>
-
-      <KanbanBoard
-        columns={columns}
-        keyExtractor={(s) => s.id}
-        renderCard={(s) => (
-          <SponsorCard sponsor={s} tier={tierByI(s.tier_id)} onMove={moveStage} onView={() => setViewing(s)} />
-        )}
-      />
-
-      {showAdd && selectedPostId && selectedPostId !== 'all' && (
-        <AddSponsorModal
-          postId={selectedPostId}
-          onClose={() => setShowAdd(false)}
-          onAdded={() => {
-            setShowAdd(false)
-            loadSponsors()
-          }}
-        />
+        </p>
       )}
-
-      {showDonation && selectedPostId && selectedPostId !== 'all' && (
-        <RecordPaymentModal
-          postId={selectedPostId}
-          sponsorId={null}
-          onClose={() => setShowDonation(false)}
-          onSaved={() => setShowDonation(false)}
-        />
+      {notice && (
+        <p role="status" className="text-gold">
+          {notice}
+        </p>
       )}
-
-      {viewing && (
-        <SponsorDetailModal sponsor={viewing} onClose={() => setViewing(null)} onUpdated={loadSponsors} />
-      )}
-    </div>
-  )
-}
-
-function SponsorCard({
-  sponsor,
-  tier,
-  onMove,
-  onView,
-}: {
-  sponsor: Sponsor
-  tier?: SponsorTier
-  onMove: (id: string, stage: SponsorStage) => void
-  onView: () => void
-}) {
-  const currentIndex = STAGES.findIndex((s) => s.key === sponsor.stage)
-  const next = STAGES[currentIndex + 1]
-  const prev = STAGES[currentIndex - 1]
-  const renewalSoon = isRenewalSoon(sponsor)
-
-  return (
-    <button onClick={onView} className={`panel p-3 text-left w-full block ${renewalSoon ? 'border-status-attention/50' : ''}`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-medium">{sponsor.company}</div>
-        {tier && <span className="font-mono text-[10px] text-gold uppercase shrink-0">{tier.name}</span>}
-      </div>
-      <div className="font-mono text-[11px] text-muted">{sponsor.contact_name ?? '—'}</div>
-      <div className="font-mono text-xs text-gold mt-1">${Number(sponsor.sponsorship_value).toLocaleString()}</div>
-      {renewalSoon && (
-        <div className="flex items-center gap-1.5 text-[11px] font-mono text-status-attention mt-2">
-          <AlertTriangle size={12} /> Renewal due soon
-        </div>
-      )}
-      <div className="flex justify-between mt-2 pt-2 border-t border-hairline/60" onClick={(e) => e.stopPropagation()}>
-        <button
-          disabled={!prev}
-          onClick={() => prev && onMove(sponsor.id, prev.key)}
-          className="text-[11px] font-mono text-muted hover:text-gold disabled:opacity-30"
+      <div className="flex gap-3 flex-wrap">
+        <select
+          aria-label="Post sponsorship workspace"
+          className="input-field max-w-sm"
+          value={postId}
+          onChange={(e) => setPostId(e.target.value)}
         >
-          ← Back
-        </button>
-        <button
-          disabled={!next}
-          onClick={() => next && onMove(sponsor.id, next.key)}
-          className="text-[11px] font-mono text-gold hover:text-gold-bright disabled:opacity-30"
-        >
-          Advance →
-        </button>
-      </div>
-    </button>
-  )
-}
-
-const SPONSOR_CATEGORIES = [
-  'Restaurant/Food Service',
-  'Beverage/Alcohol Distribution',
-  'Grocery/Retail',
-  'Education/Training',
-  'Technology',
-  'Staffing/Recruiting',
-  'Professional Services',
-  'Healthcare',
-  'Medical Equipment/Supplies',
-  'Construction/Hardware',
-  'Real Estate',
-  'Fitness/Sporting Goods',
-  'Health & Wellness',
-  'Other',
-]
-
-function AddSponsorModal({ postId, onClose, onAdded }: { postId: string; onClose: () => void; onAdded: () => void }) {
-  const [form, setForm] = useState({ company: '', contact_name: '', email: '', phone: '', sponsorship_value: '', category: '' })
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((f) => ({ ...f, [key]: value }))
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    const { error } = await supabase.from('sponsors').insert({
-      post_id: postId,
-      company: form.company,
-      contact_name: form.contact_name || null,
-      email: form.email || null,
-      phone: form.phone || null,
-      sponsorship_value: form.sponsorship_value ? Number(form.sponsorship_value) : 0,
-      category: form.category || null,
-      stage: 'identified',
-    })
-    setSaving(false)
-    if (error) {
-      setError(error.message)
-      return
-    }
-    onAdded()
-  }
-
-  return (
-    <Modal title="Add Sponsor" onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <input required placeholder="Company name" className="input-field" value={form.company} onChange={(e) => update('company', e.target.value)} />
-        <input placeholder="Contact name" className="input-field" value={form.contact_name} onChange={(e) => update('contact_name', e.target.value)} />
-        <div className="grid grid-cols-2 gap-3">
-          <input type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
-          <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
-        </div>
-        <select className="input-field" value={form.category} onChange={(e) => update('category', e.target.value)}>
-          <option value="">Business category (optional)</option>
-          {SPONSOR_CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
+          <option value="all">All posts in my scope</option>
+          {posts.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
             </option>
           ))}
         </select>
         <input
-          type="number"
-          min={0}
-          placeholder="Sponsorship value ($)"
-          className="input-field"
-          value={form.sponsorship_value}
-          onChange={(e) => update('sponsorship_value', e.target.value)}
+          aria-label="Search sponsors"
+          className="input-field max-w-sm"
+          placeholder="Search company or contact"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
         />
-        {error && <p className="text-status-attention text-sm">{error}</p>}
-        <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
-          {saving ? 'Adding…' : 'Add Sponsor'}
+        <button className="btn-ghost" onClick={() => void load()}>
+          Refresh payments
         </button>
-      </form>
-    </Modal>
-  )
+      </div>
+      <div className="grid sm:grid-cols-3 gap-3">
+        <div className="panel p-4">
+          <p className="eyebrow">Money received</p>
+          <strong className="font-display text-2xl text-status-active">
+            {money(received)}
+          </strong>
+          <p className="text-xs text-muted">
+            Verified Stripe receipts and recorded offline payments
+          </p>
+        </div>
+        <div className="panel p-4">
+          <p className="eyebrow">Agreed sponsorships</p>
+          <strong className="font-display text-2xl">
+            {money(
+              filtered
+                .filter((s) => s.stage === "won")
+                .reduce((n, s) => n + Number(s.sponsorship_value), 0),
+            )}
+          </strong>
+        </div>
+        <div className="panel p-4">
+          <p className="eyebrow">Prospective commitments</p>
+          <strong className="font-display text-2xl">
+            {money(
+              filtered
+                .filter((s) => !["won", "lost"].includes(s.stage))
+                .reduce((n, s) => n + Number(s.sponsorship_value), 0),
+            )}
+          </strong>
+        </div>
+      </div>
+      {postId !== "all" && (
+        <div className="panel p-4 flex flex-wrap gap-3">
+          <button
+            className="btn-ghost"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(
+                  `${window.location.origin}/become-a-sponsor/${postId}`,
+                );
+                setNotice("Sponsor interest link copied.");
+              } catch {
+                setError("Unable to copy the link.");
+              }
+            }}
+          >
+            Copy public sponsor interest link
+          </button>
+          <button className="btn-ghost" onClick={() => setDonation(true)}>
+            Record cash / check donation
+          </button>
+        </div>
+      )}
+      {loading ? (
+        <p>Loading sponsorships…</p>
+      ) : !posts.length ? (
+        <p className="panel p-5">
+          Join a post to use its sponsorship workspace.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {SPONSOR_STAGES.map((stage, index) => (
+            <section key={stage.key} className="space-y-3">
+              <div className="panel p-4">
+                <h2 className="font-display text-2xl">
+                  {index + 1}. {stage.label}{" "}
+                  <span className="text-muted text-lg">
+                    ({filtered.filter((s) => s.stage === stage.key).length})
+                  </span>
+                </h2>
+                <p className="text-sm text-muted">{stage.help}</p>
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3 mt-4">
+                  {filtered
+                    .filter((s) => s.stage === stage.key)
+                    .map((s) => (
+                      <article key={s.id} className="panel p-4 space-y-3">
+                        <button
+                          className="text-left block w-full"
+                          onClick={() => setViewing(s)}
+                        >
+                          <h3 className="font-display text-xl text-gold">
+                            {s.company}
+                          </h3>
+                          <p className="text-sm">
+                            {s.contact_name || "Contact needed"}
+                          </p>
+                          <p className="text-xs text-muted">
+                            {posts.find((p) => p.id === s.post_id)?.name ||
+                              "National"}{" "}
+                            • Agreed {money(s.sponsorship_value)}
+                          </p>
+                          <p className="text-xs text-status-active">
+                            Received{" "}
+                            {money(
+                              payments
+                                .filter(
+                                  (p) =>
+                                    p.stripe_livemode !== false &&
+                                    p.sponsor_id === s.id,
+                                )
+                                .reduce(
+                                  (n, p) =>
+                                    n +
+                                    Number(p.amount) -
+                                    Number(p.refunded_amount || 0),
+                                  0,
+                                ),
+                            )}
+                          </p>
+                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className="btn-ghost text-xs"
+                            onClick={() => setViewing(s)}
+                          >
+                            Open / edit
+                          </button>
+                          <button
+                            className="btn-ghost text-xs"
+                            onClick={() => setCollect(s)}
+                          >
+                            Collect payment
+                          </button>
+                          {index < 4 && (
+                            <button
+                              className="btn-gold text-xs"
+                              onClick={() =>
+                                setTransition({
+                                  sponsor: s,
+                                  stage: SPONSOR_STAGES[index + 1].key,
+                                })
+                              }
+                            >
+                              {SPONSOR_STAGES[index + 1].label} →
+                            </button>
+                          )}
+                          {s.stage !== "lost" && (
+                            <button
+                              className="text-xs text-muted"
+                              onClick={() =>
+                                setTransition({ sponsor: s, stage: "lost" })
+                              }
+                            >
+                              Not proceeding
+                            </button>
+                          )}
+                          {s.stage === "lost" && (
+                            <button
+                              className="btn-ghost text-xs"
+                              onClick={() =>
+                                setTransition({
+                                  sponsor: s,
+                                  stage: "identified",
+                                })
+                              }
+                            >
+                              Reopen lead
+                            </button>
+                          )}
+                        </div>
+                        {s.meeting_start && (
+                          <p className="text-xs text-muted">
+                            Meeting:{" "}
+                            {new Date(s.meeting_start).toLocaleString()}
+                          </p>
+                        )}
+                        {s.stage === "proposal_sent" && (
+                          <p className="text-xs text-status-active">
+                            {s.proposal_text || s.proposal_storage_path
+                              ? "✓ Proposal saved"
+                              : "Proposal details needed"}
+                          </p>
+                        )}
+                      </article>
+                    ))}
+                </div>
+                {!filtered.some((s) => s.stage === stage.key) && (
+                  <p className="text-sm text-muted mt-3">
+                    No sponsors at this step.
+                  </p>
+                )}
+              </div>
+              {index < 4 && (
+                <div
+                  aria-hidden="true"
+                  className="text-center text-gold text-xl"
+                >
+                  ↓
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
+      )}
+      {adding && (
+        <GovernanceForm
+          title="Add sponsor"
+          onClose={() => setAdding(false)}
+          fields={[
+            {
+              key: "post_id",
+              label: "Post",
+              type: "select",
+              required: true,
+              options: posts.map((p) => ({ value: p.id, label: p.name })),
+            },
+            { key: "company", label: "Company / donor name", required: true },
+            { key: "contact_name", label: "Contact person" },
+            { key: "email", label: "Email", type: "email" },
+            { key: "phone", label: "Phone" },
+            {
+              key: "sponsorship_value",
+              label: "Potential sponsorship amount ($)",
+              type: "number",
+              min: 0,
+              step: 0.01,
+            },
+          ]}
+          initial={{
+            post_id: postId === "all" ? posts[0]?.id : postId,
+            sponsorship_value: 0,
+          }}
+          onSubmit={async (v) => {
+            const r = await supabase.from("sponsors").insert({
+              ...v,
+              sponsorship_value: Number(v.sponsorship_value || 0),
+              stage: "identified",
+            });
+            if (r.error) throw r.error;
+            await load();
+          }}
+        />
+      )}
+      {transition && (
+        <SponsorStageForm
+          sponsor={transition.sponsor}
+          stage={transition.stage}
+          onClose={() => setTransition(null)}
+          onSaved={() => void save()}
+        />
+      )}
+      {viewing && (
+        <SponsorDetailModal
+          sponsor={viewing}
+          onClose={() => setViewing(null)}
+          onUpdated={() => void load()}
+        />
+      )}
+      {collect && (
+        <CollectSponsorPayment
+          sponsor={collect}
+          onClose={() => {
+            setCollect(null);
+            void load();
+          }}
+          onSaved={() => void load()}
+        />
+      )}
+      {donation && (
+        <RecordPaymentModal
+          postId={postId}
+          sponsorId={null}
+          onClose={() => setDonation(false)}
+          onSaved={() => {
+            setDonation(false);
+            void load();
+          }}
+        />
+      )}
+    </div>
+  );
 }

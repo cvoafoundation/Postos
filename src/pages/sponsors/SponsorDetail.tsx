@@ -1,351 +1,550 @@
-import { useEffect, useState } from 'react'
-import { Modal } from '@/components/ui/Modal'
-import { StatusBadge } from '@/components/ui/StatusBadge'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/context/AuthContext'
-import type { Sponsor, SponsorNote, SponsorPayment, SponsorTier } from '@/lib/types'
-import { format, formatDistanceToNow } from 'date-fns'
-import { Upload, FileText, Loader2, Trash2, Plus } from 'lucide-react'
+import { useCallback, useEffect, useState } from "react";
+import { Modal } from "@/components/ui/Modal";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
+import type { SponsorPayment } from "@/lib/types";
+import {
+  SponsorCalendar,
+  CollectSponsorPayment,
+  SponsorStageForm,
+} from "./SponsorWorkflow";
+import {
+  SPONSOR_STAGES,
+  SPONSOR_CATEGORIES,
+  money,
+  edgeError,
+} from "./sponsorship";
 
 export function SponsorDetailModal({
   sponsor,
   onClose,
   onUpdated,
 }: {
-  sponsor: Sponsor
-  onClose: () => void
-  onUpdated: () => void
+  sponsor: any;
+  onClose: () => void;
+  onUpdated: () => void;
 }) {
-  const { profile } = useAuth()
-  const [tier, setTier] = useState<SponsorTier | null>(null)
-  const [notes, setNotes] = useState<SponsorNote[]>([])
-  const [newNote, setNewNote] = useState('')
-  const [savingNote, setSavingNote] = useState(false)
-
-  const [agreementStart, setAgreementStart] = useState(sponsor.agreement_start_date ?? '')
-  const [agreementEnd, setAgreementEnd] = useState(sponsor.agreement_end_date ?? '')
-  const [savingDates, setSavingDates] = useState(false)
-
-  const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const [confirmingDelete, setConfirmingDelete] = useState(false)
-  const [category, setCategory] = useState(sponsor.category ?? '')
-  const [payments, setPayments] = useState<SponsorPayment[]>([])
-  const [showRecordPayment, setShowRecordPayment] = useState(false)
-
-  const SPONSOR_CATEGORIES = [
-    'Restaurant/Food Service',
-    'Beverage/Alcohol Distribution',
-    'Grocery/Retail',
-    'Education/Training',
-    'Technology',
-    'Staffing/Recruiting',
-    'Professional Services',
-    'Healthcare',
-    'Medical Equipment/Supplies',
-    'Construction/Hardware',
-    'Real Estate',
-    'Fitness/Sporting Goods',
-    'Health & Wellness',
-    'Other',
-  ]
-
-  async function saveCategory(value: string) {
-    setCategory(value)
-    await supabase.from('sponsors').update({ category: value || null }).eq('id', sponsor.id)
-    onUpdated()
-  }
-
-  function loadPayments() {
-    supabase
-      .from('sponsor_payments')
-      .select('*')
-      .eq('sponsor_id', sponsor.id)
-      .order('payment_date', { ascending: false })
-      .then(({ data }) => setPayments((data ?? []) as SponsorPayment[]))
-  }
-
+  const { profile } = useAuth();
+  const [tier, setTier] = useState<any>(null);
   useEffect(() => {
-    if (sponsor.tier_id) {
-      supabase.from('sponsor_tiers').select('*').eq('id', sponsor.tier_id).single().then(({ data }: any) => {
-        setTier(data ?? null)
-      })
+    let alive = true;
+    setTier(null);
+    if (sponsor.tier_id)
+      void supabase
+        .from("sponsor_tiers")
+        .select("*")
+        .eq("id", sponsor.tier_id)
+        .single()
+        .then((r) => {
+          if (alive && !r.error) setTier(r.data);
+        });
+    return () => {
+      alive = false;
+    };
+  }, [sponsor.tier_id]);
+  const [amount, setAmount] = useState(String(sponsor.sponsorship_value)),
+    [contact, setContact] = useState({
+      contact_name: sponsor.contact_name || "",
+      email: sponsor.email || "",
+      phone: sponsor.phone || "",
+    }),
+    [payments, setPayments] = useState<any[]>([]),
+    [activity, setActivity] = useState<any[]>([]),
+    [requests, setRequests] = useState<any[]>([]),
+    [notes, setNotes] = useState<any[]>([]),
+    [note, setNote] = useState(""),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [collect, setCollect] = useState(false),
+    [manual, setManual] = useState(false),
+    [stage, setStage] = useState(""),
+    [category, setCategory] = useState(sponsor.category || ""),
+    [agreementStart, setAgreementStart] = useState(
+      sponsor.agreement_start_date || "",
+    ),
+    [agreementEnd, setAgreementEnd] = useState(
+      sponsor.agreement_end_date || "",
+    );
+  const load = useCallback(async () => {
+    const results = await Promise.all([
+      supabase
+        .from("sponsor_payments")
+        .select("*")
+        .eq("sponsor_id", sponsor.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("sponsor_activity")
+        .select("*")
+        .eq("sponsor_id", sponsor.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("sponsor_checkout_requests")
+        .select("*")
+        .eq("sponsor_id", sponsor.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("sponsor_notes")
+        .select("*")
+        .eq("sponsor_id", sponsor.id)
+        .order("created_at", { ascending: false }),
+    ]);
+    const failed = results.find((r) => r.error);
+    if (failed?.error) {
+      setError(failed.error.message);
+      return;
     }
-    supabase
-      .from('sponsor_notes')
-      .select('*')
-      .eq('sponsor_id', sponsor.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }: any) => setNotes((data ?? []) as SponsorNote[]))
-    loadPayments()
-  }, [sponsor.id, sponsor.tier_id])
-
-  async function addNote() {
-    if (!newNote.trim()) return
-    setSavingNote(true)
-    const { data, error } = await supabase
-      .from('sponsor_notes')
-      .insert({ sponsor_id: sponsor.id, author_id: profile?.id ?? null, note: newNote.trim() })
-      .select()
-      .single()
-    setSavingNote(false)
-    if (!error && data) {
-      setNotes((prev) => [data as SponsorNote, ...prev])
-      setNewNote('')
+    setPayments(results[0].data || []);
+    setActivity(results[1].data || []);
+    setRequests(results[2].data || []);
+    setNotes(results[3].data || []);
+  }, [sponsor.id]);
+  useEffect(() => {
+    void load();
+  }, [load, sponsor.workflow_version]);
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await supabase.rpc("cvoa_sponsor_save", {
+        p_sponsor: sponsor.id,
+        p_version: sponsor.workflow_version,
+        p_data: {
+          ...contact,
+          sponsorship_value: Number(amount),
+          category,
+          agreement_start_date: agreementStart || null,
+          agreement_end_date: agreementEnd || null,
+        },
+      });
+      if (r.error) throw r.error;
+      onUpdated();
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
-
-  async function saveAgreementDates() {
-    setSavingDates(true)
-    await supabase
-      .from('sponsors')
-      .update({
-        agreement_start_date: agreementStart || null,
-        agreement_end_date: agreementEnd || null,
-      })
-      .eq('id', sponsor.id)
-    setSavingDates(false)
-    onUpdated()
+  async function viewFile(path: string) {
+    const r = await supabase.storage
+      .from("sponsor-agreements")
+      .createSignedUrl(path, 600);
+    if (r.error) setError(r.error.message);
+    else window.open(r.data.signedUrl, "_blank", "noopener,noreferrer");
   }
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploadError(null)
-    setUploading(true)
-    const path = `${sponsor.id}/${crypto.randomUUID()}-${file.name}`
-    const { data, error } = await supabase.storage.from('sponsor-agreements').upload(path, file)
-    setUploading(false)
-    if (error) {
-      setUploadError(error.message)
-      return
+  async function checkPayment(request: any) {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await supabase.functions.invoke("create-sponsorship-checkout", {
+        body: { action: "status", session_id: request.session_id },
+      });
+      if (r.error) throw new Error(await edgeError(r.error));
+      setError(
+        r.data.status === "paid"
+          ? "Payment confirmed and recorded."
+          : r.data.status === "expired"
+            ? "This checkout expired."
+            : "Payment has not been completed.",
+      );
+      await load();
+      onUpdated();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
     }
-    await supabase.from('sponsors').update({ agreement_storage_path: data?.path ?? path }).eq('id', sponsor.id)
-    onUpdated()
   }
-
-  async function viewAgreement() {
-    if (!sponsor.agreement_storage_path) return
-    const { data, error } = await supabase.storage
-      .from('sponsor-agreements')
-      .createSignedUrl(sponsor.agreement_storage_path, 600)
-    if (!error && data?.signedUrl) window.open(data.signedUrl, '_blank')
-  }
-
-  async function handleDelete() {
-    await supabase.from('sponsors').delete().eq('id', sponsor.id)
-    onUpdated()
-    onClose()
-  }
-
-  const renewalSoon =
-    sponsor.agreement_end_date &&
-    new Date(sponsor.agreement_end_date).getTime() - Date.now() < 30 * 86400000 &&
-    new Date(sponsor.agreement_end_date).getTime() > Date.now()
-
   return (
     <Modal title={sponsor.company} onClose={onClose}>
       <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <StatusBadge label={sponsor.stage.replaceAll('_', ' ')} tone="developing" />
-          <div className="text-right">
-            <span className="font-mono text-gold text-lg">${Number(sponsor.sponsorship_value).toLocaleString()}</span>
-            <div className="text-[11px] text-muted font-mono">agreed</div>
-          </div>
-        </div>
-
-        {tier && (
-          <div className="panel p-4 border-gold/30">
-            <div className="flex items-center justify-between mb-2">
-              <div className="eyebrow">Tier</div>
-              <div className="font-display text-xl text-gold">{tier.name}</div>
-            </div>
-            {tier.benefits && tier.benefits.length > 0 && (
-              <ul className="text-xs text-muted list-disc list-inside space-y-0.5">
-                {tier.benefits.map((b) => (
-                  <li key={b}>{b}</li>
-                ))}
-              </ul>
-            )}
-          </div>
+        <p className="text-gold font-mono">
+          {SPONSOR_STAGES.find((s) => s.key === sponsor.stage)?.label}
+        </p>
+        {error && (
+          <p role="status" className="text-sm text-status-attention">
+            {error}
+          </p>
         )}
-
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <div className="eyebrow mb-1">Contact</div>
-            <div>{sponsor.contact_name ?? '—'}</div>
-          </div>
-          <div>
-            <div className="eyebrow mb-1">Email / Phone</div>
-            <div>{sponsor.email ?? '—'}</div>
-            <div>{sponsor.phone ?? ''}</div>
-          </div>
-        </div>
-
-        <div>
-          <div className="eyebrow mb-1">Business Category</div>
-          <select className="input-field" value={category} onChange={(e) => saveCategory(e.target.value)}>
-            <option value="">Not set — powers Build A Post sponsor matching</option>
-            {SPONSOR_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
+        {tier && (
+          <section className="panel p-4 border-gold/30">
+            <h3 className="font-display text-xl text-gold">
+              {tier.name} sponsor
+            </h3>
+            <ul className="text-sm list-disc pl-4">
+              {tier.benefits?.map((benefit: string) => (
+                <li key={benefit}>{benefit}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+        <section className="space-y-3">
+          <label className="block text-sm">
+            Agreed sponsorship / donation amount ($)
+            <input
+              className="input-field mt-1"
+              type="number"
+              min="0"
+              max="999999.99"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </label>
+          {(["contact_name", "email", "phone"] as const).map((key) => (
+            <label key={key} className="block text-sm">
+              {
+                {
+                  contact_name: "Contact person",
+                  email: "Contact email",
+                  phone: "Contact phone",
+                }[key]
+              }
+              <input
+                className="input-field mt-1"
+                type={key === "email" ? "email" : "text"}
+                value={contact[key]}
+                onChange={(e) =>
+                  setContact({ ...contact, [key]: e.target.value })
+                }
+              />
+            </label>
+          ))}
+          <label className="block text-sm">
+            Business category
+            <select
+              className="input-field mt-1"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              <option value="">Choose a category</option>
+              {SPONSOR_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            disabled={busy}
+            className="btn-gold"
+            onClick={() => void save()}
+          >
+            {busy ? "Saving…" : "Save amount and contact"}
+          </button>
+        </section>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-gold" onClick={() => setCollect(true)}>
+            Collect Stripe payment
+          </button>
+          <button className="btn-ghost" onClick={() => setManual(true)}>
+            Record cash / check / wire
+          </button>
+          <select
+            aria-label="Move sponsor to a workflow step"
+            className="input-field"
+            value=""
+            onChange={(e) => setStage(e.target.value)}
+          >
+            <option value="">Move to another step…</option>
+            {SPONSOR_STAGES.filter((s) => s.key !== sponsor.stage).map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
               </option>
             ))}
           </select>
         </div>
-
-        {sponsor.notes && (
-          <div>
-            <div className="eyebrow mb-1">Initial Notes</div>
-            <p className="text-sm text-muted">{sponsor.notes}</p>
-          </div>
-        )}
-
-        <div className="border-t border-hairline pt-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="eyebrow">
-              Payments — ${payments.reduce((sum, p) => sum + Number(p.amount), 0).toLocaleString()} collected
-            </div>
-            <button
-              onClick={() => setShowRecordPayment(true)}
-              className="text-xs text-gold hover:text-gold-bright flex items-center gap-1"
-            >
-              <Plus size={12} /> Record Payment
-            </button>
-          </div>
-          {payments.length === 0 ? (
-            <p className="text-xs text-muted">No payments recorded yet.</p>
-          ) : (
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
-              {payments.map((p) => (
-                <div key={p.id} className="flex justify-between text-xs">
-                  <span className="capitalize">{p.payment_method}{p.notes ? ` — ${p.notes}` : ''}</span>
-                  <span className="flex items-center gap-2 shrink-0">
-                    <span className="text-muted font-mono">{format(new Date(p.payment_date), 'MMM d, yyyy')}</span>
-                    <span className="font-mono text-status-active">${Number(p.amount).toLocaleString()}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-hairline pt-4">
-          <div className="eyebrow mb-2">Agreement Period</div>
-          {renewalSoon && (
-            <p className="text-xs text-status-attention mb-2">Renewal due within 30 days.</p>
-          )}
-          <div className="grid grid-cols-2 gap-3 mb-2">
-            <input
-              type="date"
-              className="input-field"
-              value={agreementStart}
-              onChange={(e) => setAgreementStart(e.target.value)}
-            />
-            <input
-              type="date"
-              className="input-field"
-              value={agreementEnd}
-              onChange={(e) => setAgreementEnd(e.target.value)}
-            />
-          </div>
-          <button onClick={saveAgreementDates} disabled={savingDates} className="btn-ghost text-xs">
-            {savingDates ? 'Saving…' : 'Save Dates'}
+        <SponsorCalendar sponsor={sponsor} />
+        {sponsor.meeting_start && (
+          <button
+            className="btn-ghost"
+            onClick={() => setStage("meeting_scheduled")}
+          >
+            Edit meeting details
           </button>
-        </div>
-
-        <div className="border-t border-hairline pt-4">
-          <div className="eyebrow mb-2">Signed Agreement</div>
-          {sponsor.agreement_storage_path ? (
-            <button onClick={viewAgreement} className="flex items-center gap-2 text-gold hover:text-gold-bright text-sm">
-              <FileText size={16} /> View uploaded agreement
-            </button>
-          ) : (
-            <label className="flex items-center justify-center gap-2 border border-dashed border-hairline hover:border-gold rounded-sm p-4 cursor-pointer text-sm text-muted">
-              {uploading ? (
-                <>
-                  <Loader2 className="animate-spin" size={16} /> Uploading…
-                </>
-              ) : (
-                <>
-                  <Upload size={16} /> Upload signed agreement
-                </>
-              )}
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFileChange} disabled={uploading} />
-            </label>
+        )}
+        <section className="space-y-2 border-t border-hairline pt-4">
+          <h3 className="font-display text-xl">Proposal</h3>
+          {sponsor.proposal_text && (
+            <p className="whitespace-pre-wrap text-sm">
+              {sponsor.proposal_text}
+            </p>
           )}
-          {uploadError && <p className="text-status-attention text-sm mt-2">{uploadError}</p>}
-        </div>
-
-        <div className="border-t border-hairline pt-4">
-          <div className="eyebrow mb-2">Activity Log</div>
-          <div className="flex gap-2 mb-3">
-            <input
-              placeholder="Log a call, meeting, or update…"
-              className="input-field"
-              value={newNote}
-              onChange={(e) => setNewNote(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addNote()}
-            />
-            <button onClick={addNote} disabled={savingNote} className="btn-gold px-4 text-sm shrink-0">
-              Add
-            </button>
-          </div>
-          {notes.length === 0 ? (
-            <p className="text-xs text-muted">No activity logged yet.</p>
-          ) : (
-            <div className="space-y-3 max-h-48 overflow-y-auto">
-              {notes.map((n) => (
-                <div key={n.id} className="border-l-2 border-hairline pl-3">
-                  <p className="text-sm text-ink">{n.note}</p>
-                  <p className="text-[11px] text-muted font-mono mt-0.5">
-                    {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-hairline pt-4">
-          {!confirmingDelete ? (
+          {sponsor.proposal_storage_path && (
             <button
-              onClick={() => setConfirmingDelete(true)}
-              className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide text-status-attention hover:text-status-attention/80"
+              className="btn-ghost"
+              onClick={() => void viewFile(sponsor.proposal_storage_path)}
             >
-              <Trash2 size={14} /> Delete this sponsor
+              Open proposal document
             </button>
-          ) : (
-            <div className="border border-status-attention/40 bg-status-attention/10 rounded-sm p-3 space-y-3">
-              <p className="text-sm text-ink">Permanently delete {sponsor.company}? This can't be undone.</p>
-              <div className="flex gap-3">
-                <button onClick={handleDelete} className="flex-1 bg-status-attention text-base rounded-sm py-2 text-sm font-medium">
-                  Yes, delete
-                </button>
-                <button onClick={() => setConfirmingDelete(false)} className="flex-1 btn-ghost text-sm">
-                  Cancel
-                </button>
-              </div>
-            </div>
           )}
-        </div>
+          <button
+            className="btn-ghost"
+            onClick={() => setStage("proposal_sent")}
+          >
+            Write / upload proposal
+          </button>
+          {sponsor.agreement_storage_path && (
+            <button
+              className="btn-ghost"
+              onClick={() => void viewFile(sponsor.agreement_storage_path)}
+            >
+              Open signed agreement
+            </button>
+          )}
+        </section>
+        <section className="border-t border-hairline pt-4 space-y-3">
+          <h3 className="font-display text-xl">Signed agreement</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm">
+              Starts
+              <input
+                className="input-field mt-1"
+                type="date"
+                value={agreementStart}
+                onChange={(e) => setAgreementStart(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              Ends / renewal due
+              <input
+                className="input-field mt-1"
+                type="date"
+                value={agreementEnd}
+                onChange={(e) => setAgreementEnd(e.target.value)}
+              />
+            </label>
+          </div>
+          <button
+            className="btn-ghost"
+            disabled={busy}
+            onClick={() => void save()}
+          >
+            Save agreement dates
+          </button>
+          <label className="block text-sm">
+            Upload signed agreement (PDF, image or Word document)
+            <input
+              className="input-field mt-2"
+              disabled={busy}
+              type="file"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setBusy(true);
+                setError("");
+                try {
+                  if (
+                    f.size > 20 * 1024 * 1024 ||
+                    !/\.(pdf|docx?|jpe?g|png)$/i.test(f.name)
+                  )
+                    throw new Error(
+                      "Choose a supported agreement file under 20 MB.",
+                    );
+                  const path = `${sponsor.id}/agreements/${crypto.randomUUID()}.${f.name.split(".").pop()?.toLowerCase()}`;
+                  const upload = await supabase.storage
+                    .from("sponsor-agreements")
+                    .upload(path, f);
+                  if (upload.error) throw upload.error;
+                  const r = await supabase.rpc("cvoa_sponsor_save", {
+                    p_sponsor: sponsor.id,
+                    p_version: sponsor.workflow_version,
+                    p_data: { agreement_storage_path: path },
+                  });
+                  if (r.error) throw r.error;
+                  onUpdated();
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            />
+          </label>
+        </section>
+        <section className="border-t border-hairline pt-4 space-y-2">
+          <h3 className="font-display text-xl">
+            Payments received:{" "}
+            {money(
+              payments
+                .filter((p) => p.stripe_livemode !== false)
+                .reduce(
+                  (sum, p) =>
+                    sum + Number(p.amount) - Number(p.refunded_amount || 0),
+                  0,
+                ),
+            )}
+          </h3>
+          {payments.map((p) => (
+            <div key={p.id} className="flex justify-between gap-3 text-sm">
+              <span>
+                {p.stripe_livemode === false
+                  ? "TEST payment"
+                  : p.payment_method === "card"
+                    ? "✓ Stripe confirmed"
+                    : p.payment_method}
+                {Number(p.refunded_amount) > 0
+                  ? ` • Refunded ${money(p.refunded_amount)}`
+                  : ""}{" "}
+                • {p.payment_date}
+              </span>
+              <strong>{money(p.amount)}</strong>
+            </div>
+          ))}
+          {!payments.length && (
+            <p className="text-muted text-sm">No money received yet.</p>
+          )}
+          <h4 className="font-display text-lg mt-3">Payment requests</h4>
+          {requests.map((r) => (
+            <div key={r.id} className="panel p-3 text-sm space-y-2">
+              <p>
+                {money(r.amount_cents / 100)} • {r.status}
+                {r.livemode === false ? " • TEST MODE" : ""}
+                {r.expires_at
+                  ? ` • Expires ${new Date(r.expires_at).toLocaleString()}`
+                  : ""}
+              </p>
+              {r.session_id && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn-ghost text-xs"
+                    disabled={busy}
+                    onClick={() => void checkPayment(r)}
+                  >
+                    Check Stripe payment
+                  </button>
+                  {r.url && new Date(r.expires_at).getTime() > Date.now() && (
+                    <a
+                      className="btn-ghost text-xs"
+                      target="_blank"
+                      rel="noreferrer"
+                      href={r.url}
+                    >
+                      Open checkout
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </section>
+        <section className="border-t border-hairline pt-4 space-y-3">
+          <h3 className="font-display text-xl">Activity and next steps</h3>
+          {sponsor.notes && (
+            <p className="text-sm whitespace-pre-wrap">
+              Initial interest: {sponsor.notes}
+            </p>
+          )}
+          <textarea
+            className="input-field"
+            aria-label="Add sponsor follow-up note"
+            placeholder="Record a follow-up or next step…"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <button
+            className="btn-ghost"
+            disabled={busy || !note.trim()}
+            onClick={async () => {
+              setBusy(true);
+              const r = await supabase.from("sponsor_notes").insert({
+                sponsor_id: sponsor.id,
+                author_id: profile?.id,
+                note: note.trim(),
+              });
+              setBusy(false);
+              if (r.error) setError(r.error.message);
+              else {
+                setNote("");
+                await load();
+              }
+            }}
+          >
+            Add note
+          </button>
+          {activity.map((a) => (
+            <article key={a.id} className="border-l-2 border-gold pl-3 text-sm">
+              <p className="font-medium">
+                {a.kind === "stage_changed"
+                  ? `${a.detail.previous_stage.replaceAll("_", " ")} → ${a.detail.new_stage.replaceAll("_", " ")}`
+                  : a.kind.replaceAll("_", " ")}
+              </p>
+              <p className="text-xs text-muted">
+                {new Date(a.created_at).toLocaleString()} •{" "}
+                {a.detail.recorded_by_name || "Post member"}
+              </p>
+              {a.detail.person && (
+                <p>
+                  Spoke with {a.detail.person} by{" "}
+                  {a.detail.method?.replaceAll("_", " ")}
+                </p>
+              )}
+              {a.detail.summary && (
+                <p className="whitespace-pre-wrap">{a.detail.summary}</p>
+              )}
+              {a.detail.email && <p>{a.detail.email}</p>}
+              {a.detail.phone && <p>{a.detail.phone}</p>}
+              {a.detail.previous_amount !== a.detail.new_amount &&
+                a.detail.new_amount !== undefined && (
+                  <p>
+                    Agreed amount: {money(a.detail.previous_amount)} →{" "}
+                    {money(a.detail.new_amount)}
+                  </p>
+                )}
+            </article>
+          ))}
+          {notes.map((n) => (
+            <p
+              key={n.id}
+              className="text-sm whitespace-pre-wrap border-l-2 border-hairline pl-3"
+            >
+              {n.note}
+              <span className="block text-xs text-muted">
+                {new Date(n.created_at).toLocaleString()}
+              </span>
+            </p>
+          ))}
+        </section>
       </div>
-
-      {showRecordPayment && (
+      {collect && (
+        <CollectSponsorPayment
+          sponsor={sponsor}
+          onClose={() => {
+            setCollect(false);
+            void load();
+            onUpdated();
+          }}
+          onSaved={() => void load()}
+        />
+      )}{" "}
+      {manual && (
         <RecordPaymentModal
           postId={sponsor.post_id}
           sponsorId={sponsor.id}
-          onClose={() => setShowRecordPayment(false)}
+          onClose={() => setManual(false)}
           onSaved={() => {
-            setShowRecordPayment(false)
-            loadPayments()
+            setManual(false);
+            void load();
+            onUpdated();
+          }}
+        />
+      )}
+      {stage && (
+        <SponsorStageForm
+          sponsor={sponsor}
+          stage={stage}
+          onClose={() => setStage("")}
+          onSaved={() => {
+            setStage("");
+            onUpdated();
+            void load();
           }}
         />
       )}
     </Modal>
-  )
+  );
 }
-
 export function RecordPaymentModal({
   postId,
   sponsorId,
@@ -353,35 +552,40 @@ export function RecordPaymentModal({
   onClose,
   onSaved,
 }: {
-  postId: string | null
-  sponsorId: string | null
-  donorNameDefault?: string
-  onClose: () => void
-  onSaved: () => void
+  postId: string | null;
+  sponsorId: string | null;
+  donorNameDefault?: string;
+  onClose: () => void;
+  onSaved: () => void;
 }) {
+  const { profile } = useAuth();
   const [form, setForm] = useState({
-    donor_name: donorNameDefault ?? '',
-    amount: '',
-    payment_method: 'check' as SponsorPayment['payment_method'],
+    donor_name: donorNameDefault ?? "",
+    amount: "",
+    payment_method: "check" as SponsorPayment["payment_method"],
     payment_date: new Date().toISOString().slice(0, 10),
-    notes: '',
-  })
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+    notes: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((f) => ({ ...f, [key]: value }))
+  function update<K extends keyof typeof form>(
+    key: K,
+    value: (typeof form)[K],
+  ) {
+    setForm((f) => ({ ...f, [key]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
     if (!form.amount || Number(form.amount) <= 0) {
-      setError('Enter an amount greater than $0.')
-      return
+      setError("Enter an amount greater than $0.");
+      return;
     }
-    setSaving(true)
-    setError(null)
-    const { error } = await supabase.from('sponsor_payments').insert({
+    setSaving(true);
+    setError(null);
+    const { error } = await supabase.from("sponsor_payments").insert({
+      recorded_by: profile?.id,
       post_id: postId,
       sponsor_id: sponsorId,
       donor_name: sponsorId ? null : form.donor_name || null,
@@ -389,13 +593,13 @@ export function RecordPaymentModal({
       payment_method: form.payment_method,
       payment_date: form.payment_date,
       notes: form.notes || null,
-    })
-    setSaving(false)
+    });
+    setSaving(false);
     if (error) {
-      setError(error.message)
-      return
+      setError(error.message);
+      return;
     }
-    onSaved()
+    onSaved();
   }
 
   return (
@@ -407,12 +611,14 @@ export function RecordPaymentModal({
             placeholder="Donor name"
             className="input-field"
             value={form.donor_name}
-            onChange={(e) => update('donor_name', e.target.value)}
+            onChange={(e) => update("donor_name", e.target.value)}
           />
         )}
         <div className="grid grid-cols-2 gap-3">
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm">
+              $
+            </span>
             <input
               required
               type="number"
@@ -421,7 +627,7 @@ export function RecordPaymentModal({
               placeholder="Amount"
               className="input-field pl-6"
               value={form.amount}
-              onChange={(e) => update('amount', e.target.value)}
+              onChange={(e) => update("amount", e.target.value)}
             />
           </div>
           <input
@@ -429,31 +635,39 @@ export function RecordPaymentModal({
             type="date"
             className="input-field"
             value={form.payment_date}
-            onChange={(e) => update('payment_date', e.target.value)}
+            onChange={(e) => update("payment_date", e.target.value)}
           />
         </div>
         <select
           className="input-field"
           value={form.payment_method}
-          onChange={(e) => update('payment_method', e.target.value as SponsorPayment['payment_method'])}
+          onChange={(e) =>
+            update(
+              "payment_method",
+              e.target.value as SponsorPayment["payment_method"],
+            )
+          }
         >
           <option value="check">Check</option>
           <option value="cash">Cash</option>
           <option value="wire">Wire Transfer</option>
-          <option value="card">Card (entered manually)</option>
           <option value="other">Other</option>
         </select>
         <input
           placeholder="Notes (optional)"
           className="input-field"
           value={form.notes}
-          onChange={(e) => update('notes', e.target.value)}
+          onChange={(e) => update("notes", e.target.value)}
         />
         {error && <p className="text-status-attention text-sm">{error}</p>}
-        <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
-          {saving ? 'Recording…' : 'Record Payment'}
+        <button
+          type="submit"
+          disabled={saving}
+          className="btn-gold w-full disabled:opacity-50"
+        >
+          {saving ? "Recording…" : "Record Payment"}
         </button>
       </form>
     </Modal>
-  )
+  );
 }

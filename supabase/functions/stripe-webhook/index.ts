@@ -70,6 +70,16 @@ Deno.serve(async (req) => {
     if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
       const session = event.data.object as Stripe.Checkout.Session
       if (session.payment_status !== 'paid') return new Response(JSON.stringify({ received:true }), { headers:{'Content-Type':'application/json'} })
+      if (session.metadata?.kind === 'sponsorship') {
+        const receipt = await supabase.rpc('cvoa_fulfill_sponsor_payment', {
+          p_request: session.metadata.sponsor_request_id, p_session: session.id,
+          p_amount: session.amount_total, p_currency: session.currency,
+          p_intent: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+          p_paid_at: new Date(event.created * 1000).toISOString(), p_live: session.livemode,
+        })
+        if (receipt.error) throw receipt.error
+        return new Response(JSON.stringify({received:true}), {headers:{'Content-Type':'application/json'}})
+      }
       const memberId = session.metadata?.member_id
       const type = session.metadata?.membership_type
       if (!memberId || !['annual','lifetime'].includes(type ?? '') || session.currency !== 'usd' || session.amount_total !== (type === 'lifetime' ? 49999 : 4999)) throw new Error('Checkout amount or metadata does not match membership pricing.')
@@ -83,6 +93,13 @@ Deno.serve(async (req) => {
       if(applied) {
         try { await sendMembershipNotification() }
         catch { console.error('Membership recorded; notification delivery failed.') }
+      }
+    }
+    if (event.type === 'charge.refunded') {
+      const charge = event.data.object as Stripe.Charge
+      if (typeof charge.payment_intent === 'string') {
+        const refund = await supabase.rpc('cvoa_sponsor_refund', {p_intent:charge.payment_intent,p_refunded_cents:charge.amount_refunded})
+        if (refund.error) throw refund.error
       }
     }
     if (event.type === 'invoice.payment_succeeded') {
