@@ -778,6 +778,8 @@ export interface BuildAPostModule {
 }
 
 export interface PostFacilityProject {
+  opening_scope: boolean
+  required_for_opening: boolean
   id: string
   post_id: string
   module_id: string
