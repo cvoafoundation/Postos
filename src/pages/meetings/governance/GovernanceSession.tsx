@@ -13,6 +13,10 @@ import {
   votesRequired,
   type RecordData,
 } from "./model";
+import MeetingSheet, {
+  meetingRecordText,
+  printMeetingSheet,
+} from "./MeetingSheet";
 type Dialog = {
   title: string;
   fields: FieldSpec[];
@@ -51,7 +55,10 @@ export default function GovernanceSession() {
     [busy, setBusy] = useState(false),
     [tab, setTab] = useState("packet"),
     [dialog, setDialog] = useState<Dialog | null>(null),
+    [destinations, setDestinations] = useState<RecordData[] | null>(null),
     [clock, setClock] = useState(Date.now());
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [advanced, setAdvanced] = useState(false);
   const inFlight = useRef(false),
     current = useRef<RecordData | null>(null),
     generation = useRef(0);
@@ -65,6 +72,14 @@ export default function GovernanceSession() {
       });
       if (key !== generation.current) return;
       if (error) throw error;
+      if (!current.current)
+        setTab(
+          data.session.ended_at
+            ? "record"
+            : data.session.started_at
+              ? "live"
+              : "packet",
+        );
       current.current = data;
       setData(data);
     } catch (e) {
@@ -394,22 +409,31 @@ export default function GovernanceSession() {
           {data.body.name} • {timestamp(s.scheduled_at)} • {s.type}
         </p>
       </div>
-      <ol className="flex flex-wrap gap-2" aria-label="Meeting lifecycle">
-        {["prepare", "review", "meet", "execute", "archive"].map((phase, i) => (
-          <li
-            key={phase}
-            className={`rounded px-3 py-2 ${s.phase === phase ? "bg-gold text-black" : "bg-charcoal text-muted"}`}
-          >
-            {i + 1}. {phase}
-          </li>
-        ))}
-      </ol>
+      {per.chair && !s.started_at && <button className="btn-gold" disabled={busy} onClick={() => void command("start").then(() => setTab("live")).catch(() => {})}>Start Meeting • Call to order</button>}
+      <details className="panel p-3">
+        <summary>URO workflow and meeting details</summary>
+        <ol
+          className="flex flex-wrap gap-2 mt-3"
+          aria-label="Meeting lifecycle"
+        >
+          {["prepare", "review", "meet", "execute", "archive"].map(
+            (phase, i) => (
+              <li
+                key={phase}
+                className={`rounded px-3 py-2 ${s.phase === phase ? "bg-gold text-black" : "bg-charcoal text-muted"}`}
+              >
+                {i + 1}. {phase}
+              </li>
+            ),
+          )}
+        </ol>
+      </details>
       {error && (
         <p className="panel p-4 text-status-attention" role="alert">
           {error}
         </p>
       )}
-      <section className="panel p-4 flex flex-wrap gap-5">
+      {!s.ended_at && <section className="panel p-4 flex flex-wrap gap-5">
         <strong>{s.state?.replaceAll("_", " ")}</strong>
         <span
           className={
@@ -432,8 +456,9 @@ export default function GovernanceSession() {
             "Assigned administrator"}
         </span>
       </section>
-      {!!data.issues.length && (
-        <details className="panel p-4" open>
+      }
+      {!s.ended_at && !!data.issues.length && (
+        <details className="panel p-4">
           <summary className="text-status-attention">
             Needs attention ({data.issues.length})
           </summary>
@@ -446,23 +471,46 @@ export default function GovernanceSession() {
       )}
       <nav className="flex flex-wrap gap-2" aria-label="Meeting sections">
         {[
-          "packet",
-          "attendance",
-          "live",
-          "actions",
-          "record",
-          "procedure",
-          "private notes",
+          ...(s.ended_at ? ["record", "attendance", "actions"] : ["packet", "attendance", "live", "actions", "record"]),
+          ...(advanced ? ["procedure", "private notes"] : []),
         ].map((t) => (
           <button
             key={t}
             className={tab === t ? "btn-gold" : "btn-ghost"}
             onClick={() => setTab(t)}
           >
-            {t}
+            {
+              {
+                packet: "Agenda & preparation",
+                attendance: "Attendance",
+                live: "Run meeting",
+                actions: "Assignments",
+                record: "Meeting record",
+                procedure: "Procedure",
+                "private notes": "Private notes",
+              }[t]
+            }
           </button>
         ))}
+        <button
+          className="btn-ghost"
+          aria-expanded={advanced}
+          onClick={() => {
+            setAdvanced(!advanced);
+            if (advanced && ["procedure", "private notes"].includes(tab))
+              setTab("record");
+          }}
+        >
+          More options
+        </button>
       </nav>
+      {!s.ended_at && (
+        <p className="panel p-4 text-sm">
+          {!s.started_at
+            ? "Next: prepare the agenda, mark attendance, then open Run meeting to call the meeting to order."
+            : "Next: work through the agenda, record decisions and assignments, then adjourn to generate the meeting sheet."}
+        </p>
+      )}
       {tab === "packet" && (
         <section className="panel p-5 space-y-4">
           <h2 className="font-display text-xl">Prepared meeting packet</h2>
@@ -1179,7 +1227,9 @@ export default function GovernanceSession() {
                       className={
                         data.my_ballots.some(
                           (b: RecordData) =>
-                            b.proposal_id === p.id && b.round === p.vote_round && b.choice === choice,
+                            b.proposal_id === p.id &&
+                            b.round === p.vote_round &&
+                            b.choice === choice,
                         )
                           ? "btn-gold"
                           : "btn-ghost"
@@ -1479,40 +1529,14 @@ export default function GovernanceSession() {
                     try {
                       const dir = await supabase.rpc("cvoa_drive_directory");
                       if (dir.error) throw dir.error;
-                      const b = data.body,
-                        w = dir.data.workspaces.find(
-                          (w: RecordData) =>
-                            w.level >= 3 &&
-                            (b.jurisdiction === "national"
-                              ? w.kind === "national"
-                              : b.jurisdiction === "state"
-                                ? w.kind === "state" && w.state === b.state
-                                : w.post_id === b.post_id),
-                        );
-                      if (!w)
+                      const workspaces = dir.data.workspaces.filter(
+                        (w: RecordData) => w.level >= 3,
+                      );
+                      if (!workspaces.length)
                         throw new Error(
-                          "A Drive workspace with editing permission is required.",
+                          "You need editing access to a Documents & Files workspace to save a copy.",
                         );
-                      const body = `Exported copy of meeting record. Status: ${s.minutes_state}. Source: https://www.cvoa.one/meetings/session/${s.id}\n\n${s.minutes}`;
-                      const r = await supabase.rpc("cvoa_drive_create", {
-                        p_workspace: w.id,
-                        p_parent: null,
-                        p_kind: "document",
-                        p_name: `${s.title} minutes`.slice(0, 200),
-                        p_content: {
-                          type: "doc",
-                          content: body
-                            .split("\n")
-                            .map((line) => ({
-                              type: "paragraph",
-                              ...(line
-                                ? { content: [{ type: "text", text: line }] }
-                                : {}),
-                            })),
-                        },
-                      });
-                      if (r.error) throw r.error;
-                      window.location.assign(`/shared-files?item=${r.data}`);
+                      setDestinations(workspaces);
                     } catch (e) {
                       setError((e as Error).message);
                     } finally {
@@ -1520,14 +1544,14 @@ export default function GovernanceSession() {
                     }
                   }}
                 >
-                  Save copy to Drive
+                  Export to Documents &amp; Files
                 </button>
                 <button
                   className="btn-ghost"
                   onClick={() =>
                     textDownload(
                       `${s.title.replace(/[^a-z0-9]/gi, "_")}-minutes.txt`,
-                      s.minutes,
+                      meetingRecordText(data),
                     )
                   }
                 >
@@ -1536,14 +1560,12 @@ export default function GovernanceSession() {
                 <button
                   className="btn-ghost"
                   onClick={() => {
-                    const w = window.open("", "_blank");
-                    if (!w) return;
-                    w.document.title = s.title;
-                    const pre = w.document.createElement("pre");
-                    pre.textContent = s.minutes;
-                    pre.style.whiteSpace = "pre-wrap";
-                    w.document.body.append(pre);
-                    w.print();
+                    try {
+                      if (sheetRef.current)
+                        printMeetingSheet(sheetRef.current, s.title);
+                    } catch (e) {
+                      setError((e as Error).message);
+                    }
                   }}
                 >
                   Print / Save PDF
@@ -1606,15 +1628,71 @@ export default function GovernanceSession() {
               </button>
             )}
           </div>
-          <pre className="whitespace-pre-wrap break-words text-sm">
-            {s.minutes || "A factual draft is generated after adjournment."}
-          </pre>
+          <MeetingSheet data={data} sheetRef={sheetRef} />
           <p className="text-muted">
             {data.decisions.length} adopted decisions • {data.actions.length}{" "}
             assignments • {Math.floor(s.recess_seconds / 60)} recess minutes
             excluded from meeting time
           </p>
         </section>
+      )}
+      {destinations && (
+        <GovernanceForm
+          title="Export meeting to Documents & Files"
+          onClose={() => setDestinations(null)}
+          fields={[
+            {
+              key: "workspace",
+              label: "Save to",
+              type: "select",
+              required: true,
+              options: destinations.map((w) => ({
+                value: w.id,
+                label: w.name,
+              })),
+            },
+          ]}
+          initial={{
+            workspace:
+              destinations.find((w) =>
+                data.body.jurisdiction === "national"
+                  ? w.kind === "national"
+                  : data.body.jurisdiction === "state"
+                    ? w.kind === "state" && w.state === data.body.state
+                    : w.post_id === data.body.post_id,
+              )?.id || destinations[0].id,
+          }}
+          onSubmit={async (v) => {
+            const content = meetingRecordText(data);
+            const result = await supabase.rpc("cvoa_drive_create", {
+              p_workspace: v.workspace,
+              p_parent: null,
+              p_kind: "document",
+              p_name: `${s.title} minutes`.slice(0, 200),
+              p_content: {
+                type: "doc",
+                content: [
+                  { type: "meetingLetterhead" },
+                  {
+                    type: "heading",
+                    attrs: { level: 2 },
+                    content: [{ type: "text", text: s.title }],
+                  },
+                  ...content
+                    .split("\n")
+                    .map((line) => ({
+                      type: "paragraph",
+                      ...(line
+                        ? { content: [{ type: "text", text: line }] }
+                        : {}),
+                    })),
+                ],
+              },
+            });
+            if (result.error) throw result.error;
+            window.location.assign(`/shared-files?item=${result.data}`);
+          }}
+        />
       )}
       {tab === "private notes" && (
         <section className="panel p-5 space-y-4">
