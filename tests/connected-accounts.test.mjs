@@ -78,6 +78,7 @@ before(async () => {
   await db.exec(fs.readFileSync('supabase/migrations/20261004230000_uro_governance.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261005150000_meeting_access.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261005160000_sponsorship_workflow.sql', 'utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20261005170000_post_development.sql', 'utf8'));
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${uid(5)}','state@example.test',now()),('${uid(6)}','delegate@example.test',now()),('${uid(7)}','tribunal@example.test',now()),('${uid(8)}','national-staff@example.test',now());
   insert into public.profiles(id,full_name,email,role,state,post_id) values('${uid(5)}','State','state@example.test','state_commander','IN',null),('${uid(6)}','Delegate','delegate@example.test','delegate',null,'${post}'),('${uid(7)}','Tribunal','tribunal@example.test','ethics_tribunal',null,null),('${uid(8)}','National Staff','national-staff@example.test','national_staff',null,null);
   insert into public.congress_delegates(profile_id,post_id) values('${uid(6)}','${post}');
@@ -1142,4 +1143,102 @@ test('Sponsorship files follow the sponsor post and public interest cannot forge
  await db.exec("set local role anon; select set_config('request.jwt.claim.role','anon',true)");await actor(null);
  await failure(()=>db.query("insert into public.sponsors(post_id,company,stage,sponsorship_value) values($1,'Forged','won',1000)",[post]),/row-level security/);
  await db.query("insert into public.sponsors(post_id,company,stage,sponsorship_value) values($1,'Public interest','identified',100)",[post]);
+}));
+
+async function launch(postId=post){await db.query('select public.cvoa_launch_mutate($1,0,$2,$3::jsonb)',[postId,'initialize',JSON.stringify({owner_name:'Launch Lead'})]); const p=await rpc('select to_jsonb(p) data from public.post_launch_plans p where post_id=$1',[postId]);await db.query('select public.cvoa_launch_mutate($1,$2,$3,$4::jsonb)',[postId,p.version,'plan',JSON.stringify({owner_name:'Launch Lead',target_date:'2030-01-01',services:'Member services'})]);}
+async function launchCommand(action,data={},postId=post){const p=await rpc('select to_jsonb(p) data from public.post_launch_plans p where post_id=$1',[postId]);await db.query('select public.cvoa_launch_mutate($1,$2,$3,$4::jsonb)',[postId,p.version,action,JSON.stringify(data)]);}
+async function location(data={}){await launchCommand('location',{name:'Candidate Space',address:'123 Main Street',tenure:'lease',monthly_cost_cents:100000,upfront_cost_cents:200000,...data});return (await db.query('select * from public.launch_locations where post_id=$1 order by id',[post])).rows[0];}
+test('Post Development uses staff scope, rejects raw writes and detects stale saves',()=>as(national,async()=>{
+ await launch();await launch(otherPost);
+ await actor(officer);const directory=await rpc('select public.cvoa_launch_directory() data');assert.equal(directory.length,1);assert.equal(directory[0].id,post);
+ await failure(()=>launch(otherPost),/Post staff access/);await failure(()=>db.query("update public.post_launch_plans set stage='open'"),/permission denied/);
+ await launchCommand('plan',{owner_name:'Lead',target_date:'2030-01-01',services:'Member space'});
+ await failure(()=>db.query('select public.cvoa_launch_mutate($1,1,$2,$3::jsonb)',[post,'plan','{}']),/Refresh/);
+ await actor(stateCommander);assert.equal((await rpc('select public.cvoa_launch_directory() data')).length,1);await failure(()=>launchCommand('plan',{}),/Post staff access/);
+ await actor(member);assert.equal((await rpc('select public.cvoa_launch_directory() data')).length,0);await failure(()=>launch(),/Post staff access/);
+ await actor(tribunal);assert.equal((await rpc('select public.cvoa_launch_directory() data')).length,0);
+}));
+test('Location decisions are National-only, preserve snapshots and invalidate when a proposal changes',()=>as(national,async()=>{
+ await db.query("update public.posts set status='approved' where id=$1",[post]);await launch();await actor(officer);const l=await location();await launchCommand('location_submit',{id:l.id});
+ await failure(()=>launchCommand('location_review',{id:l.id,decision:'approved',feedback:'Reviewed'}),/National review/);
+ await actor(national);await launchCommand('location_review',{id:l.id,decision:'approved',feedback:'Approved starter space; education office planned later.'});
+ assert.equal((await db.query('select stage from public.post_launch_plans where post_id=$1',[post])).rows[0].stage,'setup');
+ const review=(await db.query('select * from public.launch_reviews where location_id=$1',[l.id])).rows[0];assert.equal(review.snapshot.location.address,'123 Main Street');assert.equal(review.snapshot.location.revision,1);
+ await actor(officer);await launchCommand('location',{...l,address:'456 Different Street'});
+ assert.equal((await db.query('select status from public.launch_locations where id=$1',[l.id])).rows[0].status,'draft');assert.equal((await db.query('select stage from public.post_launch_plans where post_id=$1',[post])).rows[0].stage,'location_review');
+ assert.equal((await db.query('select snapshot from public.launch_reviews where location_id=$1',[l.id])).rows[0].snapshot.location.address,'123 Main Street');
+}));
+test('Required standards, secured location and National opening approval gate the active post status',()=>as(national,async()=>{
+ await db.query("update public.posts set status='approved' where id=$1",[post]);await launch();
+ await db.query("select public.cvoa_launch_standard(null,'Required floor plan','location',true,true)");const std=(await db.query("select id from public.launch_standards where label='Required floor plan'")).rows[0].id;
+ const l=await location();await failure(()=>launchCommand('location_submit',{id:l.id}),/required location standards/);
+ await launchCommand('location_check',{location_id:l.id,standard_id:std,response:'yes',note:'Plan reviewed'});await launchCommand('location_submit',{id:l.id});await launchCommand('location_review',{id:l.id,decision:'approved',feedback:'Meets required standard'});
+ await failure(()=>db.query("update public.posts set status='active_post' where id=$1",[post]),/Post Development/);
+ await failure(()=>launchCommand('stage',{stage:'opening_review'}),/secured location/);
+ await launchCommand('location_secured',{secured:true});await launchCommand('task',{label:'Required opening item',required:true,complete:false});
+ const t=(await db.query("select * from public.launch_tasks where label='Required opening item'")).rows[0];
+ await failure(()=>launchCommand('stage',{stage:'opening_review'}),/required launch tasks/);
+ await actor(officer);await failure(()=>launchCommand('task',{...t,label:'Removed requirement'}),/Only National changes/);await launchCommand('task',{...t,complete:true});await launchCommand('stage',{stage:'opening_review'});await failure(()=>launchCommand('stage',{stage:'open',feedback:'Ready'}),/National opening/);
+ await actor(national);await launchCommand('stage',{stage:'open',feedback:'Opening approved; funding and readiness reviewed.'});assert.equal((await db.query('select status from public.posts where id=$1',[post])).rows[0].status,'active_post');assert.equal((await db.query('select stage from public.post_launch_plans where post_id=$1',[post])).rows[0].stage,'open');
+}));
+test('Connected funding counts allocated receipts once, deducts refunds and links each new expense to one ledger row',()=>as(national,async()=>{
+ await launch();const campaign=await rpc('select public.cvoa_launch_campaign($1,null,$2::jsonb) data',[post,JSON.stringify({title:'Opening Fund',goal_cents:100000,owner_name:'Lead',deadline:'2030-01-01',launch_funding:true})]);
+ await db.query('select public.cvoa_launch_entry($1,$2,$3,$4,$5,null)',[campaign,'income',5000,'2026-10-05','Cash donation']);await db.query('select public.cvoa_launch_entry($1,$2,$3,$4,$5,null)',[campaign,'expense',1000,'2026-10-05','Event costs']);
+ assert.equal((await db.query('select count(*)::int n from public.financial_transactions where post_id=$1',[post])).rows[0].n,2);
+ const pay=(await db.query("insert into public.sponsor_payments(post_id,amount,payment_method,recorded_by) values($1,100,'cash',$2) returning id",[post,national])).rows[0].id;
+ await db.query('select public.cvoa_launch_allocate($1,$2)',[pay,campaign]);await db.query('select public.cvoa_launch_allocate($1,$2)',[pay,campaign]);
+ const totals=await rpc('select public.cvoa_launch_totals($1) data',[post]);assert.equal(totals.received_cents,15000);assert.equal(totals.spent_cents,1000);assert.equal(totals.available_cents,14000);
+ const foreign=(await db.query("insert into public.sponsor_payments(post_id,amount,payment_method,recorded_by) values($1,100,'cash',$2) returning id",[otherPost,national])).rows[0].id;await failure(()=>db.query('select public.cvoa_launch_allocate($1,$2)',[foreign,campaign]),/this post/);
+ await actor(officer);await failure(()=>db.query('select public.cvoa_launch_campaign($1,$2,$3::jsonb)',[otherPost,campaign,'{}']),/staff access/);
+}));
+test('Public campaign exposure needs National approval; exact Stripe receipts are service-only, idempotent and refund-aware',()=>as(national,async()=>{
+ const data={title:'Location Fund',goal_cents:100000,owner_name:'Lead',deadline:'2030-01-01',launch_funding:true,story:'Public campaign story',published:true};
+ await actor(officer);await failure(()=>db.query('select public.cvoa_launch_campaign($1,null,$2::jsonb)',[post,JSON.stringify(data)]),/National approves/);await failure(()=>db.query("insert into public.fundraising_campaigns(post_id,title,goal_cents,owner_name,deadline,published,created_by) values($1,'Forged',100,'Lead','2030-01-01',true,$2)",[post,officer]),/permission denied/);
+ await actor(national);const c=await rpc('select public.cvoa_launch_campaign($1,null,$2::jsonb) data',[post,JSON.stringify(data)]);await db.query("update public.fundraising_campaigns set status='active' where id=$1",[c]);const slug=(await db.query('select public_slug from public.fundraising_campaigns where id=$1',[c])).rows[0].public_slug;
+ await failure(()=>db.query('select public.cvoa_campaign_request($1,100,$2)',[slug,uid(9950)]),/permission denied/);
+ await db.exec('set local role service_role');const request=await rpc('select public.cvoa_campaign_request($1,4999,$2) data',[slug,uid(9950)]);assert.equal(request.amount_cents,4999);await db.query("update public.campaign_checkout_requests set session_id='cs_test_campaign',livemode=false where id=$1",[request.id]);
+ await failure(()=>db.query("select public.cvoa_campaign_fulfill($1,'cs_test_campaign',100,'usd','pi_campaign',now(),false)",[request.id]),/does not match/);
+ assert.equal(await rpc("select public.cvoa_campaign_fulfill($1,'cs_test_campaign',4999,'usd','pi_campaign',now(),false) data",[request.id]),true);assert.equal(await rpc("select public.cvoa_campaign_fulfill($1,'cs_test_campaign',4999,'usd','pi_campaign',now(),false) data",[request.id]),false);
+ await db.exec('set local role authenticated');await actor(national);assert.equal((await rpc('select public.cvoa_public_campaign($1) data',[slug])).received_cents,0);
+ await db.exec('set local role service_role');const live=await rpc('select public.cvoa_campaign_request($1,10000,$2) data',[slug,uid(9951)]);await db.query("update public.campaign_checkout_requests set session_id='cs_live_campaign',livemode=true where id=$1",[live.id]);await db.query("select public.cvoa_campaign_fulfill($1,'cs_live_campaign',10000,'usd','pi_live_campaign',now(),true)",[live.id]);await db.query("select public.cvoa_campaign_refund('pi_live_campaign',2500)");await db.query("select public.cvoa_campaign_refund('pi_live_campaign',1000)");
+ await db.exec('set local role anon');const pub=await rpc('select public.cvoa_public_campaign($1) data',[slug]);assert.equal(pub.received_cents,7500);assert.equal(pub.owner_name,undefined);assert.equal(pub.documents,undefined);await failure(()=>db.query('select * from public.launch_locations'),/permission denied/);
+ await db.exec('set local role authenticated');await actor(officer);await db.query('select public.cvoa_launch_campaign($1,$2,$3::jsonb)',[post,c,JSON.stringify({...data,title:'Changed public promise'})]);assert.equal(await rpc('select public.cvoa_public_campaign($1) data',[slug]),null);
+}));
+
+test('Launch expense linked to a facility project is not counted twice and later improvements stay out of the opening budget',()=>as(national,async()=>{
+ await launch();const module=(await db.query("insert into public.build_a_post_modules(name) values('Launch Facility') returning id")).rows[0].id;
+ const project=(await db.query("insert into public.post_facility_projects(post_id,module_id,target_budget,created_by) values($1,$2,1000,$3) returning id",[post,module,national])).rows[0].id;
+ const c=await rpc('select public.cvoa_launch_campaign($1,null,$2::jsonb) data',[post,JSON.stringify({title:'Opening',goal_cents:100000,owner_name:'Lead',deadline:'2030-01-01',launch_funding:true})]);
+ await db.query('select public.cvoa_launch_entry($1,$2,$3,$4,$5,$6)',[c,'expense',10000,'2026-10-05','Equipment',project]);
+ let totals=await rpc('select public.cvoa_launch_totals($1) data',[post]);assert.equal(totals.spent_cents,10000);assert.equal(totals.budget_cents,100000);
+ await db.query('update public.post_facility_projects set opening_scope=false where id=$1',[project]);totals=await rpc('select public.cvoa_launch_totals($1) data',[post]);assert.equal(totals.budget_cents,0);assert.equal(totals.spent_cents,10000);
+}));
+test('Required facility projects cannot be removed by post staff and block readiness until complete',()=>as(national,async()=>{
+ await db.query("update public.posts set status='approved' where id=$1",[post]);await launch();const l=await location();await launchCommand('location_submit',{id:l.id});await launchCommand('location_review',{id:l.id,decision:'approved',feedback:'Approved'});await launchCommand('location_secured',{secured:true});
+ const m=(await db.query("insert into public.build_a_post_modules(name) values('Required Setup') returning id")).rows[0].id;
+ const f=(await db.query("insert into public.post_facility_projects(post_id,module_id,required_for_opening,created_by) values($1,$2,true,$3) returning id",[post,m,national])).rows[0].id;
+ const item=(await db.query("insert into public.post_facility_checklist_items(project_id,label) values($1,'Required installation') returning id",[f])).rows[0].id;
+ await actor(officer);await failure(()=>db.query('delete from public.post_facility_projects where id=$1',[f]),/National controls/);await failure(()=>db.query('delete from public.post_facility_checklist_items where id=$1',[item]),/National controls/);await failure(()=>launchCommand('stage',{stage:'opening_review'}),/required facility projects/);
+ await db.query("update public.post_facility_projects set status='complete' where id=$1",[f]);await failure(()=>launchCommand('stage',{stage:'opening_review'}),/required facility projects/);await db.query('update public.post_facility_checklist_items set is_complete=true where id=$1',[item]);await launchCommand('stage',{stage:'opening_review'});
+}));
+test('Launch documents must belong to the post drive and are private across states',()=>as(national,async()=>{
+ await launch();const workspace=(await db.query("select id from public.cvoa_drive_workspaces where post_id=$1",[post])).rows[0].id;const item=uid(9981),path=`${workspace}/${item}/root/lease.pdf`;
+ await db.query("insert into storage.objects(bucket_id,name) values('ncc-drive',$1)",[path]);
+ await db.query("select public.cvoa_drive_create($1,null,'file','Proposed Lease',null,$2,'application/pdf',100,$3)",[workspace,path,item]);await launchCommand('document',{name:'Proposed Lease',path});
+ assert.equal((await db.query("select count(*)::int n from storage.objects where name=$1",[path])).rows[0].n,1);
+ await actor(stateCommander);assert.equal((await db.query('select count(*)::int n from public.launch_documents')).rows[0].n,1);
+ await actor(member);assert.equal((await db.query('select count(*)::int n from public.launch_documents')).rows[0].n,0);assert.equal((await db.query('select count(*)::int n from storage.objects where name=$1',[path])).rows[0].n,0);
+ await actor(officer);await failure(()=>launchCommand('document',{name:'Foreign attachment',path:'other-post/file.pdf'}),/post drive/);
+}));
+test('National dashboard queue includes launch review and help while state and post queues stay scoped',()=>as(national,async()=>{
+ await launch();await launchCommand('plan',{owner_name:'Lead',target_date:'2030-01-01',services:'Opening',help_needed:'Need a location contact'});const l=await location();await launchCommand('location_submit',{id:l.id});await launchCommand('task',{label:'Overdue launch assignment',due_date:'2020-01-01'});
+ const queue=await rpc('select public.cvoa_action_queue() data');assert.ok(queue.items.some(i=>i.id===`launch-location:${l.id}`));assert.ok(queue.items.some(i=>i.path.includes('/post-development?post=')));
+ await actor(stateCommander);const state=await rpc('select public.cvoa_action_queue() data');assert.ok(state.items.some(i=>i.id.startsWith('launch-help:')));assert.equal(state.items.some(i=>i.id.startsWith('launch-location:')),false);
+}));
+test('Voiding a duplicate or incorrect fundraising entry preserves history and offsets the connected ledger once',()=>as(national,async()=>{
+ await launch();const c=await rpc('select public.cvoa_launch_campaign($1,null,$2::jsonb) data',[post,JSON.stringify({title:'Opening',goal_cents:10000,owner_name:'Lead',deadline:'2030-01-01',launch_funding:true})]);
+ await db.query('select public.cvoa_launch_entry($1,$2,$3,$4,$5,null)',[c,'income',5000,'2026-10-05','Incorrect duplicate']);const e=(await db.query('select * from public.fundraising_entries where campaign_id=$1',[c])).rows[0];
+ await actor(stateCommander);await failure(()=>db.query('select public.cvoa_launch_void_entry($1,$2)',[e.id,'Duplicate']),/Entry unavailable/);
+ await actor(officer);await db.query('select public.cvoa_launch_void_entry($1,$2)',[e.id,'Duplicate sponsor receipt']);await db.query('select public.cvoa_launch_void_entry($1,$2)',[e.id,'Repeated request']);
+ assert.equal((await rpc('select public.cvoa_launch_totals($1) data',[post])).received_cents,0);assert.ok((await db.query('select * from public.fundraising_entries where id=$1',[e.id])).rows[0].voided_at);assert.equal((await db.query('select count(*)::int n from public.financial_transactions where post_id=$1',[post])).rows[0].n,2);
 }));
