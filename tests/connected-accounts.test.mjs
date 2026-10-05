@@ -1062,15 +1062,15 @@ test('URO canceled vote ballots are preserved but never counted in a reopened vo
 
 
 test('Meetings: commanders create post meetings, officers and ordinary members cannot',()=>as(national,async()=>{
- const {b}=await uroSetup('post');
+ const {b}=await uroSetup('post', {chair_id:officer});
  await actor(officer);assert.equal(await rpc('select public.uro_body_manage($1) data',[b]),true);
- const meeting=await rpc('select public.uro_create($1,$2::jsonb) data',[b,JSON.stringify({title:'Commander scheduled',type:'regular',scheduled_at:'2030-01-01T00:00:00Z'})]);assert.ok(meeting);
+ const meeting=await rpc('select public.uro_create($1,$2::jsonb) data',[b,JSON.stringify({title:'Commander scheduled',type:'regular',scheduled_at:'2030-01-01T00:00:00Z'})]);assert.ok(meeting);await uroCommand(meeting,'start');assert.ok((await uroState(meeting)).session.started_at);const pending=await rpc('select public.uro_create($1,$2::jsonb) data',[b,JSON.stringify({title:'Pending commander meeting',type:'regular',scheduled_at:'2030-01-02T00:00:00Z'})]);
  await db.exec('reset role');await db.query("update public.profiles set role='post_officer' where id=$1",[officer]);await db.exec('set local role authenticated');await actor(officer);
  assert.equal(await rpc('select public.uro_body_manage($1) data',[b]),false);
  await failure(()=>db.query("insert into public.uro_meetings(post_id,title,meeting_date,created_by) values($1,'Denied legacy',current_date,$2)",[post,officer]),/row-level security/);
  await failure(()=>rpc('select public.uro_create($1,$2::jsonb) data',[b,JSON.stringify({title:'Denied',type:'regular',scheduled_at:'2030-01-01T00:00:00Z'})]),/administration/);
  await failure(()=>rpc('select public.uro_body_setup(null,$1::jsonb) data',[JSON.stringify({jurisdiction:'post',post_id:post})]),/Jurisdiction/);
- await failure(()=>uroCommand(meeting,'start'),/post commander/);
+ await failure(()=>uroCommand(pending,'start'),/post commander/);
  await actor(member);await failure(()=>rpc('select public.uro_create($1,$2::jsonb) data',[b,JSON.stringify({title:'Denied',type:'regular',scheduled_at:'2030-01-01T00:00:00Z'})]),/administration/);
 }));
 
