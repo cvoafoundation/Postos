@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { money, edgeError } from "./sponsorship";
-export default function SponsorshipPaymentResult() {
+export default function SponsorshipPaymentResult({ campaign = false }: { campaign?: boolean }) {
   const [params] = useSearchParams(),
     session = params.get("session_id"),
     canceled = params.get("canceled"),
@@ -14,7 +14,7 @@ export default function SponsorshipPaymentResult() {
     let timer: ReturnType<typeof setTimeout>;
     if (!session || canceled) return;
     supabase.functions
-      .invoke("create-sponsorship-checkout", {
+      .invoke(campaign ? "create-campaign-checkout" : "create-sponsorship-checkout", {
         body: { action: "status", session_id: session },
       })
       .then(async (r) => {
@@ -30,7 +30,7 @@ export default function SponsorshipPaymentResult() {
       active = false;
       clearTimeout(timer);
     };
-  }, [session, canceled, attempt]);
+  }, [session, canceled, attempt, campaign]);
   return (
     <main className="min-h-screen bg-base px-4 py-16">
       <section className="panel p-8 max-w-xl mx-auto space-y-4 text-center">
@@ -46,7 +46,7 @@ export default function SponsorshipPaymentResult() {
               ? "Thank you for supporting CVOA"
               : result?.status === "expired"
                 ? "Payment link expired"
-                : "Confirming your sponsorship payment"}
+                : campaign ? "Confirming your campaign donation" : "Confirming your sponsorship payment"}
         </h1>
         <p className="text-muted">
           {canceled
