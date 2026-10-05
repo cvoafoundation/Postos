@@ -20,6 +20,8 @@ export default function BuildAPostDetail() {
   const navigate = useNavigate()
   const { profile, isNational } = useAuth()
   const postId = searchParams.get('post') ?? profile?.post_id ?? null
+  const canEdit = isNational || (['post_commander','post_officer'].includes(profile?.role ?? '') && postId === profile?.post_id)
+  const [saveError, setSaveError] = useState('')
 
   const [module, setModule] = useState<BuildAPostModule | null>(null)
   const [project, setProject] = useState<PostFacilityProject | null>(null)
@@ -79,7 +81,7 @@ export default function BuildAPostDetail() {
   }, [moduleId, postId])
 
   async function startProject() {
-    if (!postId || !module) return
+    if (!postId || !module || !canEdit) return
     setStarting(true)
     const { data: newProject, error } = await supabase
       .from('post_facility_projects')
@@ -98,32 +100,35 @@ export default function BuildAPostDetail() {
   }
 
   async function toggleChecklistItem(item: PostFacilityChecklistItem) {
+    if (!canEdit) return
     const is_complete = !item.is_complete
-    setChecklist((prev) => prev.map((i) => (i.id === item.id ? { ...i, is_complete } : i)))
-    await supabase
+    const result = await supabase
       .from('post_facility_checklist_items')
       .update({ is_complete, completed_at: is_complete ? new Date().toISOString() : null })
-      .eq('id', item.id)
+      .eq('id', item.id).select('id').single()
+    if(result.error)setSaveError(result.error.message);else{setSaveError('');void load();}
   }
 
   async function saveBudget() {
-    if (!project) return
-    await supabase.from('post_facility_projects').update({ target_budget: budgetInput ? Number(budgetInput) : null }).eq('id', project.id)
-    load()
+    if (!project || !canEdit) return
+    if (budgetInput && (!Number.isFinite(Number(budgetInput)) || Number(budgetInput)<0)) {setSaveError('Enter a valid nonnegative budget.');return;}
+    const r = await supabase.from('post_facility_projects').update({ target_budget: budgetInput ? Number(budgetInput) : null }).eq('id', project.id).select('id').single()
+    if(r.error)setSaveError(r.error.message);else{setSaveError('');void load();}
   }
 
   async function updateStatus(status: PostFacilityProject['status']) {
-    if (!project) return
-    await supabase.from('post_facility_projects').update({ status }).eq('id', project.id)
-    load()
+    if (!project || !canEdit) return
+    const r = await supabase.from('post_facility_projects').update({ status }).eq('id', project.id).select('id').single()
+    if(r.error)setSaveError(r.error.message);else{setSaveError('');void load();}
   }
 
   async function logExpense() {
-    if (!project || !postId) return
+    if (!project || !postId || !canEdit) return
     const amountStr = window.prompt('Expense amount ($)?')
     if (!amountStr) return
     const description = window.prompt('What was this expense for?') ?? ''
-    await supabase.from('financial_transactions').insert({
+    if (!Number.isFinite(Number(amountStr)) || Number(amountStr)<=0 || Math.round(Number(amountStr)*100)/100!==Number(amountStr)) {setSaveError('Enter a positive amount with two decimal places.');return;}
+    const expenseResult = await supabase.from('financial_transactions').insert({
       post_id: postId,
       transaction_type: 'expense',
       category: module?.name ?? 'Facility',
@@ -133,7 +138,7 @@ export default function BuildAPostDetail() {
       created_by: profile?.id ?? null,
       facility_project_id: project.id,
     })
-    load()
+    if(expenseResult.error)setSaveError(expenseResult.error.message);else{setSaveError('');void load();}
   }
 
   async function generatePlan() {
@@ -160,16 +165,17 @@ export default function BuildAPostDetail() {
 
   if (loading || !module) return <p className="text-sm text-muted">Loading…</p>
 
-  const spent = transactions.reduce((sum, t) => sum + Number(t.amount), 0)
+  const spent = transactions.reduce((sum, t) => sum + (t.transaction_type === 'expense' ? 1 : -1) * Number(t.amount), 0)
   const checklistDone = checklist.filter((c) => c.is_complete).length
 
   return (
     <div>
-      <button onClick={() => navigate('/build-a-post')} className="text-xs font-mono text-muted hover:text-gold mb-4">
-        ← Back to Facility Planning
+      <button onClick={() => navigate(`/post-development?post=${postId ?? ''}&tab=facility`)} className="text-xs font-mono text-muted hover:text-gold mb-4">
+        ← Back to Post Development
       </button>
 
-      <PageHeader eyebrow="Module 10" title={module.name} />
+      <PageHeader eyebrow="Facility Plan" title={module.name} />
+      {saveError && <p role="alert" className="text-status-attention mb-4">{saveError}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -232,16 +238,20 @@ export default function BuildAPostDetail() {
               <p className="text-sm text-muted mb-4">
                 Creates a build checklist and lets you track real spend against a budget.
               </p>
-              <button onClick={startProject} disabled={starting} className="btn-gold w-full disabled:opacity-50">
+              <button onClick={startProject} disabled={starting || !canEdit} className="btn-gold w-full disabled:opacity-50">
                 {starting ? 'Starting…' : 'Start Project'}
               </button>
             </div>
           ) : (
             <>
               <div className="panel p-5">
+                <div className="eyebrow mb-3">Opening Scope</div>
+                <label className="block text-sm mb-3"><input type="checkbox" disabled={!canEdit} checked={project.opening_scope} onChange={async e => { const r = await supabase.from('post_facility_projects').update({opening_scope:e.target.checked}).eq('id',project.id).select('id').single(); if(r.error)setSaveError(r.error.message); else {setSaveError('');void load();} }} /> Include this module in the opening budget</label>
+                <p className="text-xs text-muted mb-3">{project.required_for_opening ? 'National requires this checklist before opening.' : 'Recommended module; unfinished work can continue after opening.'}</p>
                 <div className="eyebrow mb-3">Project Status</div>
                 <select
                   className="input-field mb-3"
+                  disabled={!canEdit}
                   value={project.status}
                   onChange={(e) => updateStatus(e.target.value as PostFacilityProject['status'])}
                 >
@@ -255,10 +265,11 @@ export default function BuildAPostDetail() {
                     type="number"
                     className="input-field"
                     placeholder="$0"
+                    min="0" step="0.01" disabled={!canEdit}
                     value={budgetInput}
                     onChange={(e) => setBudgetInput(e.target.value)}
                   />
-                  <button onClick={saveBudget} className="btn-ghost text-xs px-3 shrink-0">
+                  <button onClick={saveBudget} disabled={!canEdit} className="btn-ghost text-xs px-3 shrink-0">
                     Save
                   </button>
                 </div>
@@ -280,7 +291,7 @@ export default function BuildAPostDetail() {
                     </div>
                   </div>
                 )}
-                <button onClick={logExpense} className="btn-ghost w-full mt-3 text-xs flex items-center justify-center gap-1.5">
+                <button onClick={logExpense} disabled={!canEdit} className="btn-ghost w-full mt-3 text-xs flex items-center justify-center gap-1.5">
                   <Plus size={12} /> Log Expense
                 </button>
               </div>
@@ -290,7 +301,7 @@ export default function BuildAPostDetail() {
                 <div className="space-y-2">
                   {checklist.map((item) => (
                     <label key={item.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="checkbox" checked={item.is_complete} onChange={() => toggleChecklistItem(item)} />
+                      <input type="checkbox" disabled={!canEdit} checked={item.is_complete} onChange={() => toggleChecklistItem(item)} />
                       <span className={item.is_complete ? 'text-muted line-through' : 'text-ink'}>{item.label}</span>
                     </label>
                   ))}
@@ -305,7 +316,7 @@ export default function BuildAPostDetail() {
                 <Sparkles size={14} /> AI Business Case
               </div>
               {!generatedPlan ? (
-                <button onClick={generatePlan} disabled={generating} className="btn-gold w-full flex items-center justify-center gap-2 disabled:opacity-50">
+                <button onClick={generatePlan} disabled={generating || !canEdit} className="btn-gold w-full flex items-center justify-center gap-2 disabled:opacity-50">
                   {generating ? (
                     <>
                       <Loader2 className="animate-spin" size={16} /> Generating…

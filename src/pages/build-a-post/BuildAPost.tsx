@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import type { BuildAPostModule, Post, PostFacilityProject } from '@/lib/types'
 
-export default function BuildAPost() {
+export default function BuildAPost({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { profile, isNational } = useAuth()
@@ -45,7 +45,7 @@ export default function BuildAPost() {
 
   return (
     <div>
-      <PageHeader
+      {!embedded && <PageHeader
         eyebrow="Module 10 — The Playbook"
         title="Facility Planning"
         action={
@@ -64,7 +64,7 @@ export default function BuildAPost() {
             </select>
           ) : undefined
         }
-      />
+      />}
 
       <p className="text-sm text-muted mb-6 max-w-2xl">
         Explore what it takes to build out each part of a post — cost estimates, equipment,

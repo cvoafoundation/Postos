@@ -34,7 +34,6 @@ const CongressCalendar = lazy(() => import('@/pages/congress/CongressCalendar'))
 const TransparencyPortal = lazy(() => import('@/pages/congress/TransparencyPortal'))
 const PostHealth = lazy(() => import('@/pages/health/PostHealth'))
 const PostHealthDetail = lazy(() => import('@/pages/health/PostHealthDetail'))
-const BuildAPost = lazy(() => import('@/pages/build-a-post/BuildAPost'))
 const BuildAPostDetail = lazy(() => import('@/pages/build-a-post/BuildAPostDetail'))
 const MembershipRoster = lazy(() => import('@/pages/members/MembershipRoster'))
 const MembershipReview = lazy(() => import('@/pages/members/MembershipReview'))
@@ -58,7 +57,8 @@ const MyApplications = lazy(() => import('@/pages/members/MyApplications'))
 const MembershipRequests = lazy(() => import('@/pages/members/MembershipRequests'))
 const ScopedPostOverview = lazy(() => import('@/pages/admin/ScopedPostOverview'))
 const StateMemberships = lazy(() => import('@/pages/admin/StateMemberships'))
-const Fundraising = lazy(() => import('@/pages/fundraising/Fundraising'))
+const PostDevelopment = lazy(() => import('@/pages/development/PostDevelopment'))
+const PublicCampaign = lazy(() => import('@/pages/development/PublicCampaign'))
 
 // Preserve older invitation emails that redirected to /login.
 const legacySetupHash = window.location.pathname === '/login' &&
@@ -79,7 +79,9 @@ export default function App() {
       <Route path="/join-membership/:postId" element={<JoinMembership />} />
       <Route path="/join" element={<JoinCVOA />} />
       <Route path="/verify-membership/:memberId" element={<VerifyMembership />} />
-      <Route path="/sponsorship-payment" element={<SponsorshipPaymentResult />} />
+      <Route path="/campaign/:slug" element={<PublicCampaign />} />
+        <Route path="/campaign-payment" element={<SponsorshipPaymentResult campaign />} />
+        <Route path="/sponsorship-payment" element={<SponsorshipPaymentResult />} />
       <Route path="/membership-payment-result" element={<MembershipPaymentResult />} />
       <Route path="/transparency" element={<TransparencyPortal />} />
       {/* Everything else is gated behind auth */}
@@ -116,7 +118,8 @@ function AuthenticatedApp() {
         <Route path="/my-applications" element={<MyApplications />} />
         <Route path="/state" element={<RoleGuard roles={['state_commander']}><StateHome /></RoleGuard>} />
         <Route path="/membership-requests" element={<Navigate to="/members?tab=requests" replace />} />
-        <Route path="/fundraising" element={<RoleGuard roles={['state_commander','post_commander','post_officer']}><Fundraising /></RoleGuard>} />
+        <Route path="/post-development" element={<RoleGuard roles={['state_commander','post_commander','post_officer']}><PostDevelopment /></RoleGuard>} />
+        <Route path="/fundraising" element={<DevelopmentRedirect tab="fundraising" />} />
         <Route
           path="/applications"
           element={
@@ -251,15 +254,15 @@ function AuthenticatedApp() {
         <Route
           path="/build-a-post"
           element={
-            <RoleGuard roles={['post_commander', 'post_officer']}>
-              <BuildAPost />
+            <RoleGuard roles={['state_commander','post_commander', 'post_officer']}>
+              <DevelopmentRedirect tab="facility" />
             </RoleGuard>
           }
         />
         <Route
           path="/build-a-post/:moduleId"
           element={
-            <RoleGuard roles={['post_commander', 'post_officer']}>
+            <RoleGuard roles={['state_commander','post_commander', 'post_officer']}>
               <BuildAPostDetail />
             </RoleGuard>
           }
@@ -371,3 +374,5 @@ function RosterRoute() {
   const requests = params.get('tab') === 'requests'
   return <div><nav aria-label="Membership workspace" className="flex flex-wrap gap-3 mb-6 border-b border-hairline pb-3"><Link className={requests ? 'btn-ghost' : 'btn-gold'} aria-current={!requests ? 'page' : undefined} to="/members">Membership Roster</Link><Link className={requests ? 'btn-gold' : 'btn-ghost'} aria-current={requests ? 'page' : undefined} to="/members?tab=requests">Join &amp; Transfer Requests</Link></nav>{requests ? <MembershipRequests /> : !isNational && profile?.role === 'state_commander' ? <StateMemberships /> : <MembershipRoster />}</div>
 }
+
+function DevelopmentRedirect({tab}:{tab:string}) { const [params]=useSearchParams(); const target=new URLSearchParams(params); target.set("tab",tab); return <Navigate replace to={`/post-development?${target.toString()}`} />; }

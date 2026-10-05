@@ -140,18 +140,12 @@ export default function PostHealthDetail() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // The one place a post's status actually advances. Moving to Active also
-  // strips a leftover "(Forming)" from the auto-generated name — without
-  // this, a post could go fully active while its name still says otherwise,
-  // which is exactly what was confusing before this page existed.
+  // Opening approval is handled by the launch workspace.
   async function advanceStatus(next: PostStatus) {
     if (!postId || !post || !isNational) return
-    if (next === 'active_post' && !window.confirm(`Launch ${post.name} as an Active Post? Confirm National has approved its launch. The post will appear in active operations; outstanding checklist items remain visible.`)) return
+    if (next === 'active_post') { navigate(`/post-development?post=${post.id}`); return }
     setAdvancing(true)
-    const patch: { status: PostStatus; name?: string } = { status: next }
-    if (next === 'active_post' && post.name.endsWith(' (Forming)')) {
-      patch.name = post.name.slice(0, -' (Forming)'.length)
-    }
+    const patch = { status: next }
     const { error } = await supabase.from('posts').update(patch).eq('id', postId).select('id').single()
     if (error) { setAdvancing(false); window.alert(`Status was not changed: ${error.message}`); return }
     setAdvancing(false)
@@ -241,12 +235,12 @@ export default function PostHealthDetail() {
               </div>
               {isNational && nextStatus && (
                 <button onClick={() => advanceStatus(nextStatus)} disabled={advancing} className="btn-gold flex items-center gap-2 disabled:opacity-50">
-                  {advancing ? 'Advancing…' : `Advance to ${POST_STATUS_LABELS[nextStatus]}`} <ArrowRight size={14} />
+                  {advancing ? 'Advancing…' : nextStatus === 'active_post' ? 'Review Opening in Post Development' : `Advance to ${POST_STATUS_LABELS[nextStatus]}`} <ArrowRight size={14} />
                 </button>
               )}
             </div>
 
-            {isNational && post.status !== 'charter_ready' && <div className="panel p-4 mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-display text-lg">Ready to launch?</h2><p className="text-sm text-muted">National can approve launch directly when requirements have been reviewed. Unfinished checklist work stays on record.</p></div><button className="btn-gold" disabled={advancing} onClick={() => advanceStatus('active_post')}>Launch as Active Post</button></div>}
+            {isNational && post.status !== 'charter_ready' && <div className="panel p-4 mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-display text-lg">Ready to launch?</h2><p className="text-sm text-muted">Review the location, funding and opening requirements in Post Development.</p></div><button className="btn-gold" disabled={advancing} onClick={() => advanceStatus('active_post')}>Review Opening in Post Development</button></div>}
             <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
               <div>
                 <div className="eyebrow mb-1">Shareable Link</div>

@@ -56,8 +56,7 @@ const SHARED_ITEMS: NavItem[] = [
   { to: '/recruiting', label: 'Recruiting Engine', icon: Radar },
   { to: '/sponsors', label: 'Sponsorship CRM', icon: HandCoins },
   { to: '/health', label: 'Posts', icon: HeartPulse },
-  { to: '/build-a-post', label: 'Facility Planning', icon: Hammer },
-  { to: '/fundraising', label: 'Fundraising', icon: HandCoins },
+  { to: '/post-development', label: 'Post Development', icon: Hammer },
 ]
 
 // A plain paying member — their card, their post's own drive drop, who
@@ -105,7 +104,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     { to: '/', label: isNational ? 'National Dashboard' : isState ? 'State Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
     ...(isState || isPlainMember ? [{ to: '/meetings', label: 'Meetings', icon: CalendarCheck }] : []),
-    ...(isState ? [{ to: '/sponsors', label: 'State Sponsorship', icon: HandCoins }, { to: '/drive', label: 'Documents & Files', icon: HardDrive }, { to: '/health', label: 'State Posts', icon: HeartPulse }, { to: '/members', label: 'State Membership Roster', icon: IdCard }, { to: '/fundraising', label: 'State Fundraising', icon: HandCoins }, { to: '/congress', label: 'Veterans Congress', icon: Landmark }] : []),
+    ...(isState ? [{ to: '/sponsors', label: 'State Sponsorship', icon: HandCoins }, { to: '/drive', label: 'Documents & Files', icon: HardDrive }, { to: '/health', label: 'State Posts', icon: HeartPulse }, { to: '/members', label: 'State Membership Roster', icon: IdCard }, { to: '/post-development', label: 'Post Development', icon: Hammer }, { to: '/congress', label: 'Veterans Congress', icon: Landmark }] : []),
     // National always gets the full toolset too, on top of their own-only
     // items above — they manage every post's modules directly. A plain
     // member gets the small member set. A guest_applicant (not yet
