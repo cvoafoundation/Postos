@@ -1,17 +1,75 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '@/context/AuthContext'
-import { supabase } from '@/lib/supabase'
-import type { Member, Post } from '@/lib/types'
-import { Modal } from '@/components/ui/Modal'
-import { MembershipCardVisual } from '@/components/membership/MembershipCardVisual'
-import { Flag, Landmark, UserPlus, ScrollText, CheckCircle2, Copy, Check, ArrowRight } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabase";
+import type { Member, Post } from "@/lib/types";
+import { postDisplayName } from "@/pages/posts/model";
+import { Modal } from "@/components/ui/Modal";
+import { MembershipCardVisual } from "@/components/membership/MembershipCardVisual";
+import {
+  Flag,
+  Landmark,
+  UserPlus,
+  ScrollText,
+  CheckCircle2,
+  Copy,
+  Check,
+  ArrowRight,
+} from "lucide-react";
 
 const US_STATES = [
-  'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
-  'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD',
-  'TN','TX','UT','VT','VA','WA','WV','WI','WY',
-]
+  "AL",
+  "AK",
+  "AZ",
+  "AR",
+  "CA",
+  "CO",
+  "CT",
+  "DE",
+  "DC",
+  "FL",
+  "GA",
+  "HI",
+  "ID",
+  "IL",
+  "IN",
+  "IA",
+  "KS",
+  "KY",
+  "LA",
+  "ME",
+  "MD",
+  "MA",
+  "MI",
+  "MN",
+  "MS",
+  "MO",
+  "MT",
+  "NE",
+  "NV",
+  "NH",
+  "NJ",
+  "NM",
+  "NY",
+  "NC",
+  "ND",
+  "OH",
+  "OK",
+  "OR",
+  "PA",
+  "RI",
+  "SC",
+  "SD",
+  "TN",
+  "TX",
+  "UT",
+  "VT",
+  "VA",
+  "WA",
+  "WV",
+  "WI",
+  "WY",
+];
 
 // Icon badge shared by every action tile below — a consistent ring treatment
 // is what makes four different actions read as one designed system instead
@@ -21,28 +79,28 @@ function TileIcon({ icon: Icon }: { icon: typeof Flag }) {
     <div className="w-11 h-11 rounded-full border border-gold/40 flex items-center justify-center mb-4 group-hover:border-gold group-hover:bg-gold/5 transition-colors">
       <Icon className="text-gold" size={20} />
     </div>
-  )
+  );
 }
 
 export default function MemberHome() {
-  const navigate = useNavigate()
-  const { profile } = useAuth()
-  const [member, setMember] = useState<Member | null>(null)
-  const [posts, setPosts] = useState<Post[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showStartPost, setShowStartPost] = useState(false)
-  const [showRecruit, setShowRecruit] = useState(false)
+  const navigate = useNavigate();
+  const { profile } = useAuth();
+  const [member, setMember] = useState<Member | null>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showStartPost, setShowStartPost] = useState(false);
+  const [showRecruit, setShowRecruit] = useState(false);
 
   // Join-a-post is a dropdown now instead of one card per post — same
   // action either way (drops a prospect into that post's recruiting
   // pipeline), just a much shorter list on screen.
-  const [selectedPostId, setSelectedPostId] = useState('')
-  const [joinSubmitting, setJoinSubmitting] = useState(false)
-  const [joinRequested, setJoinRequested] = useState(false)
-  const [joinError, setJoinError] = useState<string | null>(null)
+  const [selectedPostId, setSelectedPostId] = useState("");
+  const [joinSubmitting, setJoinSubmitting] = useState(false);
+  const [joinRequested, setJoinRequested] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!profile) return
+    if (!profile) return;
     Promise.all([
       // .single() breaks silently (returns null, no thrown error we catch)
       // if duplicate members rows ever share the same profile_id — a real
@@ -50,40 +108,52 @@ export default function MemberHome() {
       // active row (or just the most recent) means one duplicate row can
       // never blank out the whole card.
       supabase
-        .from('members')
-        .select('*')
-        .eq('profile_id', profile.id)
-        .order('membership_status', { ascending: true }) // 'active' sorts before 'pending_payment'
-        .order('created_at', { ascending: false }),
-      supabase.rpc('cvoa_public_posts'),
+        .from("members")
+        .select("*")
+        .eq("profile_id", profile.id)
+        .order("membership_status", { ascending: true }) // 'active' sorts before 'pending_payment'
+        .order("created_at", { ascending: false }),
+      supabase.rpc("cvoa_public_posts"),
     ]).then(([m, p]) => {
-      const rows = (m.data ?? []) as Member[]
-      setMember(rows.find((r) => r.membership_status === 'active') ?? rows[0] ?? null)
-      setPosts((p.data ?? []) as Post[])
-      setLoading(false)
-    })
-  }, [profile])
+      const rows = (m.data ?? []) as Member[];
+      setMember(
+        rows.find((r) => r.membership_status === "active") ?? rows[0] ?? null,
+      );
+      setPosts((p.data ?? []) as Post[]);
+      setLoading(false);
+    });
+  }, [profile]);
 
   async function requestToJoin(e: FormEvent) {
-    e.preventDefault()
-    if (!selectedPostId) return
-    setJoinSubmitting(true)
-    setJoinError(null)
+    e.preventDefault();
+    if (!selectedPostId) return;
+    setJoinSubmitting(true);
+    setJoinError(null);
     try {
-      if (!member) throw new Error('Link your membership before requesting a post affiliation.')
-      const { error } = await supabase.rpc('cvoa_request_post_change', {
-        p_member: member.id, p_post: selectedPostId, p_reason:'Request to join from the member portal.',
-      })
-      if (error) throw error
-      setJoinRequested(true)
-    } catch (e) { setJoinError((e as Error).message) }
-    finally { setJoinSubmitting(false) }
+      if (!member)
+        throw new Error(
+          "Link your membership before requesting a post affiliation.",
+        );
+      const { error } = await supabase.rpc("cvoa_request_post_change", {
+        p_member: member.id,
+        p_post: selectedPostId,
+        p_reason: "Request to join from the member portal.",
+      });
+      if (error) throw error;
+      setJoinRequested(true);
+    } catch (e) {
+      setJoinError((e as Error).message);
+    } finally {
+      setJoinSubmitting(false);
+    }
   }
 
-  if (loading) return <p className="text-sm text-muted">Loading…</p>
+  if (loading) return <p className="text-sm text-muted">Loading…</p>;
 
-  const homePost = posts.find((p) => p.id === member?.post_id)
-  const joinedYear = member?.joined_at ? new Date(member.joined_at).getFullYear() : null
+  const homePost = posts.find((p) => p.id === member?.post_id);
+  const joinedYear = member?.joined_at
+    ? new Date(member.joined_at).getFullYear()
+    : null;
 
   return (
     <div>
@@ -96,10 +166,29 @@ export default function MemberHome() {
       )}
       {member && (
         <p className="text-xs text-muted text-center mb-8">
-          This card updates automatically as your membership status changes — nothing to regenerate.
+          This card updates automatically as your membership status changes —
+          nothing to regenerate.
         </p>
       )}
 
+      {member?.post_id && (
+        <section className="panel p-5 mb-6">
+          <h2 className="font-display text-xl">My Post Records</h2>
+          <p className="text-sm text-muted mt-2">
+            {homePost ? postDisplayName(homePost) : "Your affiliated post"} ·
+            Read scheduled meetings, published minutes, and documents shared
+            with you.
+          </p>
+          <div className="flex gap-3 flex-wrap mt-4">
+            <Link className="btn-gold" to={`/meetings?post=${member.post_id}`}>
+              Meetings & Printable Minutes
+            </Link>
+            <Link className="btn-ghost" to={`/drive?post=${member.post_id}`}>
+              Shared Documents & Files
+            </Link>
+          </div>
+        </section>
+      )}
       {/* Branded hero band — the seal watermark and foil divider here echo
           the membership card itself, so the page feels like one designed
           system rather than a card sitting inside a generic app shell. */}
@@ -113,7 +202,9 @@ export default function MemberHome() {
         <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-transparent via-ink to-transparent" />
         <div className="relative p-6">
           <div className="eyebrow mb-1">Welcome</div>
-          <h1 className="font-display text-3xl tracking-wide mb-3">{profile?.full_name}</h1>
+          <h1 className="font-display text-3xl tracking-wide mb-3">
+            {profile?.full_name}
+          </h1>
           <div className="flex flex-wrap items-center gap-2">
             {homePost && (
               <span className="eyebrow border border-hairline rounded-full px-3 py-1 normal-case tracking-normal text-ink">
@@ -129,10 +220,18 @@ export default function MemberHome() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 mb-6 text-sm"><Link to="/my-membership" className="text-gold">Manage Membership →</Link><Link to="/my-applications" className="text-gold">Track My Post Applications →</Link></div>
+      <div className="flex flex-wrap gap-4 mb-6 text-sm">
+        <Link to="/my-membership" className="text-gold">
+          Manage Membership →
+        </Link>
+        <Link to="/my-applications" className="text-gold">
+          Track My Post Applications →
+        </Link>
+      </div>
       <div className="eyebrow mb-3">Get Involved</div>
       <p className="text-sm text-muted mb-6 max-w-2xl">
-        Membership is a starting point, not a finish line. Here's how to actually get involved.
+        Membership is a starting point, not a finish line. Here's how to
+        actually get involved.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -140,9 +239,13 @@ export default function MemberHome() {
           <TileIcon icon={Flag} />
           <div className="font-display text-lg mb-1">Start a Post</div>
           <p className="text-xs text-muted mb-4">
-            No CVOA post near you? Start one — this goes straight to National's Application Pipeline for review.
+            No CVOA post near you? Start one — this goes straight to National's
+            Application Pipeline for review.
           </p>
-          <button onClick={() => setShowStartPost(true)} className="btn-gold w-full text-sm flex items-center justify-center gap-1.5">
+          <button
+            onClick={() => setShowStartPost(true)}
+            className="btn-gold w-full text-sm flex items-center justify-center gap-1.5"
+          >
             Start a Post <ArrowRight size={14} />
           </button>
         </div>
@@ -151,10 +254,13 @@ export default function MemberHome() {
           <TileIcon icon={Landmark} />
           <div className="font-display text-lg mb-1">Veterans Congress</div>
           <p className="text-xs text-muted mb-4">
-            Members can follow and vote on open resolutions — delegates are chosen by posts to carry a formal
-            vote.
+            Members can follow and vote on open resolutions — delegates are
+            chosen by posts to carry a formal vote.
           </p>
-          <button onClick={() => navigate('/congress')} className="btn-ghost w-full text-sm flex items-center justify-center gap-1.5">
+          <button
+            onClick={() => navigate("/congress")}
+            className="btn-ghost w-full text-sm flex items-center justify-center gap-1.5"
+          >
             Open Votes <ArrowRight size={14} />
           </button>
         </div>
@@ -163,9 +269,13 @@ export default function MemberHome() {
           <TileIcon icon={ScrollText} />
           <div className="font-display text-lg mb-1">Transparency Portal</div>
           <p className="text-xs text-muted mb-4">
-            Passed resolutions, official positions, and legislative tracking — open to every member, always.
+            Passed resolutions, official positions, and legislative tracking —
+            open to every member, always.
           </p>
-          <button onClick={() => navigate('/transparency')} className="btn-ghost w-full text-sm flex items-center justify-center gap-1.5">
+          <button
+            onClick={() => navigate("/transparency")}
+            className="btn-ghost w-full text-sm flex items-center justify-center gap-1.5"
+          >
             View Portal <ArrowRight size={14} />
           </button>
         </div>
@@ -174,28 +284,43 @@ export default function MemberHome() {
           <TileIcon icon={UserPlus} />
           <div className="font-display text-lg mb-1">Recruit a Member</div>
           <p className="text-xs text-muted mb-4">
-            Know a veteran who should be part of this? Share your post's sign-up link directly.
+            Know a veteran who should be part of this? Share your post's sign-up
+            link directly.
           </p>
-          <button onClick={() => setShowRecruit(true)} className="btn-ghost w-full text-sm flex items-center justify-center gap-1.5">
+          <button
+            onClick={() => setShowRecruit(true)}
+            className="btn-ghost w-full text-sm flex items-center justify-center gap-1.5"
+          >
             Get Recruiting Link <ArrowRight size={14} />
           </button>
         </div>
       </div>
 
-      {joinError && <p role="alert" className="text-status-attention mb-3">{joinError}</p>}
+      {joinError && (
+        <p role="alert" className="text-status-attention mb-3">
+          {joinError}
+        </p>
+      )}
       <div id="join-a-post" className="panel p-5 max-w-lg">
         <div className="eyebrow mb-1">Join a Post</div>
         <p className="text-xs text-muted mb-4">
-          Pick an active post near you. The receiving post commander reviews join requests; your current membership stays in place until approval.
+          Pick an active post near you. The receiving post commander reviews
+          join requests; your current membership stays in place until approval.
         </p>
         {posts.length === 0 ? (
-          <p className="text-sm text-muted">No active posts yet — be the first to start one.</p>
+          <p className="text-sm text-muted">
+            No active posts yet — be the first to start one.
+          </p>
         ) : joinRequested ? (
           <div className="text-sm text-status-active flex items-center gap-1.5">
-            <CheckCircle2 size={16} /> Request sent — the receiving post commander will review it. Track the decision in My Membership.
+            <CheckCircle2 size={16} /> Request sent — the receiving post
+            commander will review it. Track the decision in My Membership.
           </div>
         ) : (
-          <form onSubmit={requestToJoin} className="flex flex-col sm:flex-row gap-3">
+          <form
+            onSubmit={requestToJoin}
+            className="flex flex-col sm:flex-row gap-3"
+          >
             <select
               required
               className="input-field flex-1"
@@ -206,12 +331,20 @@ export default function MemberHome() {
               {posts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
-                  {p.city ? ` — ${p.city}, ${p.state}` : p.state ? ` — ${p.state}` : ''}
+                  {p.city
+                    ? ` — ${p.city}, ${p.state}`
+                    : p.state
+                      ? ` — ${p.state}`
+                      : ""}
                 </option>
               ))}
             </select>
-            <button type="submit" disabled={joinSubmitting || !selectedPostId} className="btn-gold text-sm disabled:opacity-50 whitespace-nowrap">
-              {joinSubmitting ? 'Sending…' : 'Request to Join'}
+            <button
+              type="submit"
+              disabled={joinSubmitting || !selectedPostId}
+              className="btn-gold text-sm disabled:opacity-50 whitespace-nowrap"
+            >
+              {joinSubmitting ? "Sending…" : "Request to Join"}
             </button>
           </form>
         )}
@@ -219,8 +352,8 @@ export default function MemberHome() {
 
       {showStartPost && (
         <StartPostModal
-          defaultName={profile?.full_name ?? ''}
-          defaultEmail={profile?.email ?? ''}
+          defaultName={profile?.full_name ?? ""}
+          defaultEmail={profile?.email ?? ""}
           onClose={() => setShowStartPost(false)}
         />
       )}
@@ -232,19 +365,27 @@ export default function MemberHome() {
         />
       )}
     </div>
-  )
+  );
 }
 
-function RecruitLinkModal({ post, onClose }: { post: Post | null; onClose: () => void }) {
-  const [copied, setCopied] = useState(false)
+function RecruitLinkModal({
+  post,
+  onClose,
+}: {
+  post: Post | null;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
   // National at-large members (no post_id) don't have a single post's
   // sign-up link to share — point them at the general join page instead.
-  const link = post ? `${window.location.origin}/join-post/${post.id}` : `${window.location.origin}/join`
+  const link = post
+    ? `${window.location.origin}/join-post/${post.id}`
+    : `${window.location.origin}/join`;
 
   async function copyLink() {
-    await navigator.clipboard.writeText(link)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -255,50 +396,70 @@ function RecruitLinkModal({ post, onClose }: { post: Post | null; onClose: () =>
           : `You're not currently tied to a specific post, so this is the general CVOA sign-up link.`}
       </p>
       <div className="flex items-center gap-2">
-        <input readOnly value={link} className="input-field flex-1 text-xs font-mono" onFocus={(e) => e.target.select()} />
-        <button onClick={copyLink} className="btn-gold px-3 py-2 shrink-0" aria-label="Copy link">
+        <input
+          readOnly
+          value={link}
+          className="input-field flex-1 text-xs font-mono"
+          onFocus={(e) => e.target.select()}
+        />
+        <button
+          onClick={copyLink}
+          className="btn-gold px-3 py-2 shrink-0"
+          aria-label="Copy link"
+        >
           {copied ? <Check size={16} /> : <Copy size={16} />}
         </button>
       </div>
     </Modal>
-  )
+  );
 }
 
-function StartPostModal({ defaultName, defaultEmail, onClose }: { defaultName: string; defaultEmail: string; onClose: () => void }) {
+function StartPostModal({
+  defaultName,
+  defaultEmail,
+  onClose,
+}: {
+  defaultName: string;
+  defaultEmail: string;
+  onClose: () => void;
+}) {
   const [form, setForm] = useState({
     name: defaultName,
     email: defaultEmail,
-    phone: '',
-    city: '',
-    state: '',
-    motivation: '',
-  })
-  const [saving, setSaving] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+    phone: "",
+    city: "",
+    state: "",
+    motivation: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((f) => ({ ...f, [key]: value }))
+  function update<K extends keyof typeof form>(
+    key: K,
+    value: (typeof form)[K],
+  ) {
+    setForm((f) => ({ ...f, [key]: value }));
   }
 
   async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    const { error } = await supabase.from('post_applications').insert({
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const { error } = await supabase.from("post_applications").insert({
       name: form.name,
       email: form.email,
       phone: form.phone || null,
       city: form.city || null,
       state: form.state,
       motivation: form.motivation || null,
-    })
-    setSaving(false)
+    });
+    setSaving(false);
     if (error) {
-      setError(error.message)
-      return
+      setError(error.message);
+      return;
     }
-    setSubmitted(true)
+    setSubmitted(true);
   }
 
   return (
@@ -306,15 +467,40 @@ function StartPostModal({ defaultName, defaultEmail, onClose }: { defaultName: s
       {submitted ? (
         <div className="text-center py-6">
           <CheckCircle2 className="mx-auto mb-3 text-status-active" size={36} />
-          <p className="text-sm text-ink">Submitted — National will follow up with next steps.</p>
+          <p className="text-sm text-ink">
+            Submitted — National will follow up with next steps.
+          </p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-3">
-          <input required placeholder="Your name" className="input-field" value={form.name} onChange={(e) => update('name', e.target.value)} />
-          <input required type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
+          <input
+            required
+            placeholder="Your name"
+            className="input-field"
+            value={form.name}
+            onChange={(e) => update("name", e.target.value)}
+          />
+          <input
+            required
+            type="email"
+            placeholder="Email"
+            className="input-field"
+            value={form.email}
+            onChange={(e) => update("email", e.target.value)}
+          />
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="City" className="input-field" value={form.city} onChange={(e) => update('city', e.target.value)} />
-            <select required className="input-field" value={form.state} onChange={(e) => update('state', e.target.value)}>
+            <input
+              placeholder="City"
+              className="input-field"
+              value={form.city}
+              onChange={(e) => update("city", e.target.value)}
+            />
+            <select
+              required
+              className="input-field"
+              value={form.state}
+              onChange={(e) => update("state", e.target.value)}
+            >
               <option value="">State</option>
               {US_STATES.map((s) => (
                 <option key={s} value={s}>
@@ -323,21 +509,29 @@ function StartPostModal({ defaultName, defaultEmail, onClose }: { defaultName: s
               ))}
             </select>
           </div>
-          <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
+          <input
+            placeholder="Phone"
+            className="input-field"
+            value={form.phone}
+            onChange={(e) => update("phone", e.target.value)}
+          />
           <textarea
             placeholder="Why do you want to start a post here?"
             className="input-field"
             rows={3}
             value={form.motivation}
-            onChange={(e) => update('motivation', e.target.value)}
+            onChange={(e) => update("motivation", e.target.value)}
           />
           {error && <p className="text-status-attention text-sm">{error}</p>}
-          <button type="submit" disabled={saving} className="btn-gold w-full disabled:opacity-50">
-            {saving ? 'Submitting…' : 'Submit Application'}
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn-gold w-full disabled:opacity-50"
+          >
+            {saving ? "Submitting…" : "Submit Application"}
           </button>
         </form>
       )}
     </Modal>
-  )
+  );
 }
-
