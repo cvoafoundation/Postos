@@ -76,6 +76,7 @@ before(async () => {
   await db.exec(`insert into public.drive_folders(id,name,shared_with_posts,created_by) values('${uid(9701)}','Legacy resources',true,'${national}'); insert into public.drive_files(id,folder_id,name,storage_path,uploaded_by) values('${uid(9702)}','${uid(9701)}','Legacy file','legacy/resource.pdf','${national}'); insert into storage.objects(bucket_id,name) values('ncc-drive','legacy/resource.pdf');`);
   await db.exec(fs.readFileSync('supabase/migrations/20261004220000_document_workspaces.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261004230000_uro_governance.sql', 'utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20261005150000_meeting_access.sql', 'utf8'));
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${uid(5)}','state@example.test',now()),('${uid(6)}','delegate@example.test',now()),('${uid(7)}','tribunal@example.test',now()),('${uid(8)}','national-staff@example.test',now());
   insert into public.profiles(id,full_name,email,role,state,post_id) values('${uid(5)}','State','state@example.test','state_commander','IN',null),('${uid(6)}','Delegate','delegate@example.test','delegate',null,'${post}'),('${uid(7)}','Tribunal','tribunal@example.test','ethics_tribunal',null,null),('${uid(8)}','National Staff','national-staff@example.test','national_staff',null,null);
   insert into public.congress_delegates(profile_id,post_id) values('${uid(6)}','${post}');
@@ -1018,7 +1019,7 @@ test('URO a majority of votes cast is insufficient without majority present',()=
  const {s}=await uroSetup();await uroStart(s);const id=await uroMotion(s);await uroCommand(s,'vote',{id,choice:'yes'});await actor(national);await uroCommand(s,'close_vote',{id,opportunity_confirmed:true});assert.equal((await uroState(s)).proposals[0].status,'defeated');
 }));
 test('URO state and post oversight remains scoped and does not grant a vote',()=>as(national,async()=>{
- const {s,b}=await uroSetup('post');await actor(uid(5));assert.equal((await uroState(s)).body.id,b);await failure(()=>uroCommand(s,'propose',{kind:'main',text:'Unauthorized'}),/Voting member/);await failure(()=>uroCommand(s,'start'),/Assigned Chair/);await actor(guest);await failure(()=>uroState(s),/Meeting access/);
+ const {s,b}=await uroSetup('post');await actor(uid(5));assert.equal((await uroState(s)).body.id,b);await failure(()=>uroCommand(s,'propose',{kind:'main',text:'Unauthorized'}),/Voting member/);await failure(()=>uroCommand(s,'start'),/post commander/);await actor(guest);await failure(()=>uroState(s),/Meeting access/);
 }));
 test('URO private notes and secret ballots are not exposed to National observers',()=>as(national,async()=>{
  const {s}=await uroSetup();await uroStart(s);await actor(officer);await uroCommand(s,'note',{body:'Secretary confidential working note'});await actor(national);assert.equal((await uroState(s)).notes.length,0);await failure(()=>db.query('select * from public.uro_private_notes'),/permission denied/);
@@ -1057,4 +1058,28 @@ test('URO delivery completion records actual accepted recipients without duplica
 }));
 test('URO canceled vote ballots are preserved but never counted in a reopened vote',()=>as(national,async()=>{
  const {s}=await uroSetup();await uroStart(s);const id=await uroMotion(s);await uroCommand(s,'vote',{id,choice:'yes'});await uroCommand(s,'cancel_vote',{id,reason:'Attendance correction'});await uroCommand(s,'stage',{state:'final_question'});await uroCommand(s,'open_vote',{id,method:'digital'});await uroCommand(s,'close_vote',{id,opportunity_confirmed:true});const state=await uroState(s),p=state.proposals[0];assert.equal(p.vote_round,2);assert.equal(p.result.yes,0);assert.equal(p.result.not_cast,3);assert.equal(p.status,'defeated');assert.equal(state.my_ballots.length,1);assert.equal(state.my_ballots[0].round,1);
+}));
+
+
+test('Meetings: commanders create post meetings, officers and ordinary members cannot',()=>as(national,async()=>{
+ const {b}=await uroSetup('post');
+ await actor(officer);assert.equal(await rpc('select public.uro_body_manage($1) data',[b]),true);
+ const meeting=await rpc('select public.uro_create($1,$2::jsonb) data',[b,JSON.stringify({title:'Commander scheduled',type:'regular',scheduled_at:'2030-01-01T00:00:00Z'})]);assert.ok(meeting);
+ await db.exec('reset role');await db.query("update public.profiles set role='post_officer' where id=$1",[officer]);await db.exec('set local role authenticated');await actor(officer);
+ assert.equal(await rpc('select public.uro_body_manage($1) data',[b]),false);
+ await failure(()=>db.query("insert into public.uro_meetings(post_id,title,meeting_date,created_by) values($1,'Denied legacy',current_date,$2)",[post,officer]),/row-level security/);
+ await failure(()=>rpc('select public.uro_create($1,$2::jsonb) data',[b,JSON.stringify({title:'Denied',type:'regular',scheduled_at:'2030-01-01T00:00:00Z'})]),/administration/);
+ await failure(()=>rpc('select public.uro_body_setup(null,$1::jsonb) data',[JSON.stringify({jurisdiction:'post',post_id:post})]),/Jurisdiction/);
+ await failure(()=>uroCommand(meeting,'start'),/post commander/);
+ await actor(member);await failure(()=>rpc('select public.uro_create($1,$2::jsonb) data',[b,JSON.stringify({title:'Denied',type:'regular',scheduled_at:'2030-01-01T00:00:00Z'})]),/administration/);
+}));
+
+test('Meetings: post members browse upcoming metadata and read published records without roster or vote rights',()=>as(national,async()=>{
+ const {s,b}=await uroSetup('post');await uroStart(s);await uroCommand(s,'adjourn',{action_review_confirmed:true});await actor(officer);await uroCommand(s,'certify');
+ await actor(national);await db.exec('reset role');await db.query('delete from public.uro_participants where meeting_id=$1 and profile_id=$2',[s,member]);await db.query('update public.uro_body_members set active=false where body_id=$1 and profile_id=$2',[b,member]);await db.exec('set local role authenticated');await actor(member);
+ const directory=await rpc('select public.uro_directory() data');const summary=directory.sessions.find(x=>x.id===s);assert.equal(summary.readable,false);assert.ok(!('minutes' in summary));
+ await failure(()=>uroState(s),/Meeting access/);await failure(()=>rpc('select public.uro_registry($1) data',[b]),/Body access/);
+ await actor(officer);await uroCommand(s,'publish_record');await actor(member);assert.ok((await uroState(s)).session.minutes);assert.equal((await uroState(s)).permissions.manage,false);
+ await failure(()=>uroCommand(s,'publish_record'),/Certify/);await actor(guest);await failure(()=>uroState(s),/Meeting access/);
+ await actor(stateCommander);assert.equal((await uroState(s)).body.post_id,post);
 }));
