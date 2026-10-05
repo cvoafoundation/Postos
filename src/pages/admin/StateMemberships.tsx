@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { useState } from "react";
 import { PageHeader } from "@/components/layout/AppShell";
 import { Modal } from "@/components/ui/Modal";
@@ -11,6 +12,8 @@ import { readAllRows } from "@/lib/readAllRows";
 import type { LinkedMembership } from "@/lib/access";
 import { ListPagination, LIST_PAGE_SIZE } from "@/components/ui/ListPagination";
 export default function StateMemberships() {
+  const [params, setParams] = useSearchParams(),
+    postFilter = params.get("post") ?? "";
   const { profile } = useAuth(),
     [rows, setRows] = useState<LinkedMembership[]>([]),
     [query, setQuery] = useState(""),
@@ -54,10 +57,25 @@ export default function StateMemberships() {
       active = false;
     };
   }, [profile?.state, version]);
-  const visible = rows.filter((r) =>
-    `${r.full_name} ${r.email ?? ""} ${r.membership_number ?? ""}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
+  useEffect(() => {
+    const highlight = params.get("highlight");
+    if (!highlight) return;
+    const found = rows.find(
+      (r) => r.id === highlight && (!postFilter || r.post_id === postFilter),
+    );
+    if (found) {
+      setSelected(found);
+      const next = new URLSearchParams(params);
+      next.delete("highlight");
+      setParams(next, { replace: true });
+    }
+  }, [rows, params, postFilter, setParams]);
+  const visible = rows.filter(
+    (r) =>
+      (!postFilter || r.post_id === postFilter) &&
+      `${r.full_name} ${r.email ?? ""} ${r.membership_number ?? ""}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
   );
   return (
     <div>
@@ -70,6 +88,27 @@ export default function StateMemberships() {
         for posts in your assigned state. National manages access appointments;
         post staff manage member changes.
       </p>
+      <label className="block text-sm mb-4">
+        Post
+        <select
+          className="input-field mt-2"
+          value={postFilter}
+          onChange={(e) => {
+            const next = new URLSearchParams(params);
+            if (e.target.value) next.set("post", e.target.value);
+            else next.delete("post");
+            setParams(next);
+            setPage(0);
+          }}
+        >
+          <option value="">All posts in my state</option>
+          {data?.posts.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="block text-sm mb-4">
         Search state members
         <input
