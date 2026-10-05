@@ -1,13 +1,14 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { PageHeader } from "@/components/layout/AppShell";
-import { WorkspaceStatus } from "@/components/workspaces/WorkspaceStatus";
 import { supabase } from "@/lib/supabase";
 import { readAllRows } from "@/lib/readAllRows";
 import { toCents, dollars } from "@/lib/workspaces";
-import { ListPagination, LIST_PAGE_SIZE } from "@/components/ui/ListPagination";
-
+import {
+  GovernanceForm,
+  type FieldSpec,
+} from "@/pages/meetings/governance/Forms";
 interface Campaign {
   id: string;
   post_id: string;
@@ -17,8 +18,14 @@ interface Campaign {
   deadline: string;
   status: string;
   results_note: string;
+  launch_funding: boolean;
+  story: string;
+  published: boolean;
+  public_slug: string;
 }
 interface Entry {
+  voided_at: string | null;
+  void_reason: string | null;
   id: string;
   campaign_id: string;
   entry_type: string;
@@ -26,450 +33,570 @@ interface Entry {
   entry_date: string;
   description: string;
 }
-interface PostChoice {
-  id: string;
-  name: string;
-  state: string;
+async function rpc(name: string, args: any) {
+  const r = await supabase.rpc(name, args);
+  if (r.error) throw Error(r.error.message);
+  return r.data;
 }
-export default function Fundraising() {
-  const { profile, isNational } = useAuth();
-  const [params] = useSearchParams();
-  const [posts, setPosts] = useState<PostChoice[]>([]),
-    [postId, setPostId] = useState(
-      params.get("post") ?? profile?.post_id ?? "",
-    );
+export default function Fundraising({
+  embedded = false,
+  onChanged,
+}: {
+  embedded?: boolean;
+  onChanged?: () => Promise<void>;
+}) {
+  const { profile, isNational } = useAuth(),
+    [params] = useSearchParams();
+  const postId = params.get("post") ?? profile?.post_id ?? "";
   const [campaigns, setCampaigns] = useState<Campaign[]>([]),
-    [entries, setEntries] = useState<Entry[]>([]);
+    [entries, setEntries] = useState<Entry[]>([]),
+    [payments, setPayments] = useState<any[]>([]),
+    [allocations, setAllocations] = useState<any[]>([]),
+    [donations, setDonations] = useState<any[]>([]),
+    [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true),
-    [error, setError] = useState<string | null>(null),
-    [postsError, setPostsError] = useState<string | null>(null),
-    [busy, setBusy] = useState(false),
-    [version, setVersion] = useState(0),
-    [page, setPage] = useState(0);
-  const [form, setForm] = useState({
-    title: "",
-    goal: "",
-    owner: profile?.full_name ?? "",
-    deadline: "",
-  });
+    [error, setError] = useState(""),
+    [editing, setEditing] = useState<Campaign | null | undefined>(undefined);
   const canEdit =
     isNational ||
     (["post_commander", "post_officer"].includes(profile?.role ?? "") &&
       postId === profile?.post_id);
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        let rows: PostChoice[];
-        if (profile?.role === "state_commander") {
-          const r = await supabase.rpc("cvoa_state_workspace");
-          if (r.error) throw r.error;
-          rows = r.data.posts;
-        } else {
-          rows = await readAllRows<PostChoice>(() => {
-            let q = supabase.from("posts").select("id,name,state").order("id");
-            if (!isNational)
-              q = q.eq(
-                "id",
-                profile?.post_id ?? "00000000-0000-0000-0000-000000000000",
-              );
-            return q;
-          });
-        }
-        if (active) {
-          setPosts(rows);
-          setPostId((id) =>
-            rows.some((p) => p.id === id) ? id : (rows[0]?.id ?? ""),
-          );
-        }
-      } catch (e) {
-        if (active) setPostsError((e as Error).message);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [profile?.id, profile?.post_id, profile?.role, isNational]);
-  useEffect(() => {
-    let active = true;
-    setPage(0);
-    setCampaigns([]);
-    setEntries([]);
+  const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    void (async () => {
-      try {
-        if (!postId) return;
-        const rows = await readAllRows<Campaign>(() =>
-          supabase
-            .from("fundraising_campaigns")
-            .select("*")
-            .eq("post_id", postId)
-            .order("id"),
-        );
-        const all: Entry[] = [];
-        for (let i = 0; i < rows.length; i += 100) {
-          const ids = rows.slice(i, i + 100).map((c) => c.id);
-          all.push(
-            ...(await readAllRows<Entry>(() =>
+    setError("");
+    try {
+      if (!postId) return;
+      const c = await readAllRows<Campaign>(() =>
+        supabase
+          .from("fundraising_campaigns")
+          .select("*")
+          .eq("post_id", postId)
+          .order("deadline")
+          .order("id"),
+      );
+      setCampaigns(c);
+      const ids = c.map((x) => x.id);
+      const [e, p, a, d, f] = await Promise.all([
+        ids.length
+          ? readAllRows<Entry>(() =>
               supabase
                 .from("fundraising_entries")
                 .select("*")
                 .in("campaign_id", ids)
                 .order("id"),
-            )),
-          );
-        }
-        if (active) {
-          setCampaigns(
-            rows.sort((a, b) => a.deadline.localeCompare(b.deadline)),
-          );
-          setEntries(all);
-        }
-      } catch (e) {
-        if (active) setError((e as Error).message);
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [postId, version]);
-  async function create(e: FormEvent) {
-    e.preventDefault();
-    if (busy || !canEdit) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await supabase
-        .from("fundraising_campaigns")
-        .insert({
-          post_id: postId,
-          title: form.title.trim(),
-          goal_cents: toCents(form.goal),
-          owner_name: form.owner.trim(),
-          deadline: form.deadline,
-          created_by: profile?.id,
-        });
-      if (r.error) throw r.error;
-      setForm({ ...form, title: "", goal: "", deadline: "" });
-      setVersion((v) => v + 1);
+            )
+          : [],
+        readAllRows<any>(() =>
+          supabase
+            .from("sponsor_payments")
+            .select("*,sponsors(company)")
+            .eq("post_id", postId)
+            .order("id"),
+        ),
+        ids.length
+          ? readAllRows<any>(() =>
+              supabase
+                .from("launch_payment_allocations")
+                .select("*")
+                .in("campaign_id", ids)
+                .order("payment_id"),
+            )
+          : [],
+        ids.length
+          ? readAllRows<any>(() =>
+              supabase
+                .from("campaign_donations")
+                .select("*")
+                .in("campaign_id", ids)
+                .order("id"),
+            )
+          : [],
+        readAllRows<any>(() =>
+          supabase
+            .from("post_facility_projects")
+            .select("id,build_a_post_modules(name)")
+            .eq("post_id", postId)
+            .order("id"),
+        ),
+      ]);
+      setEntries(e);
+      setPayments(p);
+      setAllocations(a);
+      setDonations(d);
+      setProjects(f);
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
+  }, [postId]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  async function saved() {
+    await load();
+    await onChanged?.();
   }
+  const campaignFields: FieldSpec[] = [
+    { key: "title", label: "Campaign / Event Name", required: true },
+    {
+      key: "goal",
+      label: "Goal (USD)",
+      type: "number",
+      min: 0.01,
+      step: 0.01,
+      required: true,
+    },
+    { key: "owner_name", label: "Responsible person", required: true },
+    {
+      key: "deadline",
+      label: "Deadline / Event date",
+      type: "date",
+      required: true,
+    },
+    {
+      key: "launch_funding",
+      label: "Contributes to the post opening budget",
+      type: "checkbox",
+    },
+    {
+      key: "story",
+      label: "Public campaign story (no private information)",
+      type: "textarea",
+    },
+    ...(isNational
+      ? [
+          {
+            key: "published",
+            label: "Approve public campaign page",
+            type: "checkbox",
+          } as FieldSpec,
+        ]
+      : []),
+  ];
   return (
     <div>
-      <PageHeader eyebrow="Post Operations" title="Fundraising" />
-      <p className="text-sm text-muted mb-5">
-        Plan a campaign, assign its owner, record income and expenses, and close
-        it with results. Entries are campaign records; reconcile them with the
-        post’s financial ledger. Sponsor pledges count as income when received.
-      </p>
-      <label className="block text-sm mb-5">
-        Post
-        <select
-          className="input-field max-w-md mt-1"
-          value={postId}
-          onChange={(e) => setPostId(e.target.value)}
-        >
-          {posts.length === 0 && <option value="">No assigned posts</option>}
-          {posts.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} · {p.state}
-            </option>
-          ))}
-        </select>
-      </label>
-      <WorkspaceStatus
-        loading={loading}
-        error={postsError ?? error}
-        retry={() => setVersion((v) => v + 1)}
-      />
-      {canEdit && postId && (
-        <form onSubmit={create} className="panel p-5 mb-6 space-y-3">
-          <h2 className="font-display text-xl">New Campaign / Event</h2>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <label className="text-sm">
-              Title
-              <input
-                className="input-field mt-1"
-                required
-                maxLength={200}
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-              />
-            </label>
-            <label className="text-sm">
-              Goal (USD)
-              <input
-                className="input-field mt-1"
-                required
-                inputMode="decimal"
-                value={form.goal}
-                onChange={(e) => setForm({ ...form, goal: e.target.value })}
-              />
-            </label>
-            <label className="text-sm">
-              Responsible owner
-              <input
-                className="input-field mt-1"
-                required
-                maxLength={200}
-                value={form.owner}
-                onChange={(e) => setForm({ ...form, owner: e.target.value })}
-              />
-            </label>
-            <label className="text-sm">
-              Deadline / event date
-              <input
-                className="input-field mt-1"
-                type="date"
-                required
-                value={form.deadline}
-                onChange={(e) => setForm({ ...form, deadline: e.target.value })}
-              />
-            </label>
-          </div>
-          <button className="btn-gold" disabled={busy}>
-            Create Campaign
+      {!embedded && (
+        <PageHeader eyebrow="Post Development" title="Fundraising" />
+      )}
+      <div className="flex flex-wrap justify-between gap-3 mb-4">
+        <div>
+          <h2 className="font-display text-2xl">Campaigns &amp; Events</h2>
+          <p className="text-sm text-muted mt-2">
+            Connect fundraising to opening or run a separate program campaign.
+            Stripe donations and allocated sponsorship receipts count when
+            received, with refunds deducted.
+          </p>
+        </div>
+        {canEdit && postId && (
+          <button className="btn-gold" onClick={() => setEditing(null)}>
+            New Campaign / Event
           </button>
-        </form>
-      )}
-      {!loading && postId && campaigns.length === 0 && (
-        <p className="text-muted mb-4">No campaigns recorded for this post.</p>
-      )}
-      <div className="space-y-5">
-        {campaigns
-          .slice(page * LIST_PAGE_SIZE, (page + 1) * LIST_PAGE_SIZE)
-          .map((c) => (
-            <CampaignCard
-              key={`${c.id}-${version}`}
-              campaign={c}
-              entries={entries.filter((e) => e.campaign_id === c.id)}
-              canEdit={canEdit}
-              onSaved={() => setVersion((v) => v + 1)}
-            />
-          ))}
+        )}
       </div>
-      <ListPagination
-        total={campaigns.length}
-        page={page}
-        onPageChange={setPage}
-      />
+      {error && (
+        <p role="alert" className="text-status-attention my-3">
+          {error}
+        </p>
+      )}
+      {loading && <p role="status">Loading campaigns…</p>}
+      <div className="space-y-5">
+        {campaigns.map((c) => (
+          <CampaignCard
+            key={c.id}
+            campaign={c}
+            entries={entries.filter((e) => e.campaign_id === c.id)}
+            allocatedPayments={payments.filter((p) =>
+              allocations.some(
+                (a) => a.payment_id === p.id && a.campaign_id === c.id,
+              ),
+            )}
+            availablePayments={payments.filter(
+              (p) =>
+                p.stripe_livemode !== false &&
+                !allocations.some((a) => a.payment_id === p.id),
+            )}
+            donations={donations.filter((d) => d.campaign_id === c.id)}
+            projects={projects}
+            canEdit={canEdit}
+            onSaved={saved}
+            onEdit={() => setEditing(c)}
+          />
+        ))}
+      </div>
+      {!loading && !campaigns.length && (
+        <p className="panel p-5">
+          No campaigns yet. Start with a location fund, an event or a specific
+          equipment need.
+        </p>
+      )}
+      {editing !== undefined && (
+        <GovernanceForm
+          title={editing ? "Edit Campaign" : "New Campaign"}
+          fields={campaignFields}
+          initial={
+            editing
+              ? { ...editing, goal: Number(editing.goal_cents) / 100 }
+              : {
+                  owner_name: profile?.full_name,
+                  launch_funding: true,
+                  goal: "",
+                  published: false,
+                }
+          }
+          onClose={() => setEditing(undefined)}
+          onSubmit={async (v) => {
+            await rpc("cvoa_launch_campaign", {
+              p_post: postId,
+              p_id: editing?.id ?? null,
+              p_data: { ...editing, ...v, goal_cents: toCents(v.goal) },
+            });
+            await saved();
+          }}
+        />
+      )}
     </div>
   );
 }
 function CampaignCard({
   campaign: c,
   entries,
+  allocatedPayments,
+  availablePayments,
+  donations,
+  projects,
   canEdit,
   onSaved,
+  onEdit,
 }: {
   campaign: Campaign;
   entries: Entry[];
+  allocatedPayments: any[];
+  availablePayments: any[];
+  donations: any[];
+  projects: any[];
   canEdit: boolean;
-  onSaved: () => void;
+  onSaved: () => Promise<void>;
+  onEdit: () => void;
 }) {
-  const { profile } = useAuth();
-  const [status, setStatus] = useState(c.status),
-    [note, setNote] = useState(c.results_note),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    type: "income",
-    amount: "",
-    date: new Date().toISOString().slice(0, 10),
-    description: "",
-  });
-  const income = entries
-      .filter((e) => e.entry_type === "income")
+  const [voidEntry, setVoidEntry] = useState<Entry | null>(null);
+  const [dialog, setDialog] = useState<
+      "entry" | "allocation" | "status" | null
+    >(null),
+    [error, setError] = useState("");
+  const offline = entries
+      .filter((e) => e.entry_type === "income" && !e.voided_at)
       .reduce((n, e) => n + Number(e.amount_cents), 0),
+    receivedSponsors = allocatedPayments.reduce(
+      (n, p) =>
+        n + Math.round((Number(p.amount) - Number(p.refunded_amount)) * 100),
+      0,
+    ),
+    receivedDonations = donations
+      .filter((d) => d.livemode)
+      .reduce(
+        (n, d) => n + Number(d.amount_cents) - Number(d.refunded_cents),
+        0,
+      ),
+    income = offline + receivedSponsors + receivedDonations,
     expense = entries
-      .filter((e) => e.entry_type === "expense")
+      .filter((e) => e.entry_type === "expense" && !e.voided_at)
       .reduce((n, e) => n + Number(e.amount_cents), 0);
-  async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      if (status === "completed" && !note.trim())
-        throw new Error("Record the outcome before closing the campaign.");
-      const r = await supabase
-        .from("fundraising_campaigns")
-        .update({ status, results_note: note })
-        .eq("id", c.id)
-        .select("id")
-        .single();
-      if (r.error) throw r.error;
-      onSaved();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function record(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await supabase
-        .from("fundraising_entries")
-        .insert({
-          campaign_id: c.id,
-          entry_type: form.type,
-          amount_cents: toCents(form.amount),
-          entry_date: form.date,
-          description: form.description.trim(),
-          recorded_by: profile?.id,
-        });
-      if (r.error) throw r.error;
-      onSaved();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const publicUrl = `${window.location.origin}/campaign/${c.public_slug}`;
   return (
     <section className="panel p-5">
-      <h2 className="font-display text-2xl">{c.title}</h2>
+      <div className="flex flex-wrap justify-between gap-3">
+        <h3 className="font-display text-2xl">{c.title}</h3>
+        {canEdit && (
+          <button className="btn-ghost" onClick={onEdit}>
+            Edit Campaign
+          </button>
+        )}
+      </div>
       <p className="text-sm text-muted mt-1">
-        Owner: {c.owner_name} · Due {c.deadline} · {c.status}
+        {c.owner_name} · Due {c.deadline} · {c.status} ·{" "}
+        {c.launch_funding ? "Opening Fund" : "Separate Program / Event"}
       </p>
-      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
         {[
-          ["Goal", Number(c.goal_cents)],
-          ["Income", income],
+          ["Goal", c.goal_cents],
+          ["Received", income],
           ["Expenses", expense],
           ["Net Raised", income - expense],
         ].map(([label, amount]) => (
           <div key={label}>
-            <dt className="text-xs text-muted">{label}</dt>
-            <dd className="font-display text-xl">{dollars(Number(amount))}</dd>
+            <div className="text-xs text-muted">{label}</div>
+            <div className="font-display text-xl">
+              {dollars(Number(amount))}
+            </div>
           </div>
         ))}
-      </dl>
-      <label className="text-xs text-muted block">
-        Net raised toward goal
-        <progress
-          className="w-full mt-1"
-          max={Number(c.goal_cents)}
-          value={Math.max(0, income - expense)}
-        />
-      </label>
+      </div>
+      <progress
+        className="w-full mb-3"
+        aria-label="Net raised toward campaign goal"
+        max={Number(c.goal_cents)}
+        value={Math.max(0, income - expense)}
+      />
+      <p className="text-xs text-muted">
+        Received includes {dollars(receivedSponsors)} allocated sponsorships and{" "}
+        {dollars(receivedDonations)} online donations. Test payments are
+        excluded. Record only money not already represented by these receipts.
+      </p>
+      {c.story && <p className="text-sm whitespace-pre-wrap my-4">{c.story}</p>}
+      {c.published ? (
+        <div className="my-4">
+          <a
+            className="text-gold"
+            target="_blank"
+            rel="noopener noreferrer"
+            href={publicUrl}
+          >
+            Open Public Campaign Page
+          </a>
+          <input
+            className="input-field mt-2"
+            aria-label="Shareable campaign link"
+            readOnly
+            value={publicUrl}
+          />
+          <p className="text-xs text-muted mt-1">
+            Donations are available when the campaign status is Active.
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-muted my-3">
+          Public page awaits National approval. Editing the title, goal or story
+          returns it for approval.
+        </p>
+      )}
       {error && (
-        <p role="alert" className="text-status-attention text-sm my-3">
+        <p role="alert" className="text-status-attention">
           {error}
         </p>
       )}
-      {canEdit ? (
-        <div className="space-y-3 mt-4">
-          <label className="block text-sm">
-            Status
-            <select
-              className="input-field mt-1"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="planning">Planning</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-            </select>
-          </label>
-          <label className="block text-sm">
-            Results / follow-up
-            <textarea
-              className="input-field mt-1"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </label>
-          <button className="btn-ghost" disabled={busy} onClick={save}>
-            Save Status & Results
+      {canEdit && (
+        <div className="flex flex-wrap gap-2 mt-4">
+          <button className="btn-ghost" onClick={() => setDialog("status")}>
+            Update Status &amp; Results
           </button>
-        </div>
-      ) : (
-        c.results_note && (
-          <p className="text-sm whitespace-pre-wrap my-3">{c.results_note}</p>
-        )
-      )}
-      {canEdit && c.status !== "completed" && (
-        <form
-          onSubmit={record}
-          className="border-t border-hairline pt-4 mt-5 space-y-3"
-        >
-          <h3 className="eyebrow">Record Received Income or Expense</h3>
-          <div className="grid sm:grid-cols-3 gap-3">
-            <label className="text-sm">
-              Type
-              <select
-                className="input-field mt-1"
-                value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value })}
+          {c.status !== "completed" && (
+            <>
+              <button className="btn-gold" onClick={() => setDialog("entry")}>
+                Record Income / Expense
+              </button>
+              <button
+                className="btn-ghost"
+                onClick={() => setDialog("allocation")}
               >
-                <option value="income">Income</option>
-                <option value="expense">Expense</option>
-              </select>
-            </label>
-            <label className="text-sm">
-              Amount (USD)
-              <input
-                className="input-field mt-1"
-                required
-                inputMode="decimal"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              />
-            </label>
-            <label className="text-sm">
-              Date
-              <input
-                className="input-field mt-1"
-                required
-                type="date"
-                value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
-              />
-            </label>
-          </div>
-          <label className="block text-sm">
-            Description
-            <input
-              className="input-field mt-1"
-              required
-              maxLength={1000}
-              value={form.description}
-              onChange={(e) =>
-                setForm({ ...form, description: e.target.value })
-              }
-            />
-          </label>
-          <button className="btn-gold" disabled={busy}>
-            Record Entry
-          </button>
-        </form>
+                Allocate Sponsor Receipt
+              </button>
+            </>
+          )}
+        </div>
       )}
-      <details className="mt-5">
-        <summary className="text-sm cursor-pointer">
-          Entries ({entries.length})
+      {c.results_note && (
+        <p className="whitespace-pre-wrap text-sm mt-3">
+          Results: {c.results_note}
+        </p>
+      )}
+      <details className="mt-4">
+        <summary className="cursor-pointer text-sm">
+          Payments &amp; Entries (
+          {entries.length + allocatedPayments.length + donations.length})
         </summary>
-        <ul className="text-sm mt-3 space-y-2">
+        <div className="text-sm space-y-2 mt-3">
           {entries.map((e) => (
-            <li key={e.id}>
+            <p key={e.id}>
               {e.entry_date} · {e.entry_type} ·{" "}
               {dollars(Number(e.amount_cents))} · {e.description}
-            </li>
+              {e.voided_at ? (
+                <span className="text-status-attention">
+                  {" "}
+                  · Voided: {e.void_reason}
+                </span>
+              ) : (
+                canEdit && (
+                  <button
+                    className="text-gold ml-3"
+                    onClick={() => setVoidEntry(e)}
+                  >
+                    Void Incorrect / Duplicate Entry
+                  </button>
+                )
+              )}
+            </p>
           ))}
-        </ul>
-        <p className="text-xs text-muted mt-3">
-          Entries retain their history. Record a clearly described correcting
-          entry to reconcile an error.
-        </p>
+          {allocatedPayments.map((p) => (
+            <p key={p.id}>
+              Sponsor: {p.sponsors?.company ?? "Post Donation"} ·{" "}
+              {dollars(
+                Math.round(
+                  (Number(p.amount) - Number(p.refunded_amount)) * 100,
+                ),
+              )}{" "}
+              net received
+            </p>
+          ))}
+          {donations.map((d) => (
+            <p key={d.id}>
+              Online Donation ·{" "}
+              {dollars(Number(d.amount_cents) - Number(d.refunded_cents))} ·{" "}
+              {d.livemode ? "Verified" : "TEST, Excluded"} ·{" "}
+              {new Date(d.paid_at).toLocaleDateString()}
+            </p>
+          ))}
+        </div>
       </details>
+      {voidEntry && (
+        <GovernanceForm
+          title="Void Incorrect Fundraising Entry"
+          fields={[
+            {
+              key: "reason",
+              label: "Why is this entry incorrect or duplicated?",
+              type: "textarea",
+              required: true,
+            },
+          ]}
+          onClose={() => setVoidEntry(null)}
+          onSubmit={async (v) => {
+            await rpc("cvoa_launch_void_entry", {
+              p_entry: voidEntry.id,
+              p_reason: v.reason,
+            });
+            await onSaved();
+          }}
+        >
+          <p className="text-sm text-muted">
+            The original record stays in history. Linked ledger entries receive
+            an offsetting correction. Voiding a record does not refund or
+            reverse a real payment.
+          </p>
+        </GovernanceForm>
+      )}
+      {dialog === "entry" && (
+        <GovernanceForm
+          title="Record Received Income / Expense"
+          initial={{
+            type: "income",
+            date: new Date().toISOString().slice(0, 10),
+          }}
+          fields={[
+            {
+              key: "type",
+              label: "Type",
+              type: "select",
+              required: true,
+              options: [
+                { value: "income", label: "Received Income" },
+                { value: "expense", label: "Expense" },
+              ],
+            },
+            {
+              key: "amount",
+              label: "Amount (USD)",
+              type: "number",
+              step: 0.01,
+              min: 0.01,
+              required: true,
+            },
+            { key: "date", label: "Date", type: "date", required: true },
+            {
+              key: "description",
+              label: "Source, purpose and reference",
+              required: true,
+            },
+            {
+              key: "project",
+              label: "Facility project (expenses only, optional)",
+              type: "select",
+              options: projects.map((p) => ({
+                value: p.id,
+                label: p.build_a_post_modules?.name ?? p.id,
+              })),
+            },
+          ]}
+          onClose={() => setDialog(null)}
+          onSubmit={async (v) => {
+            await rpc("cvoa_launch_entry", {
+              p_campaign: c.id,
+              p_type: v.type,
+              p_cents: toCents(v.amount),
+              p_date: v.date,
+              p_description: v.description,
+              p_project: v.project || null,
+            });
+            await onSaved();
+          }}
+        />
+      )}
+      {dialog === "allocation" && (
+        <GovernanceForm
+          title="Allocate a Received Sponsor Payment"
+          fields={[
+            {
+              key: "payment",
+              label: "Unallocated payment from this post",
+              type: "select",
+              required: true,
+              options: availablePayments.map((p) => ({
+                value: p.id,
+                label: `${p.sponsors?.company ?? "Donation"} · ${dollars(Math.round((Number(p.amount) - Number(p.refunded_amount)) * 100))}`,
+              })),
+            },
+          ]}
+          onClose={() => setDialog(null)}
+          onSubmit={async (v) => {
+            await rpc("cvoa_launch_allocate", {
+              p_payment: v.payment,
+              p_campaign: c.id,
+            });
+            await onSaved();
+          }}
+        >
+          <p className="text-xs text-muted">
+            Each receipt funds one campaign. Refunds update its contribution
+            automatically. If this was already entered manually, reconcile that
+            entry before allocating the receipt.
+          </p>
+        </GovernanceForm>
+      )}
+      {dialog === "status" && (
+        <GovernanceForm
+          title="Campaign Status & Results"
+          initial={c}
+          fields={[
+            {
+              key: "status",
+              label: "Status",
+              type: "select",
+              required: true,
+              options: ["planning", "active", "completed"].map((value) => ({
+                value,
+                label: value,
+              })),
+            },
+            {
+              key: "results_note",
+              label: "Results / follow-up (required to complete)",
+              type: "textarea",
+            },
+          ]}
+          onClose={() => setDialog(null)}
+          onSubmit={async (v) => {
+            setError("");
+            const r = await supabase
+              .from("fundraising_campaigns")
+              .update({ status: v.status, results_note: v.results_note ?? "" })
+              .eq("id", c.id)
+              .select("id")
+              .single();
+            if (r.error) throw Error(r.error.message);
+            await onSaved();
+          }}
+        />
+      )}
     </section>
   );
 }
