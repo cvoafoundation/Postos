@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import BodySetup from "./BodySetup";
@@ -8,6 +8,8 @@ import { actionState, iso, timestamp, type RecordData } from "./model";
 export default function GovernanceCenter() {
   const { profile } = useAuth(),
     navigate = useNavigate();
+  const [queryParams] = useSearchParams(),
+    linkedPost = queryParams.get("post");
   const [directory, setDirectory] = useState<RecordData | null>(null),
     [bodyId, setBodyId] = useState(""),
     [error, setError] = useState(""),
@@ -36,13 +38,22 @@ export default function GovernanceCenter() {
       if (error) setError(error.message);
       else {
         setDirectory(data);
-        setBodyId("");
+        setBodyId(
+          data?.bodies?.find((b: RecordData) => b.post_id === linkedPost)?.id ??
+            "",
+        );
       }
     });
     return () => {
       alive = false;
     };
-  }, [profile?.id, profile?.role, profile?.post_id, profile?.state]);
+  }, [
+    profile?.id,
+    profile?.role,
+    profile?.post_id,
+    profile?.state,
+    linkedPost,
+  ]);
   useEffect(() => {
     let alive = true;
     setRegistry(null);
@@ -92,6 +103,17 @@ export default function GovernanceCenter() {
         </p>
       )}
       {!directory && !error && <p>Loading meeting workspaces…</p>}
+      {linkedPost &&
+        directory &&
+        !directory.bodies?.some(
+          (b: RecordData) => b.post_id === linkedPost,
+        ) && (
+          <p className="panel p-4 text-sm text-status-attention">
+            This post has no meeting workspace yet. A commander must configure
+            its post governing body before scheduling. The list below shows your
+            existing meeting workspaces.
+          </p>
+        )}
       {directory && (
         <>
           <div className="flex gap-3 flex-wrap">
@@ -193,7 +215,9 @@ export default function GovernanceCenter() {
                     <Link
                       className="block py-4 hover:text-gold"
                       aria-disabled={s.readable === false}
-                      onClick={e => { if (s.readable === false) e.preventDefault(); }}
+                      onClick={(e) => {
+                        if (s.readable === false) e.preventDefault();
+                      }}
                       to={
                         s.readable === false
                           ? "/meetings"
