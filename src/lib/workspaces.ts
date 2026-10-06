@@ -14,6 +14,12 @@ export function useWorkspace<T>(
   const [version, setVersion] = useState(0);
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
   useEffect(() => {
+    window.addEventListener("cvoa:people-changed", refresh);
+    return () => {
+      window.removeEventListener("cvoa:people-changed", refresh);
+    };
+  }, [refresh]);
+  useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
@@ -38,7 +44,15 @@ export function useWorkspace<T>(
     return () => {
       active = false;
     };
-  }, [name, argsKey, version, profile?.id, profile?.role, profile?.state, profile?.post_id]);
+  }, [
+    name,
+    argsKey,
+    version,
+    profile?.id,
+    profile?.role,
+    profile?.state,
+    profile?.post_id,
+  ]);
   return { data, error, loading, refresh };
 }
 
@@ -68,7 +82,8 @@ export function membershipActions(member: {
     renew: !lifetime && !subscription && !pending,
     upgrade: !lifetime && !subscription && !pending,
     completePayment: pending,
-    cancelRenewal: !!member.stripe_subscription_id || (subscription && !pending),
+    cancelRenewal:
+      !!member.stripe_subscription_id || (subscription && !pending),
     changePost: member.membership_status === "active",
   };
 }
