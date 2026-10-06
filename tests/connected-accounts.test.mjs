@@ -80,6 +80,7 @@ before(async () => {
   await db.exec(fs.readFileSync('supabase/migrations/20261005160000_sponsorship_workflow.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261005170000_post_development.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261005190000_post_dashboard.sql', 'utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20261006150000_member_directory_removal.sql', 'utf8'));
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${uid(5)}','state@example.test',now()),('${uid(6)}','delegate@example.test',now()),('${uid(7)}','tribunal@example.test',now()),('${uid(8)}','national-staff@example.test',now());
   insert into public.profiles(id,full_name,email,role,state,post_id) values('${uid(5)}','State','state@example.test','state_commander','IN',null),('${uid(6)}','Delegate','delegate@example.test','delegate',null,'${post}'),('${uid(7)}','Tribunal','tribunal@example.test','ethics_tribunal',null,null),('${uid(8)}','National Staff','national-staff@example.test','national_staff',null,null);
   insert into public.congress_delegates(profile_id,post_id) values('${uid(6)}','${post}');
@@ -706,7 +707,7 @@ test("server-paged directory searches scoped appointments and separates explicit
       ["", "all", 0, 2],
     );
     assert.equal(ordinary.accounts.length, 2);
-    assert.equal(ordinary.total, 7);
+    assert.equal(ordinary.total, 8);
     assert.equal(ordinary.counts.test, 1);
     const tests = await rpc(
       "select public.cvoa_accounts_directory($1,$2,$3,$4) data",
@@ -1320,3 +1321,272 @@ test('Operational health settings are National-only, validated, audited and prot
   await db.exec('savepoint bad_policy');await assert.rejects(db.query('select public.cvoa_save_health_policy($1,$2,$3)',[current.version+1,JSON.stringify({...current.settings,meeting_green_days:60,meeting_yellow_days:30}),'Invalid reversed thresholds']),/Yellow thresholds/);await db.exec('rollback to savepoint bad_policy');
  });
 });
+
+test("directory shares only names and affiliations across posts, never private member fields", () =>
+  as(member, async () => {
+    const d = await rpc("select public.cvoa_member_directory() data");
+    assert.ok(d.members.some((m) => m.id === otherMember));
+    assert.deepEqual(
+      Object.keys(d.members.find((m) => m.id === memberRow)).sort(),
+      ["city", "full_name", "id", "post_id", "post_name", "state"].sort(),
+    );
+    const raw = await db.query("select id from public.members where id=$1", [
+      otherMember,
+    ]);
+    assert.equal(raw.rows.length, 0);
+    const filtered = await rpc(
+      "select public.cvoa_member_directory('', 'OH') data",
+    );
+    assert.equal(
+      filtered.members.every((m) => m.state === "OH"),
+      true,
+    );
+  }));
+test("pending applicants and anonymous visitors cannot browse the organization directory", async () => {
+  for (const actor of [guest, null])
+    await as(
+      actor,
+      async () => {
+        await assert.rejects(
+          () => rpc("select public.cvoa_member_directory() data"),
+          /member or staff|permission denied/i,
+        );
+      },
+      actor === null ? "anon" : "authenticated",
+    );
+});
+test("account default view includes unlinked roster members with one combined pagination total", () =>
+  as(national, async () => {
+    const d = await rpc("select public.cvoa_accounts_directory() data");
+    assert.ok(d.unlinked_members.some((m) => m.id === otherMember));
+    assert.equal(d.total, d.accounts.length + d.unlinked_members.length);
+    const small = await rpc(
+      "select public.cvoa_accounts_directory('', 'all', 0, 1) data",
+    );
+    assert.equal(small.accounts.length + small.unlinked_members.length, 1);
+  }));
+test("National removal hides a membership in both lists, preserves payments, and supports restoration", () =>
+  as(national, async () => {
+    await db.query(
+      "insert into public.membership_payments(member_id,post_id,membership_type,amount,status) values($1,$2,'lifetime',499.99,'paid')",
+      [otherMember, otherPost],
+    );
+    await db.query(
+      "select public.cvoa_remove_person($1,null,'Duplicate record reviewed')",
+      [otherMember],
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select amount from public.membership_payments where member_id=$1",
+          [otherMember],
+        )
+      ).rows[0].amount,
+      "499.99",
+    );
+    assert.equal(
+      (
+        await db.query("select id from public.members where id=$1", [
+          otherMember,
+        ])
+      ).rows.length,
+      0,
+    );
+    const directory = await rpc("select public.cvoa_member_directory() data");
+    assert.ok(!directory.members.some((m) => m.id === otherMember));
+    const accounts = await rpc("select public.cvoa_accounts_directory() data");
+    assert.ok(!accounts.unlinked_members.some((m) => m.id === otherMember));
+    assert.ok(
+      (await rpc("select public.cvoa_removed_people() data")).members.some(
+        (m) => m.id === otherMember,
+      ),
+    );
+    await db.query(
+      "select public.cvoa_restore_person($1,null,'Record restored after review')",
+      [otherMember],
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select membership_status from public.members where id=$1",
+          [otherMember],
+        )
+      ).rows[0].membership_status,
+      "active",
+    );
+  }));
+test("account removal suspends access, removes linked membership, and restores without silently granting access", () =>
+  as(national, async () => {
+    await db.query(
+      "select public.cvoa_remove_person(null,$1,'Duplicate account reviewed')",
+      [member],
+    );
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      member,
+    ]);
+    assert.equal(await rpc("select public.cvoa_access_enabled() data"), false);
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      national,
+    ]);
+    const d = await rpc("select public.cvoa_accounts_directory() data");
+    assert.ok(!d.accounts.some((a) => a.profile.id === member));
+    assert.ok(
+      (await rpc("select public.cvoa_removed_people() data")).members.some(
+        (m) => m.id === memberRow,
+      ),
+    );
+    await db.query(
+      "select public.cvoa_restore_person(null,$1,'Account restored after review')",
+      [member],
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select access_suspended from public.profiles where id=$1",
+          [member],
+        )
+      ).rows[0].access_suspended,
+      true,
+    );
+    await db.query(
+      "select public.cvoa_restore_person($1,null,'Membership restored after review')",
+      [memberRow],
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select membership_status from public.members where id=$1",
+          [memberRow],
+        )
+      ).rows[0].membership_status,
+      "active",
+    );
+  }));
+test("non-National removal, raw removal edits, permanent deletion, and self removal are rejected", async () => {
+  for (const actor of [officer, stateCommander, member])
+    await as(actor, async () => {
+      await assert.rejects(
+        () =>
+          db.query(
+            "select public.cvoa_remove_person($1,null,'Duplicate record reviewed')",
+            [otherMember],
+          ),
+        /National/,
+      );
+    });
+  await as(national, async () => {
+    await assert.rejects(
+      () => db.query("delete from public.members where id=$1", [otherMember]),
+      /permission denied/,
+    );
+  });
+  await as(national, async () => {
+    await assert.rejects(
+      () =>
+        db.query("update public.members set deleted_at=now() where id=$1", [
+          otherMember,
+        ]),
+      /audited/,
+    );
+  });
+  await as(national, async () => {
+    await assert.rejects(
+      () =>
+        db.query(
+          "select public.cvoa_remove_person(null,$1,'Self removal attempted')",
+          [national],
+        ),
+      /own account/,
+    );
+  });
+});
+test("a unique confirmed member identity links on roster insert; duplicate emails do not auto-link", () =>
+  as(national, async () => {
+    const pid = uid(91001),
+      mid = uid(91002);
+    await db.exec("reset role");
+    await db.query(
+      "insert into auth.users(id,email,email_confirmed_at) values($1,$2,now())",
+      [pid, "directory-sync@example.test"],
+    );
+    await db.query(
+      "insert into public.profiles(id,full_name,email,role) values($1,'Old Name',$2,'member')",
+      [pid, "directory-sync@example.test"],
+    );
+    await db.exec("set local role authenticated");
+    await db.query(
+      "insert into public.members(id,post_id,full_name,email,membership_status) values($1,$2,'Synced Name',$3,'active')",
+      [mid, post, "directory-sync@example.test"],
+    );
+    assert.equal(
+      (
+        await db.query("select profile_id from public.members where id=$1", [
+          mid,
+        ])
+      ).rows[0].profile_id,
+      pid,
+    );
+    assert.equal(
+      (
+        await db.query("select full_name from public.profiles where id=$1", [
+          pid,
+        ])
+      ).rows[0].full_name,
+      "Synced Name",
+    );
+    await db.query(
+      "insert into public.members(post_id,full_name,email,membership_status) values($1,'Duplicate Name',$2,'active')",
+      [post, "directory-sync@example.test"],
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select profile_id from public.members where full_name='Duplicate Name'",
+        )
+      ).rows[0].profile_id,
+      null,
+    );
+  }));
+test("removal requires canceling active recurring billing first", () =>
+  as(national, async () => {
+    await db.query(
+      "update public.members set auto_renew=true,stripe_subscription_id='sub_removal_test' where id=$1",
+      [otherMember],
+    );
+    await failure(
+      () =>
+        db.query(
+          "select public.cvoa_remove_person($1,null,'Duplicate reviewed with billing')",
+          [otherMember],
+        ),
+      /Cancel Stripe Auto-Renew/,
+    );
+  }));
+test("removed memberships cannot start checkout; a late paid receipt does not restore directory membership", () =>
+  as(national, async () => {
+    await db.query(
+      "select public.cvoa_remove_person($1,null,'Duplicate reviewed before checkout')",
+      [otherMember],
+    );
+    await db.exec("set local role service_role");
+    await db.query(
+      "select set_config('request.jwt.claim.role','service_role',true)",
+    );
+    await failure(
+      () => db.query("select public.cvoa_reserve_checkout($1)", [otherMember]),
+      /Membership not found/,
+    );
+    await db.query(
+      "update public.members set membership_status='active' where id=$1",
+      [otherMember],
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select membership_status from public.members where id=$1",
+          [otherMember],
+        )
+      ).rows[0].membership_status,
+      "lapsed",
+    );
+  }));

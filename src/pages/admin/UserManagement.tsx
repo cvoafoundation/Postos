@@ -7,6 +7,10 @@ import { getFunctionError } from "@/lib/functionErrors";
 import { useWorkspace } from "@/lib/workspaces";
 import { WorkspaceStatus } from "@/components/workspaces/WorkspaceStatus";
 import { ListPagination, LIST_PAGE_SIZE } from "@/components/ui/ListPagination";
+import {
+  RemovedPeople,
+  notifyPeopleChanged,
+} from "@/components/access/RemovePerson";
 import PersonWorkspace from "@/components/access/PersonWorkspace";
 import {
   ROLE_LABELS,
@@ -17,12 +21,7 @@ import {
   type AccountRow,
 } from "@/lib/access";
 import type { Post, UserRole } from "@/lib/types";
-import {
-  UserPlus,
-  Loader2,
-  ShieldCheck,
-  AlertCircle,
-} from "lucide-react";
+import { UserPlus, Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 const ROLES = Object.entries(ROLE_LABELS).map(([value, label]) => ({
   value: value as UserRole,
   label,
@@ -123,10 +122,10 @@ export default function UserManagement() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {[
           {
-            label: "Ordinary accounts",
-            count: data?.counts.ordinary ?? 0,
+            label: "People & Memberships",
+            count: (data?.counts.ordinary ?? 0) + (data?.counts.unlinked ?? 0),
             filter: "all" as Filter,
-            detail: "Membership links and appointments",
+            detail: "Linked accounts and roster-only members",
           },
           {
             label: "Needs attention",
@@ -172,6 +171,10 @@ export default function UserManagement() {
           Membership Roster →
         </Link>
       </div>
+      <RemovedPeople onChanged={refresh} />
+      <button className="btn-ghost mb-4" onClick={refresh}>
+        Refresh People
+      </button>
       <label className="block text-sm mb-4">
         Search people, roles, states, or posts
         <input
@@ -200,54 +203,115 @@ export default function UserManagement() {
       )}
       {!loading && data && (
         <>
-          {filter === "unlinked" ? (
-            <div className="space-y-3">
-              {memberRows.map((m) => (
-                <section key={m.id} className="panel p-4">
-                  <h2 className="font-display text-xl">{m.full_name}</h2>
-                  <p className="text-sm text-muted">
-                    {m.email ?? "Email required"} ·{" "}
-                    {m.membership_status.replaceAll("_", " ")}
-                  </p>
-                  <p className="text-xs mt-2">
-                    {m.candidate_id
-                      ? "Unique verified account match available. Review before linking."
-                      : "No safe automatic match. Invite from the member record or review conflicting identity information."}
-                  </p>
-                  <div className="flex flex-wrap gap-3 mt-3">
-                    <button
-                      className="text-gold text-sm"
-                      onClick={() => setSelected({ member: m.id })}
+          <div className="panel overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-border text-xs text-muted">
+                <tr>
+                  {[
+                    "Person",
+                    "Membership",
+                    "Affiliation",
+                    "Access Role",
+                    "Account",
+                    "Actions",
+                  ].map((label) => (
+                    <th
+                      key={label}
+                      scope="col"
+                      className="px-4 py-3 font-medium"
                     >
-                      Open person workspace →
-                    </button>
-                    {m.candidate_id && (
-                      <button
-                        disabled={repairing === m.id}
-                        className="btn-ghost text-sm"
-                        onClick={() => repair(m.id, m.candidate_id!)}
-                      >
-                        {repairing === m.id
-                          ? "Linking…"
-                          : "Review and link verified account"}
-                      </button>
-                    )}
-                  </div>
-                </section>
-              ))}
-            </div>
-          ) : (
-            <div className="panel overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-border text-xs text-muted"><tr>{["Person", "Membership", "Affiliation", "Access role", "Account", ""].map(label => <th key={label} scope="col" className="px-4 py-3 font-medium">{label}</th>)}</tr></thead><tbody>
-              {visible.map((a) => (
-                <AccountRowView
-                  key={a.profile.id}
-                  account={a}
-                  onOpen={() => setSelected({ profile: a.profile.id })}
-                />
-              ))}
-            </tbody></table></div>
-          )}
-          {(filter === "unlinked" ? memberRows : visible).length === 0 && (
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ...visible.map((a) => ({
+                    id: a.profile.id,
+                    name: a.profile.full_name,
+                    account: a,
+                    member: null,
+                  })),
+                  ...memberRows.map((m) => ({
+                    id: m.id,
+                    name: m.full_name,
+                    account: null,
+                    member: m,
+                  })),
+                ]
+                  .sort(
+                    (a, b) =>
+                      a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+                  )
+                  .map((row) =>
+                    row.account ? (
+                      <AccountRowView
+                        key={row.id}
+                        account={row.account}
+                        onOpen={() => setSelected({ profile: row.id })}
+                      />
+                    ) : (
+                      row.member && (
+                        <tr
+                          key={row.id}
+                          className="border-b border-border hover:bg-white/5 align-top"
+                        >
+                          <td className="px-4 py-3">
+                            <button
+                              className="text-gold"
+                              onClick={() => setSelected({ member: row.id })}
+                            >
+                              {row.name}
+                            </button>
+                            <p className="text-xs text-muted">
+                              {row.member.email ?? "Email Not Recorded"}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3">
+                            {row.member.membership_type ?? "Membership"} ·{" "}
+                            {row.member.membership_status.replaceAll("_", " ")}
+                          </td>
+                          <td className="px-4 py-3">
+                            {data.posts.find(
+                              (p) => p.id === row.member?.post_id,
+                            )?.name ?? "National At-Large"}
+                          </td>
+                          <td className="px-4 py-3 text-muted">
+                            No Appointed Account
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-status-developing">
+                              No Linked Login
+                            </p>
+                            {row.member.candidate_id && (
+                              <button
+                                disabled={repairing === row.id}
+                                className="text-gold text-xs mt-2"
+                                onClick={() =>
+                                  repair(row.id, row.member!.candidate_id!)
+                                }
+                              >
+                                Review &amp; Link Verified Account
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              className="btn-ghost text-xs"
+                              onClick={() => setSelected({ member: row.id })}
+                            >
+                              Manage / Delete
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    ),
+                  )}
+              </tbody>
+            </table>
+          </div>
+          {memberRows.length + visible.length === 0 && (
             <div className="panel p-6 text-sm text-muted">
               {filter === "test"
                 ? "No accounts have been marked as tests. Open a confirmed test account and review its access to label it."
@@ -282,6 +346,7 @@ export default function UserManagement() {
           onClose={() => setShowInvite(false)}
           onInvited={() => {
             setShowInvite(false);
+            notifyPeopleChanged();
             refresh();
           }}
         />
@@ -289,16 +354,82 @@ export default function UserManagement() {
     </div>
   );
 }
-function AccountRowView({ account: a, onOpen }: { account: AccountRow; onOpen: () => void }) {
+function AccountRowView({
+  account: a,
+  onOpen,
+}: {
+  account: AccountRow;
+  onOpen: () => void;
+}) {
   const issues = accountIssues(a);
   return (
     <tr className="border-b border-border last:border-0 hover:bg-white/5 align-top">
-      <td className="px-4 py-3"><button className="text-left font-medium text-gold" onClick={onOpen}>{a.profile.full_name}</button><p className="text-xs text-muted mt-1">{a.profile.email}</p>{a.profile.is_test_account && <span className="text-xs text-status-attention">Test account</span>}</td>
-      <td className="px-4 py-3">{a.memberships.length ? a.memberships.map(m => <p key={m.id}>{m.membership_type?.replaceAll('_', ' ')} · {m.membership_status.replaceAll('_', ' ')}</p>) : <span className="text-muted">No linked membership</span>}</td>
-      <td className="px-4 py-3">{a.memberships.length ? a.memberships.map(m => <p key={m.id}>{m.post_name ?? (m.post_id ? 'Assigned post' : 'At-large member (no post)')}</p>) : <span className="text-muted">—</span>}</td>
-      <td className="px-4 py-3">{a.scopes.map(s => <div key={s.scope_id} className="mb-1"><span>{ROLE_LABELS[s.role]}</span><p className="text-xs text-muted">{scopeLabel(s)}</p></div>)}</td>
-      <td className="px-4 py-3"><span className={a.profile.access_suspended ? 'text-status-attention' : 'text-muted'}>{activationLabel({...a, access_suspended:a.profile.access_suspended})}</span>{issues.length > 0 && <p className="text-xs text-status-developing mt-1">{issues.join(' · ')}</p>}</td>
-      <td className="px-4 py-3"><button className="btn-ghost text-xs whitespace-nowrap" onClick={onOpen}>Manage</button></td>
+      <td className="px-4 py-3">
+        <button className="text-left font-medium text-gold" onClick={onOpen}>
+          {a.profile.full_name}
+        </button>
+        <p className="text-xs text-muted mt-1">{a.profile.email}</p>
+        {a.profile.is_test_account && (
+          <span className="text-xs text-status-attention">Test account</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        {a.memberships.length ? (
+          a.memberships.map((m) => (
+            <p key={m.id}>
+              {m.membership_type?.replaceAll("_", " ")} ·{" "}
+              {m.membership_status.replaceAll("_", " ")}
+            </p>
+          ))
+        ) : (
+          <span className="text-muted">No linked membership</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        {a.memberships.length ? (
+          a.memberships.map((m) => (
+            <p key={m.id}>
+              {m.post_name ??
+                (m.post_id ? "Assigned post" : "At-large member (no post)")}
+            </p>
+          ))
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        {a.scopes.map((s) => (
+          <div key={s.scope_id} className="mb-1">
+            <span>{ROLE_LABELS[s.role]}</span>
+            <p className="text-xs text-muted">{scopeLabel(s)}</p>
+          </div>
+        ))}
+      </td>
+      <td className="px-4 py-3">
+        <span
+          className={
+            a.profile.access_suspended ? "text-status-attention" : "text-muted"
+          }
+        >
+          {activationLabel({
+            ...a,
+            access_suspended: a.profile.access_suspended,
+          })}
+        </span>
+        {issues.length > 0 && (
+          <p className="text-xs text-status-developing mt-1">
+            {issues.join(" · ")}
+          </p>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        <button
+          className="btn-ghost text-xs whitespace-nowrap"
+          onClick={onOpen}
+        >
+          Manage / Delete
+        </button>
+      </td>
     </tr>
   );
 }

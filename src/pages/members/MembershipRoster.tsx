@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Modal } from '@/components/ui/Modal'
+import RemovePerson, { RemovedPeople, notifyPeopleChanged } from '@/components/access/RemovePerson'
 import MemberRecord from '@/components/workspaces/MemberRecord'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -74,7 +75,7 @@ export default function MembershipRoster() {
       return
     }
     setSearchingGlobal(true)
-    const { data, error } = await supabase.from('members').select('*')
+    const { data, error } = await supabase.from('members').select('*').is('deleted_at', null)
       .or(`full_name.ilike.%${term}%,email.ilike.%${term}%,membership_number.ilike.%${term}%`)
       .order('id').limit(100)
     if (sequence !== searchSequence.current) return
@@ -145,7 +146,7 @@ export default function MembershipRoster() {
     setListError(null)
     try {
       const rows = await readAllRows<Member>(() => {
-        let request = supabase.from('members').select('*').order('id')
+        let request = supabase.from('members').select('*').is('deleted_at', null).order('id')
         if (selectedPostId === UNASSIGNED) request = request.is('post_id', null)
         else if (selectedPostId !== ALL_POSTS) request = request.eq('post_id', selectedPostId)
         return request
@@ -227,6 +228,13 @@ export default function MembershipRoster() {
     })
   }
 
+  useEffect(() => {
+    const reload = () => { void loadMembers(); if(query.trim() && isNational) void searchGlobally(query) }
+    window.addEventListener('cvoa:people-changed',reload)
+    window.addEventListener('focus',reload)
+    return () => { window.removeEventListener('cvoa:people-changed',reload); window.removeEventListener('focus',reload) }
+  }, [selectedPostId,query,isNational])
+
   const filtered = members.filter((m) => {
     if (!query.trim()) return true
     const q = query.toLowerCase()
@@ -273,6 +281,11 @@ export default function MembershipRoster() {
 
       <p className="text-sm text-muted mb-6">Manage membership records, dues, renewal dates, and activation emails. For login roles and system permissions, use {isNational ? <Link className="text-gold hover:underline" to="/users">Accounts &amp; Access</Link> : 'National Accounts & Access'}.</p>
 
+      <div className="flex flex-wrap gap-4 mb-4">
+        <Link className="text-gold text-sm" to="/directory">CVOA Member Directory →</Link>
+        <button className="text-gold text-sm" onClick={() => { loadMembers(); if(query.trim()) searchGlobally(query) }}>Refresh Roster</button>
+      </div>
+      {isNational && <RemovedPeople onChanged={loadMembers} />}
       {renewalsDue.length > 0 && (
         <div className="panel p-3 mb-4 border-status-developing/40 text-sm text-status-developing">
           {renewalsDue.length} membership{renewalsDue.length !== 1 ? 's' : ''} renewing within 30 days
@@ -394,6 +407,7 @@ export default function MembershipRoster() {
               <th className="table-head">Type</th>
               <th className="table-head">Status</th>
               <th className="table-head">Expires</th>
+              {isNational && <th className="table-head">Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -438,6 +452,9 @@ export default function MembershipRoster() {
                 <td className="table-cell text-muted text-xs whitespace-nowrap">
                   {m.membership_type === 'lifetime' ? 'Never' : m.expires_at ? format(new Date(m.expires_at), 'MMM d, yyyy') : '—'}
                 </td>
+                {isNational && <td className="table-cell" onClick={e=>e.stopPropagation()}>
+                  <button className="text-sm text-status-attention whitespace-nowrap" onClick={()=>setEditing(m)}>Delete / Remove</button>
+                </td>}
               </tr>
             ))}
           </tbody>
@@ -459,7 +476,9 @@ export default function MembershipRoster() {
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false)
+            notifyPeopleChanged()
             loadMembers()
+            if(query.trim()) searchGlobally(query)
           }}
         />
       )}
@@ -474,7 +493,9 @@ export default function MembershipRoster() {
           onSaved={() => {
             setEditing(null)
             setHighlightId(null)
+            notifyPeopleChanged()
             loadMembers()
+            if(query.trim()) searchGlobally(query)
           }}
         />
       )}
@@ -818,25 +839,11 @@ function EditMemberModal({
     onSaved()
   }
 
-  async function deleteMember() {
-    const confirmed = window.confirm(
-      `Permanently delete ${member.full_name}'s membership record? If they created an account, that account stays but loses its membership access. This cannot be undone.`
-    )
-    if (!confirmed) return
-    setSaving(true)
-    const { error } = await supabase.from('members').delete().eq('id', member.id)
-    setSaving(false)
-    if (error) {
-      setError(error.message)
-      return
-    }
-    onSaved()
-    onClose()
-  }
 
   return (
     <Modal title={`Edit ${member.full_name}`} onClose={onClose}>
       <div className="space-y-3">
+        <RemovePerson memberId={member.id} name={member.full_name} onRemoved={onSaved} />
         <MemberRecord key={`${member.id}-${inviteSent}`} member={member} />
         <div className="font-mono text-xs text-gold">{member.membership_number ?? 'No number assigned'}</div>
         <div className="panel p-2.5">
@@ -964,14 +971,7 @@ function EditMemberModal({
           Add to a Post's Founding Team
         </button>
 
-        <button
-          type="button"
-          onClick={deleteMember}
-          disabled={saving}
-          className="w-full text-xs text-muted hover:text-status-attention disabled:opacity-50"
-        >
-          Delete Member
-        </button>
+
       </div>
 
       {showAddToFoundingTeam && <AddToFoundingTeamModal member={member} onClose={() => setShowAddToFoundingTeam(false)} />}

@@ -124,6 +124,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     ...(profile?.role === 'post_commander' || isNational
       ? [{ to: '/role-applications', label: 'Role Applications', icon: UserCog, section: 'role_applications' as const }]
       : []),
+    { to: '/directory', label: 'Member Directory', icon: IdCard },
     { to: '/my-membership', label: 'My Membership', icon: CreditCard },
     { to: '/member-home', label: 'Get Involved / Start a Post', icon: GitBranch },
     { to: '/my-applications', label: 'My Post Applications', icon: ClipboardCheck },
