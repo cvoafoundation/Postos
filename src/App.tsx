@@ -80,6 +80,7 @@ const PostHealthDetail = lazy(() => import("@/pages/health/PostHealthDetail"));
 const BuildAPostDetail = lazy(
   () => import("@/pages/build-a-post/BuildAPostDetail"),
 );
+const MemberDirectory = lazy(() => import("@/pages/members/MemberDirectory"));
 const MembershipRoster = lazy(() => import("@/pages/members/MembershipRoster"));
 const MembershipReview = lazy(() => import("@/pages/members/MembershipReview"));
 const PostOfficersDirectory = lazy(
@@ -439,16 +440,8 @@ function AuthenticatedApp() {
               </RoleGuard>
             }
           />
-          <Route
-            path="/members"
-            element={
-              <RoleGuard
-                roles={["state_commander", "post_commander", "post_officer"]}
-              >
-                <RosterRoute />
-              </RoleGuard>
-            }
-          />
+          <Route path="/members" element={<RosterRoute />} />
+          <Route path="/directory" element={<MemberDirectory />} />
           <Route path="/my-membership" element={<MyMembership />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/file-complaint" element={<FileComplaint />} />
@@ -573,6 +566,13 @@ function RosterRoute() {
   const { profile, isNational } = useAuth();
   const [params] = useSearchParams();
   const requests = params.get("tab") === "requests";
+  if (
+    !isNational &&
+    !["state_commander", "post_commander", "post_officer"].includes(
+      profile?.role ?? "",
+    )
+  )
+    return <MemberDirectory />;
   return (
     <div>
       <nav
