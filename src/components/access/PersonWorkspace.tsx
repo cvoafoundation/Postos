@@ -1,3 +1,4 @@
+import RemovePerson from "./RemovePerson";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -68,6 +69,7 @@ export default function PersonWorkspace({
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
   const person = data?.profile;
+  const [removed, setRemoved] = useState(false);
   useEffect(() => {
     if (suppliedPosts) {
       setPosts(suppliedPosts);
@@ -173,6 +175,12 @@ export default function PersonWorkspace({
       setBusy(false);
     }
   }
+  if (removed)
+    return (
+      <p role="status" className="panel p-4">
+        Record removed. National can restore it from Removed Records.
+      </p>
+    );
   return (
     <section className="space-y-5">
       <WorkspaceStatus loading={loading} error={error} retry={refresh} />
@@ -243,6 +251,16 @@ export default function PersonWorkspace({
           </div>
           <section className="panel p-4">
             <h3 className="font-display text-xl">Membership & affiliation</h3>
+            {isNational && person && (
+              <RemovePerson
+                profileId={person.id}
+                name={person.full_name}
+                onRemoved={() => {
+                  setRemoved(true);
+                  onChanged?.();
+                }}
+              />
+            )}
             {data.memberships.length === 0 ? (
               <p className="text-sm text-muted mt-2">
                 No linked membership. A staff appointment can exist without a
@@ -254,13 +272,26 @@ export default function PersonWorkspace({
                   key={m.id}
                   className="border-t border-hairline mt-3 pt-3 text-sm"
                 >
+                  <RemovePerson
+                    memberId={m.id}
+                    name={m.full_name}
+                    onRemoved={() => {
+                      if (memberId === m.id) setRemoved(true);
+                      else refresh();
+                      onChanged?.();
+                    }}
+                  />
                   <p>
                     {m.membership_number ?? "Number pending"} ·{" "}
                     {m.membership_type} ·{" "}
                     {m.membership_status.replaceAll("_", " ")}
                   </p>
                   <p className="text-muted mt-1">
-                    {m.post_name ?? (m.post_id ? 'Assigned post' : 'At-large member (no post)')} · Service verification:{" "}
+                    {m.post_name ??
+                      (m.post_id
+                        ? "Assigned post"
+                        : "At-large member (no post)")}{" "}
+                    · Service verification:{" "}
                     {m.dd214_review_status ?? "Not recorded"}
                   </p>
                   <p className="text-muted">
