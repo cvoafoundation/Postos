@@ -1,6 +1,7 @@
 // Invitations create a basic account. Staff authority is appointed separately.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import nodemailer from "npm:nodemailer@6.9.16";
+import { welcomeAttachments } from '../_shared/welcome/packet.ts';
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SITE_URL = Deno.env.get("SITE_URL")!;
@@ -115,6 +116,7 @@ Deno.serve(async (req) => {
         from: `CVOA.ONE <${WORKSPACE_EMAIL}>`,
         to: authAccount.user.email,
         subject: "Your CVOA.ONE password setup link",
+        attachments: authAccount.user.email_confirmed_at ? [] : await welcomeAttachments(profile, 'invitation'),
         text: `Hi ${profile.full_name},\n\nSet up your password:\n\n${link}`,
         html: `<p>Hi ${escapeHtml(profile.full_name)},</p><p><a href="${escapeHtml(link)}">Set up your password</a></p>`,
       });
@@ -185,6 +187,7 @@ Deno.serve(async (req) => {
         from: `CVOA.ONE <${WORKSPACE_EMAIL}>`,
         to: email,
         subject: "Your CVOA.ONE account invitation",
+        attachments: await welcomeAttachments({ full_name: body.full_name.trim() }, 'invitation'),
         text: `Hi ${body.full_name.trim()},\n\nSet your password to access CVOA.ONE:\n\n${link}`,
         html: `<p>Hi ${escapeHtml(body.full_name.trim())},</p><p><a href="${escapeHtml(link)}">Set your password and access CVOA.ONE</a></p>`,
       });

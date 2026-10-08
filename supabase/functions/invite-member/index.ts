@@ -17,6 +17,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 import nodemailer from 'npm:nodemailer@6.9.16'
+import { welcomeAttachments, WelcomeRecipient } from '../_shared/welcome/packet.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -39,7 +40,8 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }
 
-async function sendInviteEmail(email: string, fullName: string, actionLink: string) {
+async function sendInviteEmail(email: string, recipient: WelcomeRecipient, actionLink: string, includeWelcome: boolean) {
+  const fullName = recipient.full_name
   if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
     throw new Error('Email delivery is not configured. Set WORKSPACE_EMAIL and WORKSPACE_APP_PASSWORD in Supabase Edge Function secrets.')
   }
@@ -56,6 +58,7 @@ async function sendInviteEmail(email: string, fullName: string, actionLink: stri
     from: `CVOA.ONE SYSTEM (COS) <${WORKSPACE_EMAIL}>`,
     to: email,
     subject: `Create your CVOA account`,
+    attachments: includeWelcome ? await welcomeAttachments(recipient, 'invitation') : [],
     text: `Hi ${fullName},\n\nYour CVOA membership record is ready. Set a password to access your membership screen:\n\n${actionLink}\n\nIf you weren't expecting this, you can safely ignore this email.`,
     html: `<p>Hi ${escapeHtml(fullName)},</p>
            <p>Your CVOA membership record is ready. Set a password to access your membership screen:</p>
@@ -112,6 +115,7 @@ Deno.serve(async (req) => {
     let userId: string
     let actionLink: string | null = null
     let tempPassword: string | null = null
+    let includeWelcome = true
     if (method === 'manual') {
       tempPassword = generateTempPassword()
       const { data, error } = await supabase.auth.admin.createUser({ email: member.email, password: tempPassword, email_confirm: true })
@@ -127,7 +131,7 @@ Deno.serve(async (req) => {
         if (data.user.email?.toLowerCase() !== member.email.trim().toLowerCase()) {
           return reply(409, { error: 'The roster email differs from the linked login email. Correct it before sending a setup link.' })
         }
-        if (data.user.email_confirmed_at) linkType = 'recovery'
+        if (data.user.email_confirmed_at) { linkType = 'recovery'; includeWelcome = false }
       }
       const { data, error } = await supabase.auth.admin.generateLink({ type: linkType, email: member.email, options: { redirectTo } })
       if (error || !data?.user || !data.properties?.action_link) return reply(400, { error: error?.message ?? 'Could not create the password setup link.' })
@@ -147,7 +151,7 @@ Deno.serve(async (req) => {
     const { error: linkError } = await supabase.from('members').update({ profile_id: userId }).eq('id', body.member_id)
     if (linkError) return reply(500, { error: `Account created, but membership linking failed: ${linkError.message}. Retry from this member's roster entry.` })
     if (actionLink) {
-      try { await sendInviteEmail(member.email, member.full_name, actionLink) }
+      try { await sendInviteEmail(member.email, member, actionLink, includeWelcome) }
       catch (err) {
         const smtpError = err as Error & { code?: string; responseCode?: number }
         const message = smtpError.code === 'EAUTH' || smtpError.responseCode === 535

@@ -30,6 +30,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 import Stripe from 'npm:stripe@14.21.0'
 import nodemailer from 'npm:nodemailer@6.9.16'
+import { welcomeAttachments } from '../_shared/welcome/packet.ts'
 
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY') ?? Deno.env.get('STRIPE_KEY')!
 const STRIPE_WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET')!
@@ -88,6 +89,14 @@ Deno.serve(async (req) => {
       const memberId = session.metadata?.member_id
       const type = session.metadata?.membership_type
       if (!memberId || !['annual','lifetime'].includes(type ?? '') || session.currency !== 'usd' || session.amount_total !== (type === 'lifetime' ? 49999 : 4999)) throw new Error('Checkout amount or metadata does not match membership pricing.')
+      const { data: member, error: memberError } = await supabase.from('members').select('id,full_name,email,address,membership_type,joined_at,deleted_at').eq('id', memberId).single()
+      if (memberError) throw memberError
+      // Queue before fulfillment so a retry still finds the pending welcome
+      // after the membership's original join date has been set.
+      if (member?.email && !member.deleted_at && !member.joined_at && (session.metadata?.action ?? 'join') === 'join') {
+        const queued = await supabase.rpc('cvoa_enqueue_welcome_email', { p_member: memberId, p_session: session.id })
+        if (queued.error) throw queued.error
+      }
       const { data: applied,error } = await supabase.rpc('cvoa_fulfill_membership', {
         p_session:session.id,p_member:memberId,p_type:type,
         p_intent:typeof session.payment_intent === 'string' ? session.payment_intent : null,
@@ -98,6 +107,32 @@ Deno.serve(async (req) => {
       if(applied) {
         try { await sendMembershipNotification() }
         catch { console.error('Membership recorded; notification delivery failed.') }
+      }
+      const delivery = await supabase.rpc('cvoa_claim_welcome_email', { p_member: memberId, p_session: session.id })
+      if (delivery.error) throw delivery.error
+      if (delivery.data === 'busy') throw new Error('Welcome email is already being processed.')
+      if (delivery.data === 'claimed') {
+        try {
+          if (member?.email && !member.deleted_at) {
+            if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) throw new Error('Welcome email is not configured.')
+            const transporter = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: WORKSPACE_EMAIL, pass: WORKSPACE_APP_PASSWORD.replace(/\s/g, '') }, connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000 })
+            try {
+              await transporter.sendMail({
+                from: `CVOA.ONE <${WORKSPACE_EMAIL}>`, to: member.email,
+                messageId: `<cvoa-welcome-${memberId}@combatvetsofamerica.org>`,
+                subject: 'Welcome to Combat Veterans of America',
+                text: `Welcome, ${member.full_name}!\n\nYour membership payment has been recorded. Your personalized welcome letter and CVOA.ONE getting started guide are attached. Sign in at https://www.cvoa.one to review your membership. If you have not created a login, contact CVOA staff for an activation link.`,
+                attachments: await welcomeAttachments({ ...member, membership_type: type }, 'membership'),
+              })
+            } finally { transporter.close() }
+          }
+          const finished = await supabase.rpc('cvoa_finish_welcome_email', { p_member: memberId, p_session: session.id, p_success: true })
+          if (finished.error) throw finished.error
+        } catch {
+          await supabase.rpc('cvoa_finish_welcome_email', { p_member: memberId, p_session: session.id, p_success: false })
+          // A 500 requests a Stripe retry; payment fulfillment remains idempotent.
+          throw new Error('Membership recorded; welcome email delivery needs a retry.')
+        }
       }
     }
     if (event.type === 'charge.refunded') {

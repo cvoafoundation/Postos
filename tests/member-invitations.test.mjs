@@ -46,6 +46,7 @@ function fixture(overrides = {}) {
     },
   }
   const context = {
+    welcomeAttachments: async (recipient, mode) => [{ filename: 'CVOA_Welcome_Letter.pdf', recipient, mode }, { filename: 'CVOA_ONE_Getting_Started_Guide.pdf' }],
     createClient: () => client,
     nodemailer: { createTransport(options) { state.calls.push(['transport', options]); return { async sendMail(mail) { state.calls.push(['mail', mail]); if (state.smtpError) throw state.smtpError } } } },
     Deno: { env: { get: (key) => state.env[key] }, serve: (fn) => { handler = fn } },

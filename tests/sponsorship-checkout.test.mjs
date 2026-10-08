@@ -49,7 +49,7 @@ function webhookServer({kind='sponsorship',paid=true,valid=true}={}){
  let handler,calls=[];const Deno={env:{get:n=>n},serve:f=>handler=f};
  const session={id:'cs_test_receipt',payment_status:paid?'paid':'unpaid',currency:'usd',amount_total:kind==='sponsorship'?4999:49999,payment_intent:'pi_example',livemode:false,metadata:kind==='sponsorship'?{kind,sponsor_request_id:requestId}:{member_id:'member',membership_type:'lifetime'}};
  const Stripe=function(){return {webhooks:{constructEventAsync:async()=>{if(!valid)throw Error('Signature invalid');return {type:'checkout.session.completed',id:'evt_example',created:1893456000,data:{object:session}};}}}};
- const createClient=()=>({rpc:async(name,args)=>{calls.push({name,args});return {data:false,error:null};}});
+ const createClient=()=>({from:()=>{const q={select:()=>q,eq:()=>q,single:async()=>({data:null,error:null})};return q;},rpc:async(name,args)=>{calls.push({name,args});return {data:name==='cvoa_claim_welcome_email'?'none':false,error:null};}});
  const nodemailer={createTransport:()=>({sendMail:async()=>{throw Error('Email is not expected in these tests');}})};
  new Function('Deno','createClient','Stripe','nodemailer',webhook)(Deno,createClient,Stripe,nodemailer);
  return {request:()=>handler(new Request('https://edge.example.test',{method:'POST',body:'{}',headers:{'stripe-signature':'test-signature'}})),calls:()=>calls};
