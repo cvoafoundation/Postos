@@ -81,6 +81,7 @@ before(async () => {
   await db.exec(fs.readFileSync('supabase/migrations/20261005170000_post_development.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261005190000_post_dashboard.sql', 'utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261006150000_member_directory_removal.sql', 'utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20261008193802_cvoa_schedlr_connector.sql', 'utf8'));
   await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('${uid(5)}','state@example.test',now()),('${uid(6)}','delegate@example.test',now()),('${uid(7)}','tribunal@example.test',now()),('${uid(8)}','national-staff@example.test',now());
   insert into public.profiles(id,full_name,email,role,state,post_id) values('${uid(5)}','State','state@example.test','state_commander','IN',null),('${uid(6)}','Delegate','delegate@example.test','delegate',null,'${post}'),('${uid(7)}','Tribunal','tribunal@example.test','ethics_tribunal',null,null),('${uid(8)}','National Staff','national-staff@example.test','national_staff',null,null);
   insert into public.congress_delegates(profile_id,post_id) values('${uid(6)}','${post}');
@@ -1590,3 +1591,16 @@ test("removed memberships cannot start checkout; a late paid receipt does not re
       "lapsed",
     );
   }));
+
+
+test('Schedlr: National, state, and post appointments produce only permitted workspaces',async()=>{
+ await as(national,async()=>{const {rows}=await db.query('select cvoa_schedlr_context() context');const keys=rows[0].context.workspaces.map(w=>w.key);assert(keys.includes('national'));assert(keys.includes(`post:${post}`));assert(keys.includes(`post:${otherPost}`));});
+ await as(uid(5),async()=>{const {rows}=await db.query('select cvoa_schedlr_context() context');const keys=rows[0].context.workspaces.map(w=>w.key);assert(keys.includes('state:IN'));assert(keys.includes(`post:${post}`));assert(!keys.includes(`post:${otherPost}`));assert(!keys.includes('national'));});
+ await as(officer,async()=>{const {rows}=await db.query('select cvoa_schedlr_context() context');assert.deepEqual(rows[0].context.workspaces.map(w=>w.key),[`post:${post}`]);});
+});
+test('Schedlr: ordinary members, guests and Ethics receive no staff scheduling access',async()=>{
+ for(const user of [member,guest,uid(7)]) await as(user,async()=>{const {rows}=await db.query('select cvoa_schedlr_context() context');assert.equal(rows[0].context.workspaces.length,0);});
+});
+test('Schedlr: suspension revokes workspace context',async()=>{
+ await as(national,async()=>{await db.exec('set local role postgres');await db.query('update profiles set access_suspended=true where id=$1',[national]);await db.exec('set local role authenticated');assert.equal((await db.query('select cvoa_schedlr_context() context')).rows[0].context.workspaces.length,0);});
+});
