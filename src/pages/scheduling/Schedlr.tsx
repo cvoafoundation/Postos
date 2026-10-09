@@ -3,7 +3,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 
-const SCHEDLR_URL = 'https://schdlr.vercel.app/'
+const SCHEDLR_URL = 'https://schdlr-m54.vercel.app/'
 
 /** Uses the independent application and its own sign-in. No CVOA tokens are sent. */
 export default function Schedlr() {
