@@ -1,61 +1,46 @@
-import { useEffect, useState } from 'react'
-import { ExternalLink, RefreshCw } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
-
-const SCHEDLR_URL = 'https://schdlr-m54.vercel.app/?cvoa_public=1'
-
-/** Public booking launcher. Staff credentials are never shared with CVOA. */
+const SCHEDLR_ORIGIN = 'https://schdlr-m54.vercel.app'
+const SCHEDLR_URL = `${SCHEDLR_ORIGIN}/?cvoa_workspace=1`
 export default function Schedlr() {
-  const { session, selectedScope, scopes } = useAuth()
-  const [allowed, setAllowed] = useState(false)
-  const [checking, setChecking] = useState(true)
-  const [loaded, setLoaded] = useState(false)
-  const [error, setError] = useState('')
+  const { session } = useAuth()
+  const frame = useRef<HTMLIFrameElement>(null)
   const [attempt, setAttempt] = useState(0)
-
+  const [ready, setReady] = useState(false)
+  const [error, setError] = useState('')
   useEffect(() => {
     let active = true
-    setAllowed(false); setChecking(true); setLoaded(false); setError('')
-    supabase.rpc('cvoa_schedlr_context').then(({ data, error: failure }) => {
+    setReady(false); setError('')
+    async function sendSession() {
+      const { data } = await supabase.auth.getSession()
       if (!active) return
-      setChecking(false)
-      if (failure) setError('Could not verify access to this staff tool. Please retry.')
-      else if (!data?.workspaces?.length) setError('This staff tool requires a current National, state, post staff, or designated delegate appointment.')
-      else setAllowed(true)
-    })
-    return () => { active = false }
-  }, [session?.user.id, selectedScope, scopes, attempt])
-
-  return <div className="p-4 md:p-8 space-y-5">
-    <div className="flex items-start justify-between gap-4 flex-wrap">
-      <div>
-        <h1 className="font-display text-3xl">Schedlr</h1>
-        <p className="text-sm text-muted mt-2">Appointments, team availability, and booking links.</p>
-      </div>
-      {allowed && <a href={SCHEDLR_URL} target="_blank" rel="noopener noreferrer" className="btn-ghost inline-flex items-center gap-2">
-        <ExternalLink size={16} /> Open full screen
-      </a>}
-    </div>
-    {checking && <p role="status" className="text-muted">Checking staff access…</p>}
-    {error && <div role="alert" className="panel p-4">
-      <p>{error}</p>
-      <button onClick={() => setAttempt(value => value + 1)} className="btn-gold mt-3">Retry</button>
-    </div>}
-    {allowed && <>
-      <div className="panel p-4 text-sm space-y-2">
-        <p>Book an appointment below. This view uses an anonymous booking session.</p>
-        <p className="text-muted">Staff management is available in standalone Schedlr. CVOA.ONE account and workspace changes never restore a saved Schedlr staff login here.</p>
-      </div>
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <p role="status" className="text-muted">{loaded ? 'Schedlr is open below.' : 'Loading Schedlr…'}</p>
-        <button onClick={() => setAttempt(value => value + 1)} className="btn-ghost inline-flex items-center gap-2"><RefreshCw size={14} /> Reload</button>
-      </div>
-      <iframe key={`${session?.user.id}:${selectedScope}:${attempt}`} title="Schedlr appointments and staff scheduling" src={SCHEDLR_URL}
-        onLoad={() => setLoaded(true)}
-        onError={() => setError('Could not load Schedlr. Try Open full screen or reload.')}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
-        className="w-full rounded border border-border bg-white" style={{ height: 'calc(100vh - 240px)', minHeight: 720 }} referrerPolicy="no-referrer" />
-    </>}
+      const current = data.session
+      const matches = current?.user.id === session?.user.id
+      frame.current?.contentWindow?.postMessage({ type: 'cvoa:scheduling-session',
+        token: matches ? current?.access_token : null,
+        userId: matches ? current?.user.id : null,
+        email: matches ? current?.user.email : null,
+      }, SCHEDLR_ORIGIN)
+      if (!matches) setError('Your account changed. Reopen Schedlr from your current CVOA account.')
+    }
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== SCHEDLR_ORIGIN || event.source !== frame.current?.contentWindow || event.data?.type !== 'schedlr:session-ready') return
+      setReady(true); void sendSession()
+    }
+    window.addEventListener('message', receive)
+    const timer = window.setInterval(() => void sendSession(), 30000)
+    return () => { active = false; window.removeEventListener('message', receive); window.clearInterval(timer) }
+  }, [session?.user.id, attempt])
+  return <div className="p-4 md:p-8 space-y-4">
+    <div className="flex justify-between gap-3"><div><h1 className="font-display text-3xl">Schedlr</h1><p className="text-sm text-muted mt-2">Your meetings, connected to your CVOA account.</p></div>
+      <button onClick={() => setAttempt(n => n + 1)} className="btn-ghost inline-flex items-center gap-2"><RefreshCw size={16}/>Reload</button></div>
+    <p className="text-sm text-muted">Schedule personal appointments and invite attendees by email. Official National, state, and post meetings remain in the Meetings tab under their existing permissions.</p>
+    {error && <p role="alert">{error}</p>}
+    {!ready && <p role="status" className="text-sm text-muted">Connecting your scheduling account…</p>}
+    <iframe ref={frame} key={`${session?.user.id}:${attempt}`} title="My Schedlr meetings" src={SCHEDLR_URL}
+      sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads" referrerPolicy="no-referrer"
+      className="w-full rounded border border-border bg-white" style={{height:'calc(100vh - 200px)',minHeight:850}} />
   </div>
 }
