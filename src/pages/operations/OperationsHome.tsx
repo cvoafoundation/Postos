@@ -6,6 +6,7 @@ import {
   ListTodo,
   RefreshCw,
 } from "lucide-react";
+import { ModuleWork } from "./ModuleWork";
 import { supabase } from "@/lib/supabase";
 import { STATUS, type Channel, type Task, type Report } from "./types";
 
@@ -166,6 +167,7 @@ export function OperationsHome({
           );
         })}
       </div>
+      {!mine && <ModuleWork />}
       <section>
         <h3 className="font-semibold mb-3">
           {mine ? "Assigned to you" : "Needs attention"}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Sparkles,
   Home,
   Hash,
   Lock,
@@ -19,6 +20,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Composer, MessageCard, type ComposerDraft } from "./Conversation";
+import { Assistant } from "./Assistant";
 import { OperationsHome } from "./OperationsHome";
 import { SOP } from "./sop";
 import {
@@ -329,7 +331,18 @@ function OperationsWorkspace({ userId }: { userId: string }) {
         setWorkspaces(spaces);
         setDirectory(ds);
         setChannels(rows);
-        setSelected(general?.id || rows[0]?.id || "");
+        const params = new URLSearchParams(window.location.search);
+        const linked = rows.find(
+          (c: Channel) => c.id === params.get("channel"),
+        );
+        setSelected(linked?.id || general?.id || rows[0]?.id || "");
+        if (
+          linked &&
+          ["actions", "reports", "messages", "activity"].includes(
+            params.get("view") || "",
+          )
+        )
+          setTab(params.get("view")!);
         setLoading(false);
       }
     })().catch(fail);
@@ -727,9 +740,14 @@ function OperationsWorkspace({ userId }: { userId: string }) {
         new Date(p.typing_until).getTime() > Date.now(),
     )
     .map((p) => name(p.user_id));
-  const globalView = ["home", "mywork", "overview", "mentions", "sop"].includes(
-    tab,
-  );
+  const globalView = [
+    "home",
+    "mywork",
+    "overview",
+    "mentions",
+    "sop",
+    "assistant",
+  ].includes(tab);
   const navigate = (next: string) => {
     setTab(next);
     setResults(null);
@@ -813,6 +831,7 @@ function OperationsWorkspace({ userId }: { userId: string }) {
               ["mentions", "Mentions", AtSign],
               ["overview", "Overview", ActivityIcon],
               ["sop", "Guide", BookOpen],
+              ["assistant", "Assistant", Sparkles],
             ] as const
           ).map(([key, title, Icon]) => (
             <button
@@ -1050,6 +1069,8 @@ function OperationsWorkspace({ userId }: { userId: string }) {
                   navigate(next);
                 }}
               />
+            ) : tab === "assistant" ? (
+              <Assistant userId={userId} channels={channels} />
             ) : tab === "messages" ? (
               <>
                 {older && (
