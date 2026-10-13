@@ -9,8 +9,8 @@ const user='10000000-0000-0000-0000-000000000001',channel='20000000-0000-0000-00
 export const useAuth=()=>({session:{user:{id:globalThis.__OPS_UI_ACCOUNT || user}},selectedScope:'primary'});
 const people=[{id:user,full_name:'Test Commander'},{id:'10000000-0000-0000-0000-000000000002',full_name:'Test Member'}];
 const channels=[{id:channel,name:'general',description:'Test conversation',scope:'national',state:null,post_id:null,private:false,read_only:false,archived:false,unread:0,can_write:true,can_manage:true}];
-const rows={ops_messages:[{id:'30000000-0000-0000-0000-000000000001',channel_id:channel,author_id:people[1].id,author_name:'Test Member',parent_id:null,body:'Ready for coordination',attachments:[],mentions:[],pinned:false,deleted_at:null,created_at:new Date().toISOString(),edited_at:null}],ops_tasks:[],ops_activity:[],ops_reports:[],ops_presence:[],ops_reactions:[]};
-class Query {constructor(table){this.table=table;this.filters=[];this.op='select'}select(){return this}eq(k,v){this.filters.push(r=>r[k]===v);return this}is(k,v){return this.eq(k,v)}gte(){return this}lt(){return this}in(k,v){this.filters.push(r=>v.includes(r[k]));return this}contains(k,v){this.filters.push(r=>v.every(x=>r[k].includes(x)));return this}textSearch(k,v){this.filters.push(r=>r.body.includes(v));return this}order(){return this}limit(){return this}single(){this.one=true;return this}insert(p){this.op='insert';this.payload=p;return this}upsert(p){this.op='upsert';this.payload=p;return this}update(p){this.op='update';this.payload=p;return this}delete(){this.op='delete';return this}then(resolve,reject){let selected=(rows[this.table]||[]).filter(r=>this.filters.every(f=>f(r)));if(this.op==='insert'){const r={id:crypto.randomUUID(),author_id:user,author_name:'Test Commander',parent_id:null,attachments:[],mentions:[],pinned:false,deleted_at:null,created_at:new Date().toISOString(),...this.payload};rows[this.table].push(r);selected=[r]}if(this.op==='update')selected.forEach(r=>Object.assign(r,this.payload));if(this.op==='delete')rows[this.table]=(rows[this.table]||[]).filter(r=>!selected.includes(r));return Promise.resolve({data:this.one?selected[0]:selected,error:null}).then(resolve,reject)}}
+const rows={ops_messages:[{id:'30000000-0000-0000-0000-000000000001',channel_id:channel,author_id:people[1].id,author_name:'Test Member',parent_id:null,body:'Ready for coordination',attachments:[],mentions:[],pinned:false,deleted_at:null,created_at:new Date().toISOString(),edited_at:null}],ops_tasks:[{id:'40000000-0000-0000-0000-000000000001',channel_id:channel,title:'Other member blocked task',owner_id:people[1].id,created_by:user,due_date:'2026-01-01',status:'blocked',outcome:'A result',measure:'Evidence'}],ops_activity:[],ops_reports:[],ops_presence:[],ops_reactions:[]};
+class Query {constructor(table){this.table=table;this.filters=[];this.op='select'}select(){return this}eq(k,v){this.filters.push(r=>r[k]===v);return this}is(k,v){return this.eq(k,v)}gte(){return this}lt(){return this}in(k,v){this.filters.push(r=>v.includes(r[k]));return this}contains(k,v){this.filters.push(r=>v.every(x=>r[k].includes(x)));return this}textSearch(k,v){this.filters.push(r=>r.body.includes(v));return this}order(){return this}limit(){return this}single(){this.one=true;return this}insert(p){this.op='insert';this.payload=p;return this}upsert(p){this.op='upsert';this.payload=p;return this}update(p){this.op='update';this.payload=p;return this}delete(){this.op='delete';return this}then(resolve,reject){let selected=(rows[this.table]||[]).filter(r=>this.filters.every(f=>f(r)));if(this.op==='insert'){const r={id:crypto.randomUUID(),status:'on_track',author_id:user,author_name:'Test Commander',parent_id:null,attachments:[],mentions:[],pinned:false,deleted_at:null,created_at:new Date().toISOString(),...this.payload};rows[this.table].push(r);selected=[r]}if(this.op==='update')selected.forEach(r=>Object.assign(r,this.payload));if(this.op==='delete')rows[this.table]=(rows[this.table]||[]).filter(r=>!selected.includes(r));return Promise.resolve({data:this.one?selected[0]:selected,error:null}).then(resolve,reject)}}
 const realtime={on(){return this},subscribe(){return this}};
 export const supabase={from:t=>new Query(t),channel:()=>({...realtime}),removeChannel:async()=>{},storage:{from:()=>({upload:async()=>({error:null})})},rpc:async(name,args)=>{let data=null;if(name==='ops_channel_list')data=channels;if(name==='ops_workspaces')data=[{scope:'national',state:null,post_id:null,label:'National Command',can_manage:true}];if(name==='ops_channel_people')data=people;if(name==='ops_thread_counts')data=rows.ops_messages.filter(m=>m.parent_id).map(m=>({parent_id:m.parent_id,replies:1}));if(name==='ops_summary')data=[];return {data,error:null}}};
 `;
@@ -96,6 +96,18 @@ test("Operations UI sends messages, opens threads, creates actions, and shows th
       root.render(React.createElement(Operations));
     });
     await settle();
+    assert.ok(document.body.textContent.includes("Your Operations home"));
+    assert.ok(document.body.textContent.includes("Start here"));
+    assert.ok(document.body.textContent.includes("Other member blocked task"));
+    await click(document.querySelector('button[aria-label="My work"]'));
+    assert.ok(
+      document.body.textContent.includes("You have no open assigned actions."),
+    );
+    assert.equal(
+      document.body.textContent.includes("Other member blocked task"),
+      false,
+    );
+    await click(document.querySelector('button[aria-label="Conversations"]'));
     assert.ok(document.body.textContent.includes("Ready for coordination"));
     await fill(
       document.querySelector('textarea[aria-label="Message #general"]'),
@@ -128,9 +140,11 @@ test("Operations UI sends messages, opens threads, creates actions, and shows th
       ),
     );
     assert.ok(document.body.textContent.includes("Contact the partner"));
-    await click(button("SOP"));
+    await click(document.querySelector('button[aria-label="Home"]'));
+    assert.ok(document.body.textContent.includes("Contact the partner"));
+    await click(document.querySelector('button[aria-label="Guide"]'));
     assert.ok(document.body.textContent.includes("CVOA operating framework"));
-    await click(button("Messages"));
+    await click(document.querySelector('button[aria-label="Conversations"]'));
     await fill(
       document.querySelector('textarea[aria-label="Message #general"]'),
       "Account-sensitive draft",
@@ -140,6 +154,8 @@ test("Operations UI sends messages, opens threads, creates actions, and shows th
       root.render(React.createElement(Operations));
     });
     await settle();
+    assert.ok(document.body.textContent.includes("Your Operations home"));
+    await click(document.querySelector('button[aria-label="Conversations"]'));
     assert.equal(
       document.querySelector('textarea[aria-label="Message #general"]').value,
       "",

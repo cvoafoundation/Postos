@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Home,
   Hash,
   Lock,
   MessageSquare,
@@ -18,6 +19,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Composer, MessageCard, type ComposerDraft } from "./Conversation";
+import { OperationsHome } from "./OperationsHome";
 import { SOP } from "./sop";
 import {
   STATUS,
@@ -106,7 +108,7 @@ function OperationsWorkspace({ userId }: { userId: string }) {
     [presence, setPresence] = useState<
       { user_id: string; last_seen: string; typing_until: string | null }[]
     >([]);
-  const [tab, setTab] = useState("messages"),
+  const [tab, setTab] = useState("home"),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
     [connection, setConnection] = useState("Connecting"),
@@ -453,16 +455,14 @@ function OperationsWorkspace({ userId }: { userId: string }) {
   async function typing() {
     if (!channel?.can_write || Date.now() - typingAt.current < 4000) return;
     typingAt.current = Date.now();
-    await supabase
-      .from("ops_presence")
-      .upsert(
-        {
-          channel_id: selected,
-          user_id: userId,
-          typing_until: new Date().toISOString(),
-        },
-        { onConflict: "channel_id,user_id" },
-      );
+    await supabase.from("ops_presence").upsert(
+      {
+        channel_id: selected,
+        user_id: userId,
+        typing_until: new Date().toISOString(),
+      },
+      { onConflict: "channel_id,user_id" },
+    );
   }
   async function send(
     body: string,
@@ -471,15 +471,13 @@ function OperationsWorkspace({ userId }: { userId: string }) {
     parent_id: string | null = null,
   ) {
     checked(
-      await supabase
-        .from("ops_messages")
-        .insert({
-          channel_id: selected,
-          body,
-          mentions,
-          attachments,
-          parent_id,
-        }),
+      await supabase.from("ops_messages").insert({
+        channel_id: selected,
+        body,
+        mentions,
+        attachments,
+        parent_id,
+      }),
     );
     await load();
   }
@@ -729,6 +727,16 @@ function OperationsWorkspace({ userId }: { userId: string }) {
         new Date(p.typing_until).getTime() > Date.now(),
     )
     .map((p) => name(p.user_id));
+  const globalView = ["home", "mywork", "overview", "mentions", "sop"].includes(
+    tab,
+  );
+  const navigate = (next: string) => {
+    setTab(next);
+    setResults(null);
+    setThread(null);
+    setShowPeople(false);
+    setSidebar(false);
+  };
   return (
     <div className="p-3 md:p-5 flex flex-col h-[calc(100dvh-64px)] min-h-[400px]">
       <header className="flex items-center gap-3 mb-3">
@@ -793,11 +801,37 @@ function OperationsWorkspace({ userId }: { userId: string }) {
         </div>
       )}
       <div className="flex flex-1 min-h-0 border border-hairline rounded-lg overflow-hidden bg-charcoal relative">
+        <nav
+          aria-label="Operations navigation"
+          className="w-16 md:w-20 shrink-0 border-r border-hairline bg-base flex flex-col items-center py-3 gap-2 overflow-y-auto"
+        >
+          {(
+            [
+              ["home", "Home", Home],
+              ["mywork", "My work", ListTodo],
+              ["messages", "Conversations", MessageSquare],
+              ["mentions", "Mentions", AtSign],
+              ["overview", "Overview", ActivityIcon],
+              ["sop", "Guide", BookOpen],
+            ] as const
+          ).map(([key, title, Icon]) => (
+            <button
+              key={key}
+              aria-label={title}
+              aria-current={tab === key ? "page" : undefined}
+              onClick={() => navigate(key)}
+              className={`w-full px-1 py-3 flex flex-col items-center gap-1 rounded text-[10px] break-words ${tab === key ? "bg-elevated text-white" : "text-muted hover:bg-surface"}`}
+            >
+              <Icon size={20} />
+              {title}
+            </button>
+          ))}
+        </nav>
         <aside
-          className={`${sidebar ? "flex" : "hidden"} md:flex flex-col w-60 shrink-0 border-r border-hairline bg-base absolute md:static inset-y-0 left-0 z-20`}
+          className={`${globalView && !sidebar ? "hidden" : sidebar ? "flex" : "hidden md:flex"} flex-col w-52 shrink-0 border-r border-hairline bg-base absolute md:static inset-y-0 left-16 z-20`}
         >
           <div className="px-4 py-3 border-b border-hairline flex justify-between items-center">
-            <strong className="text-sm">CVOA workspace</strong>
+            <strong className="text-sm">Team conversations</strong>
             <button
               onClick={() => open("channel")}
               disabled={!workspaces.some((w) => w.can_manage)}
@@ -847,7 +881,7 @@ function OperationsWorkspace({ userId }: { userId: string }) {
             {["national", "state", "post", "direct"].map((scope) => (
               <div key={scope} className="mt-5">
                 <div className="flex items-center justify-between px-2 mb-1 text-[10px] uppercase tracking-widest text-muted">
-                  {scope === "direct" ? "Direct messages" : `${scope} channels`}
+                  {scope === "direct" ? "Direct messages" : `${scope} teams`}
                   {scope === "direct" && (
                     <button
                       aria-label="New direct message"
@@ -908,29 +942,31 @@ function OperationsWorkspace({ userId }: { userId: string }) {
           </div>
         </aside>
         <section className="flex-1 min-w-0 flex flex-col">
-          <div className="px-4 py-3 border-b border-hairline flex justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="font-semibold truncate">
-                {channel?.scope === "direct" ? "" : "# "}
-                {channel?.name || "Your workspace"}
-              </h2>
-              <p className="text-xs text-muted truncate">
-                {channel?.description ||
-                  (channel?.scope === "direct"
-                    ? "Only the two participants can read this conversation."
-                    : "Choose a channel to begin.")}
-              </p>
+          {!globalView && (
+            <div className="px-4 py-3 border-b border-hairline flex justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="font-semibold truncate">
+                  {channel?.scope === "direct" ? "" : "# "}
+                  {channel?.name || "Your workspace"}
+                </h2>
+                <p className="text-xs text-muted truncate">
+                  {channel?.description ||
+                    (channel?.scope === "direct"
+                      ? "Only the two participants can read this conversation."
+                      : "Choose a channel to begin.")}
+                </p>
+              </div>
+              <button
+                aria-label="Show channel members"
+                className="text-xs text-muted shrink-0 flex gap-1 items-center"
+                onClick={() => setShowPeople(!showPeople)}
+              >
+                <Users size={15} />
+                {presence.length} active · {people.length} people
+              </button>
             </div>
-            <button
-              aria-label="Show channel members"
-              className="text-xs text-muted shrink-0 flex gap-1 items-center"
-              onClick={() => setShowPeople(!showPeople)}
-            >
-              <Users size={15} />
-              {presence.length} active · {people.length} people
-            </button>
-          </div>
-          {showPeople && (
+          )}
+          {showPeople && !globalView && (
             <div className="p-3 border-b border-hairline flex flex-wrap gap-3 text-xs max-h-28 overflow-auto">
               {people.map((p) => (
                 <span key={p.id} className="inline-flex gap-1 items-center">
@@ -959,21 +995,23 @@ function OperationsWorkspace({ userId }: { userId: string }) {
               )}
             </div>
           )}
-          <div className="flex gap-1 border-b border-hairline px-2 overflow-x-auto">
-            {tabs.map(([key, title, Icon]) => (
-              <button
-                key={key}
-                onClick={() => {
-                  setTab(key);
-                  setResults(null);
-                }}
-                className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-xs border-b-2 ${tab === key ? "border-white" : "border-transparent text-muted"}`}
-              >
-                <Icon size={13} />
-                {title}
-              </button>
-            ))}
-          </div>
+          {!globalView && (
+            <div className="flex gap-1 border-b border-hairline px-2 overflow-x-auto">
+              {tabs.map(([key, title, Icon]) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setTab(key);
+                    setResults(null);
+                  }}
+                  className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-xs border-b-2 ${tab === key ? "border-white" : "border-transparent text-muted"}`}
+                >
+                  <Icon size={13} />
+                  {title}
+                </button>
+              ))}
+            </div>
+          )}
           <div ref={messagePane} className="flex-1 min-h-0 overflow-y-auto">
             {loading && (
               <p role="status" className="p-5 text-sm text-muted">
@@ -1001,6 +1039,17 @@ function OperationsWorkspace({ userId }: { userId: string }) {
                   </button>
                 ))}
               </div>
+            ) : tab === "home" || tab === "mywork" ? (
+              <OperationsHome
+                userId={userId}
+                channels={channels}
+                mine={tab === "mywork"}
+                onGuide={() => navigate("sop")}
+                onGo={(id, next) => {
+                  setSelected(id);
+                  navigate(next);
+                }}
+              />
             ) : tab === "messages" ? (
               <>
                 {older && (
@@ -1257,6 +1306,43 @@ function OperationsWorkspace({ userId }: { userId: string }) {
               </div>
             ) : tab === "sop" ? (
               <div className="p-5 space-y-5 max-w-3xl">
+                <section className="panel p-5 space-y-3">
+                  <h2 className="font-display text-2xl">
+                    How to use Operations
+                  </h2>
+                  <p className="text-sm text-muted">
+                    Start on Home to see what needs attention. My work shows
+                    your assignments. Conversations opens your team workspace.
+                  </p>
+                  <p className="text-sm text-muted">
+                    <strong className="text-white">Messages:</strong> share an
+                    update or ask for help. Reply in thread keeps the replies
+                    together under one message. Mention a person to bring it to
+                    their attention.
+                  </p>
+                  <p className="text-sm text-muted">
+                    <strong className="text-white">Actions:</strong> turn a
+                    commitment into an assigned task with a deadline. Update its
+                    status as work progresses.
+                  </p>
+                  <p className="text-sm text-muted">
+                    <strong className="text-white">Activity:</strong> record a
+                    meaningful engagement, what you learned, and who owns the
+                    follow-up.
+                  </p>
+                  <p className="text-sm text-muted">
+                    <strong className="text-white">Reports:</strong> tell your
+                    team what is completed, what comes next, and what is
+                    blocked. Overview gives leaders a view across the teams they
+                    can access.
+                  </p>
+                  <button
+                    className="btn-gold text-xs"
+                    onClick={() => navigate("home")}
+                  >
+                    Go to Operations home
+                  </button>
+                </section>
                 <div>
                   <h3 className="font-display text-2xl">
                     CVOA operating framework

@@ -11,3 +11,7 @@ Realtime messages and new reactions use RLS-protected Postgres Changes. Presence
 Release: apply `20261013220149_operations_workspace.sql`, then deploy the frontend. No new external accounts, environment variables, or sending credentials are needed. State/post default channels are provisioned lazily for accessible workspaces. National announcement, general, and National staff channels are seeded.
 
 Validation: `node --test tests/operations.test.mjs tests/operations-ui.test.mjs` exercises database boundaries, threads, mentions, file ownership, direct-message isolation, moderation/history, accountable owners, atomic follow-ups, reporting, suspension, and the interactive interface. `npm run build` verifies the production frontend. Database tests run inside PGlite; live permission smoke tests should use a transaction and roll back fixture records.
+
+## Action-first navigation
+
+Operations opens on Home, with a short getting-started walkthrough, personal action counts, assigned/overdue/blocked work, authorized team conversations, and recent reports. The compact navigation rail offers Home, My work, Conversations, Mentions, Overview, and Guide. Guide explains the workflow before the SOP summary. My work filters by the signed-in user in the database query. Home reads existing RLS-protected records, refreshes every 30 seconds, and displays bounded results (200 earliest actions, 20 reports). No permission or schema changes accompany this layout.
