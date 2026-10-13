@@ -32,6 +32,7 @@ const GovernanceSession = lazy(
   () => import("@/pages/meetings/governance/GovernanceSession"),
 );
 const Meetings = lazy(() => import("@/pages/meetings/Meetings"));
+const Operations = lazy(() => import("@/pages/operations/Operations"));
 const Schedlr = lazy(() => import("@/pages/scheduling/Schedlr"));
 const UroMeetingWizard = lazy(
   () => import("@/pages/meetings/uro/UroMeetingWizard"),
@@ -235,6 +236,7 @@ function AuthenticatedApp() {
         <Routes>
           <Route path="/" element={<HomeRoute />} />
           <Route path="/schedlr" element={<Schedlr />} />
+          <Route path="/operations" element={<Operations />} />
           <Route
             path="/post-overview/:postId"
             element={

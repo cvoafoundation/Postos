@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutGrid,
+  MessagesSquare,
   GitBranch,
   ClipboardCheck,
   Users,
@@ -71,7 +72,7 @@ const MEMBER_ITEMS: NavItem[] = [
 
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { profile, isNational, signOut, scopes, selectedScope, selectWorkspace } = useAuth()
+  const { session, profile, isNational, signOut, scopes, selectedScope, selectWorkspace } = useAuth()
   const navigate = useNavigate()
   const [scopeError, setScopeError] = useState<string | null>(null)
   const [switchingScope, setSwitchingScope] = useState(false)
@@ -81,6 +82,18 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   const canSeeBadges = !isPlainMember && (isPostOfficer || isNational)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const location = useLocation()
+  const [operationsUnread, setOperationsUnread] = useState(0)
+  useEffect(() => {
+    let active = true
+    setOperationsUnread(0)
+    if (isDemoMode || !session?.user.id || profile?.role === 'guest_applicant') return
+    const refresh = () => supabase.rpc('ops_unread_count').then(({ data, error }: any) => { if (active) setOperationsUnread(error ? 0 : Number(data ?? 0)) })
+    void refresh()
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh() }, 30000)
+    const channel = supabase.channel(`operations-sidebar-${session.user.id}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ops_messages' }, refresh).subscribe()
+    window.addEventListener('operations-read', refresh)
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('operations-read', refresh); void supabase.removeChannel(channel) }
+  }, [session?.user.id, profile?.role, selectedScope, location.pathname])
 
   function refetchCounts() {
     if (!canSeeBadges) return
@@ -104,6 +117,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     { to: '/', label: isNational ? 'National Dashboard' : isState ? 'State Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
     { to: '/schedlr', label: 'Schedlr', icon: CalendarCheck },
+    { to: '/operations', label: 'Operations', icon: MessagesSquare },
     ...(isState || isPlainMember ? [{ to: '/meetings', label: 'Meetings', icon: CalendarCheck }] : []),
     ...(isState ? [{ to: '/sponsors', label: 'State Sponsorship', icon: HandCoins }, { to: '/drive', label: 'Documents & Files', icon: HardDrive }, { to: '/health', label: 'State Posts', icon: HeartPulse }, { to: '/members', label: 'State Membership Roster', icon: IdCard }, { to: '/post-development', label: 'Post Development', icon: Hammer }, { to: '/congress', label: 'Veterans Congress', icon: Landmark }] : []),
     // National always gets the full toolset too, on top of their own-only
@@ -178,9 +192,9 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
           {scopes.length > 1 && <div className="px-4 mb-3"><label className="eyebrow" htmlFor="workspace-selector">Your appointed workspaces</label><select id="workspace-selector" className="input-field mt-2 text-xs" value={selectedScope} disabled={switchingScope} onChange={async e => { setSwitchingScope(true); setScopeError(null); try { await selectWorkspace(e.target.value); navigate('/'); onClose() } catch (error) { setScopeError(error instanceof Error ? error.message : 'Could not switch workspace.') } finally { setSwitchingScope(false) } }}>{scopes.map(s => <option key={s.scope_id} value={s.scope_id}>{ROLE_LABELS[s.role]} · {s.post_name ?? s.state ?? 'Personal / National'}</option>)}</select>{scopeError && <p role="alert" className="text-xs text-status-attention mt-2">{scopeError}</p>}</div>}
           {scopes.find(s=>s.scope_id===selectedScope) && <p className="px-5 text-xs text-muted mb-2">{scopeLabel(scopes.find(s=>s.scope_id===selectedScope)!)}</p>}
           {navItems.map(({ to, label, icon: Icon, end, section }, index) => {
-            const group = (path: string) => path === '/' ? 'Overview' : ['/my-membership','/member-home','/my-applications'].includes(path) ? 'Personal' : ['/file-complaint','/ethics-tribunal'].includes(path) ? 'Ethics' : NATIONAL_ONLY_ITEMS.some(item=>item.to===path) ? 'National' : isState ? 'State Oversight' : isPlainMember ? 'My Post & Congress' : 'Post Operations'
+            const group = (path: string) => path === '/' ? 'Overview' : ['/schedlr','/operations'].includes(path) ? 'Collaboration' : ['/my-membership','/member-home','/my-applications'].includes(path) ? 'Personal' : ['/file-complaint','/ethics-tribunal'].includes(path) ? 'Ethics' : NATIONAL_ONLY_ITEMS.some(item=>item.to===path) ? 'National' : isState ? 'State Oversight' : isPlainMember ? 'My Post & Congress' : 'Post Operations'
             const sectionTitle = index === 0 || group(to) !== group(navItems[index-1].to) ? group(to) : null
-            const count = section ? counts[section] ?? 0 : 0
+            const count = to === '/operations' ? operationsUnread : section ? counts[section] ?? 0 : 0
             return (
               <div key={label}>
               {sectionTitle && <div className="eyebrow px-5 pt-4 pb-2">{sectionTitle}</div>}
