@@ -46,7 +46,7 @@ test("the export button is hidden from non-NCC accounts and the reviewed CSV is 
           );
           b.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({
             loader: "js",
-            contents: `export const useAuth=()=>({session:{user:{id:globalThis.__NCC_USER||'staff'}},selectedScope:'primary'});export const supabase={rpc:async(name,args)=>{if(name==='cvoa_membership_export_access')return {data:{allowed:globalThis.__NCC_USER==='commander',can_manage:true},error:null};if(name==='cvoa_membership_list')return {data:{generated_at:'2026-10-14T13:30:00Z',rows:[{id:'1',name:'Test Member',address:'1 Main St',membership_class:'Combat Member',votes_entitled:1,voting_entitlement:'Membership referendum'}]},error:null};return {data:[],error:null}}};`,
+            contents: `export const useAuth=()=>({session:{user:{id:globalThis.__NCC_USER||'staff'}},selectedScope:'primary'});export const supabase={rpc:async(name,args)=>{if(name==='cvoa_membership_export_access')return {data:{allowed:globalThis.__NCC_USER==='commander',can_manage:true},error:null};if(name==='cvoa_membership_list'){globalThis.__NCC_EXPORT_REASON=args.p_reason;return {data:{generated_at:'2026-10-14T13:30:00Z',rows:[{id:'1',name:'Test Member',address:'1 Main St',membership_class:'Combat Member',votes_entitled:1,voting_entitlement:'Membership referendum'}]},error:null};}return {data:[],error:null}}};`,
           }));
         },
       },
@@ -76,23 +76,18 @@ test("the export button is hidden from non-NCC accounts and the reviewed CSV is 
     await React.act(async () => button.click());
     await settle();
     assert.ok(document.body.textContent.includes("NCC only"));
-    const textarea = [...document.querySelectorAll("textarea")].find((e) =>
-      e.placeholder.includes("referendum"),
-    );
-    await React.act(async () => {
-      Object.getOwnPropertyDescriptor(
-        dom.window.HTMLTextAreaElement.prototype,
-        "value",
-      ).set.call(textarea, "Written inspection request review");
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    });
     const download = [...document.querySelectorAll("button")].find((b) =>
       b.textContent.includes("Download membership list CSV"),
     );
     assert.equal(download.disabled, false);
     await React.act(async () => download.click());
     await settle();
+    assert.equal(globalThis.__NCC_EXPORT_REASON, "NCC membership-list review");
     assert.ok(filename.endsWith(".csv"));
+    const fallback = document.querySelector("a[download]");
+    assert.ok(fallback);
+    assert.equal(fallback.href, "blob:test");
+    assert.equal(fallback.download, filename);
     assert.ok((await blob.text()).includes("Number of votes entitled"));
     globalThis.__NCC_USER = "other-staff";
     await React.act(async () => root.render(React.createElement(Component)));
@@ -104,6 +99,7 @@ test("the export button is hidden from non-NCC accounts and the reviewed CSV is 
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;
     delete globalThis.__NCC_USER;
+    delete globalThis.__NCC_EXPORT_REASON;
     dom.window.close();
     fs.unlinkSync(file);
   }

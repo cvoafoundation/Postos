@@ -80,9 +80,18 @@ function ExportDialog({
     [staff, setStaff] = useState<any[]>([]),
     [editing, setEditing] = useState<MembershipListRow | null>(null),
     [reason, setReason] = useState(""),
-    [revision, setRevision] = useState(0);
+    [revision, setRevision] = useState(0),
+    [downloadFile, setDownloadFile] = useState<{
+      url: string;
+      name: string;
+    } | null>(null);
+  const fileUrl = useRef<string | null>(null);
   useEffect(() => {
     let active = true;
+    if (fileUrl.current) URL.revokeObjectURL(fileUrl.current);
+    fileUrl.current = null;
+    setDownloadFile(null);
+    setNotice("");
     setLoading(true);
     setError("");
     setRows([]);
@@ -103,6 +112,7 @@ function ExportDialog({
     mounted.current = true;
     return () => {
       mounted.current = false;
+      if (fileUrl.current) URL.revokeObjectURL(fileUrl.current);
     };
   }, []);
   const incomplete = rows.filter((r) => missingListFields(r).length),
@@ -115,10 +125,15 @@ function ExportDialog({
     setBusy(true);
     setError("");
     try {
+      const exportPurpose = purpose.trim() || "NCC membership-list review";
+      if (exportPurpose.length < 5)
+        throw new Error(
+          "Use at least five characters for a custom purpose, or leave it blank for NCC review.",
+        );
       const data = check(
         await supabase.rpc("cvoa_membership_list", {
           p_active_only: activeOnly,
-          p_reason: purpose,
+          p_reason: exportPurpose,
         }),
       );
       if (!mounted.current) return;
@@ -130,20 +145,29 @@ function ExportDialog({
           type: "text/csv;charset=utf-8;",
         }),
       );
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = membershipListFilename(
+      if (fileUrl.current) URL.revokeObjectURL(fileUrl.current);
+      fileUrl.current = url;
+      const name = membershipListFilename(
         data.generated_at,
         activeOnly,
         missing,
       );
-      a.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setDownloadFile({ url, name });
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      try {
+        a.click();
+      } finally {
+        a.remove();
+      }
       setRows(data.rows);
       setNotice(
         missing
-          ? "Review CSV downloaded. Missing fields are blank and must be resolved before relying on the list as complete."
-          : "Membership list downloaded. The purpose and row count were recorded.",
+          ? "Review CSV ready. Missing fields are blank and must be resolved before relying on the list as complete."
+          : "Membership list CSV ready. The purpose and row count were recorded.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not export the list.");
@@ -423,7 +447,7 @@ function ExportDialog({
           </form>
         )}
         <label className="block text-sm">
-          Export purpose / request reference
+          Export purpose / request reference (optional)
           <textarea
             className="input-field w-full mt-1"
             rows={2}
@@ -433,6 +457,24 @@ function ExportDialog({
             placeholder="Membership-list review for a written referendum petition request"
           />
         </label>
+        <p className="text-xs text-muted">
+          Leave the purpose blank for an internal NCC review. Enter a specific
+          purpose when preparing a response to a records request.
+        </p>
+        {downloadFile && (
+          <div className="panel p-3 space-y-2">
+            <p className="text-xs text-muted">
+              If the download did not start automatically, use this direct link.
+            </p>
+            <a
+              href={downloadFile.url}
+              download={downloadFile.name}
+              className="text-sm text-gold underline"
+            >
+              Download CSV file
+            </a>
+          </div>
+        )}
         {error && (
           <p role="alert" className="text-sm text-status-attention">
             {error}
@@ -445,9 +487,7 @@ function ExportDialog({
         )}
         <button
           className="btn-gold text-sm flex gap-2 items-center"
-          disabled={
-            loading || busy || purpose.trim().length < 5 || !rows.length
-          }
+          disabled={loading || busy || !rows.length}
           onClick={() => void download()}
         >
           <Download size={16} />
