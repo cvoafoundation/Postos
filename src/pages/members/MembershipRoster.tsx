@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Modal } from '@/components/ui/Modal'
 import RemovePerson, { RemovedPeople, notifyPeopleChanged } from '@/components/access/RemovePerson'
+import MembershipListExport from '@/components/access/MembershipListExport'
 import MemberRecord from '@/components/workspaces/MemberRecord'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -282,6 +283,7 @@ export default function MembershipRoster() {
       <p className="text-sm text-muted mb-6">Manage membership records, dues, renewal dates, and activation emails. For login roles and system permissions, use {isNational ? <Link className="text-gold hover:underline" to="/users">Accounts &amp; Access</Link> : 'National Accounts & Access'}.</p>
 
       <div className="flex flex-wrap gap-4 mb-4">
+        <MembershipListExport />
         <Link className="text-gold text-sm" to="/directory">CVOA Member Directory →</Link>
         <button className="text-gold text-sm" onClick={() => { loadMembers(); if(query.trim()) searchGlobally(query) }}>Refresh Roster</button>
       </div>
