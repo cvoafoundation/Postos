@@ -91,6 +91,8 @@ before(async () => {
   insert into public.resolution_member_preferences(resolution_id,post_id,member_profile_id,preference) values('${uid(501)}','${post}','${member}',true);
   insert into public.ethics_complaints(complainant_id,respondent_name,category,description) values('${member}','Private complaint','other','Confidential example');`);
   await db.exec(fs.readFileSync('supabase/migrations/20261014180746_restricted_membership_access.sql','utf8'));
+  await db.exec(`alter table storage.objects add column metadata jsonb;create policy legacy_dd214_upload on storage.objects for insert to anon,authenticated with check(bucket_id='dd214-uploads');grant insert on storage.objects to anon;`);
+  await db.exec(fs.readFileSync('supabase/migrations/20261014190152_member_dd214_upload.sql','utf8'));
 });
 after(() => db.close());
 async function as(n,sql,role='authenticated') {
@@ -166,4 +168,37 @@ test('a designated delegate retains their own formal vote and state summary only
  assert.equal(tally.state,'IN');
  await assert.rejects(as(6,`select cvoa_state_voting('${uid(501)}','OH')`));
  await assert.rejects(as(6,`insert into resolution_votes(resolution_id,vote_type,voter_id,voter_post_id,vote) values('${uid(501)}','delegate_vote','${uid(6)}','${otherPost}',true)`));
+});
+
+test('membership-only users can submit only a prepared upload for their own linked membership',async()=>{
+ await limit(3);
+ await assert.rejects(as(3,`select cvoa_prepare_member_upload('${uid(203)}','pdf')`));
+ await assert.rejects(as(3,`select cvoa_prepare_member_upload('${memberRow}','exe')`));
+ const path=(await as(3,`select cvoa_prepare_member_upload('${memberRow}','pdf') path`)).rows[0].path;
+ await assert.rejects(as(6,`insert into storage.objects(bucket_id,name,metadata) values('dd214-uploads','${path}','{"size":100,"mimetype":"application/pdf"}')`));
+ await assert.rejects(as(3,`select cvoa_submit_member_upload('${path}')`));
+ await as(3,`insert into storage.objects(bucket_id,name,metadata) values('dd214-uploads','${path}','{"size":100,"mimetype":"application/pdf"}')`);
+ await assert.rejects(as(6,`select cvoa_submit_member_upload('${path}')`));
+ const result=(await as(3,`select cvoa_submit_member_upload('${path}') result`)).rows[0].result;
+ assert.equal(result.length,1);assert.equal(result[0].status,'pending');assert.equal(result[0].has_document,true);
+ assert.equal('dd214_storage_path' in result[0],false);
+ await db.exec(`update members set dd214_review_status='verified' where id='${memberRow}'`);
+ await as(3,`select cvoa_submit_member_upload('${path}')`);
+ assert.equal((await db.query(`select dd214_review_status from members where id='${memberRow}'`)).rows[0].dd214_review_status,'verified');
+ await as(3,"select set_config('request.path','/rpc/cvoa_member_verification',false)");await as(3,'select cvoa_membership_request_guard()');
+});
+test('oversized, foreign, expired and concurrent replacement submissions cannot alter the record',async()=>{
+ const previous=(await db.query(`select dd214_storage_path from members where id='${memberRow}'`)).rows[0].dd214_storage_path;
+ let path=(await as(3,`select cvoa_prepare_member_upload('${memberRow}','png') path`)).rows[0].path;
+ await as(3,`insert into storage.objects(bucket_id,name,metadata) values('dd214-uploads','${path}','{"size":10485761,"mimetype":"image/png"}')`);
+ await assert.rejects(as(3,`select cvoa_submit_member_upload('${path}')`));
+ await assert.rejects(as(3,`insert into storage.objects(bucket_id,name,metadata) values('dd214-uploads','${member}/membership/${memberRow}/unprepared.pdf','{"size":100,"mimetype":"application/pdf"}')`));
+ await assert.rejects(as(3,`insert into storage.objects(bucket_id,name) values('ncc-drive','${member}/file.pdf')`));
+ assert.equal((await db.query(`select dd214_storage_path from members where id='${memberRow}'`)).rows[0].dd214_storage_path,previous);
+ await db.exec(`update membership_private.member_uploads set expires_at=now()-interval '1 minute' where path='${path}'`);
+ await assert.rejects(as(3,`select cvoa_submit_member_upload('${path}')`));
+ path=(await as(3,`select cvoa_prepare_member_upload('${memberRow}','pdf') path`)).rows[0].path;
+ await as(3,`insert into storage.objects(bucket_id,name,metadata) values('dd214-uploads','${path}','{"size":100,"mimetype":"application/pdf"}')`);
+ await db.exec(`update members set dd214_storage_path='staff/new.pdf' where id='${memberRow}'`);
+ await assert.rejects(as(3,`select cvoa_submit_member_upload('${path}')`));
 });

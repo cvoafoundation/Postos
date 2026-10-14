@@ -28,6 +28,7 @@ const WORKSPACE_APP_PASSWORD = Deno.env.get('WORKSPACE_APP_PASSWORD')
 interface RequestBody {
   member_id: string
   method?: 'email' | 'manual'
+  purpose?: 'activation' | 'verification'
 }
 
 // 128 bits of randomness; only returned once to the authorized administrator.
@@ -40,7 +41,7 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }
 
-async function sendInviteEmail(email: string, recipient: WelcomeRecipient, actionLink: string, includeWelcome: boolean) {
+async function sendInviteEmail(email: string, recipient: WelcomeRecipient, actionLink: string, includeWelcome: boolean, verification = false) {
   const fullName = recipient.full_name
   if (!WORKSPACE_EMAIL || !WORKSPACE_APP_PASSWORD) {
     throw new Error('Email delivery is not configured. Set WORKSPACE_EMAIL and WORKSPACE_APP_PASSWORD in Supabase Edge Function secrets.')
@@ -54,13 +55,15 @@ async function sendInviteEmail(email: string, recipient: WelcomeRecipient, actio
     greetingTimeout: 10000,
     socketTimeout: 15000,
   })
+  const uploadLink = new URL('/membership-verification', SITE_URL).href
+  const verificationHtml = `<p>Hi ${escapeHtml(fullName)},</p><p>Please submit your DD-214 so CVOA can review your service verification.</p>${includeWelcome ? `<p>First, <a href="${escapeHtml(actionLink)}">activate your account and create your password</a>.</p>` : ''}<p><a href="${escapeHtml(uploadLink)}">Sign in and upload your DD-214 securely</a></p><p>Accepted: PDF, JPG, or PNG, up to 10 MB. Please keep the service information needed for verification visible. You may redact your Social Security number and unrelated sensitive information.</p><p>Your submission will await staff review. Please use the secure upload page rather than replying with the document attached.</p>`
   await transporter.sendMail({
     from: `CVOA.ONE SYSTEM (COS) <${WORKSPACE_EMAIL}>`,
     to: email,
-    subject: `Create your CVOA account`,
+    subject: verification ? 'CVOA service verification: upload your DD-214' : 'Create your CVOA account',
     attachments: includeWelcome ? await welcomeAttachments(recipient, 'invitation') : [],
-    text: `Hi ${fullName},\n\nYour CVOA membership record is ready. Set a password to access your membership screen:\n\n${actionLink}\n\nIf you weren't expecting this, you can safely ignore this email.`,
-    html: `<p>Hi ${escapeHtml(fullName)},</p>
+    text: verification ? `Hi ${fullName},\n\nPlease submit your DD-214 for CVOA service verification.\n${includeWelcome ? `First activate your account and create your password: ${actionLink}\n\n` : ''}Sign in and upload securely: ${uploadLink}\n\nAccepted: PDF, JPG, PNG; up to 10 MB. You may redact your Social Security number and unrelated sensitive information while keeping the service information needed for verification visible. Your submission awaits staff review. Please use the secure page rather than emailing the document.\n` : `Hi ${fullName},\n\nYour CVOA membership record is ready. Set a password to access your membership screen:\n\n${actionLink}\n\nIf you weren't expecting this, you can safely ignore this email.`,
+    html: verification ? verificationHtml : `<p>Hi ${escapeHtml(fullName)},</p>
            <p>Your CVOA membership record is ready. Set a password to access your membership screen:</p>
            <p><a href="${escapeHtml(actionLink)}">Set your password &amp; log in</a></p>
            <p>If you weren't expecting this, you can safely ignore this email.</p>`,
@@ -94,12 +97,16 @@ Deno.serve(async (req) => {
     let body: RequestBody
     try { body = await req.json() } catch { return reply(400, { error: 'Invalid invitation request.' }) }
     if (!body || typeof body.member_id !== 'string' || !body.member_id) return reply(400, { error: 'A member ID is required.' })
+    const purpose = body.purpose ?? 'activation'
+    if (!['activation', 'verification'].includes(purpose)) return reply(400, { error: 'Choose account activation or DD-214 upload request.' })
     const method = body.method ?? 'email'
+    if (purpose === 'verification' && method !== 'email') return reply(400, { error: 'DD-214 requests use email delivery.' })
     if (!['email', 'manual'].includes(method)) return reply(400, { error: 'Choose email or manual account creation.' })
     const { data: member, error: memberError } = await supabase.from('members').select('*').eq('id', body.member_id).single()
     if (memberError || !member) return reply(404, { error: 'Member not found.' })
     const { data: permitted, error: permissionError } = await supabase.rpc('cvoa_service_authorized', { p_actor: caller.id, p_post: member.post_id, p_capability: 'manage_post' })
     if (permissionError || !permitted) return reply(403, { error: 'You can only invite members from an assigned post or National.' })
+    if (member.deleted_at) return reply(404, { error: 'Member not found.' })
     if (!member.email) return reply(400, { error: 'Add and save an email address for this member first.' })
     if (method === 'manual' && member.profile_id) return reply(409, { error: 'This member already has an account. Send a password setup email instead.' })
     let redirectTo = ''
@@ -125,19 +132,25 @@ Deno.serve(async (req) => {
       // A retry reuses the linked account; it never creates a second roster entry
       // or changes an existing user's password or role.
       let linkType: 'invite' | 'recovery' = 'invite'
+      let activated = false
       if (member.profile_id) {
         const { data, error } = await supabase.auth.admin.getUserById(member.profile_id)
         if (error || !data?.user) return reply(409, { error: 'The linked login account could not be found.' })
         if (data.user.email?.toLowerCase() !== member.email.trim().toLowerCase()) {
           return reply(409, { error: 'The roster email differs from the linked login email. Correct it before sending a setup link.' })
         }
-        if (data.user.email_confirmed_at) { linkType = 'recovery'; includeWelcome = false }
+        if (data.user.email_confirmed_at) { linkType = 'recovery'; includeWelcome = false; activated = true }
       }
+      if (purpose === 'verification' && activated && member.profile_id) {
+        userId = member.profile_id
+        actionLink = new URL('/membership-verification', SITE_URL).href
+      } else {
       const { data, error } = await supabase.auth.admin.generateLink({ type: linkType, email: member.email, options: { redirectTo } })
       if (error || !data?.user || !data.properties?.action_link) return reply(400, { error: error?.message ?? 'Could not create the password setup link.' })
       userId = data.user.id
       if (member.profile_id && userId !== member.profile_id) return reply(409, { error: 'The invitation does not match the linked account.' })
       actionLink = data.properties.action_link
+      }
     }
 
     // Finish the membership linkage before emailing so the first login is ready.
@@ -151,7 +164,7 @@ Deno.serve(async (req) => {
     const { error: linkError } = await supabase.from('members').update({ profile_id: userId }).eq('id', body.member_id)
     if (linkError) return reply(500, { error: `Account created, but membership linking failed: ${linkError.message}. Retry from this member's roster entry.` })
     if (actionLink) {
-      try { await sendInviteEmail(member.email, member, actionLink, includeWelcome) }
+      try { await sendInviteEmail(member.email, member, actionLink, includeWelcome, purpose === 'verification') }
       catch (err) {
         const smtpError = err as Error & { code?: string; responseCode?: number }
         const message = smtpError.code === 'EAUTH' || smtpError.responseCode === 535

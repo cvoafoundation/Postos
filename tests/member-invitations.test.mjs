@@ -125,3 +125,20 @@ test('function response errors expose the server message', async () => {
   assert.equal(await context.exports.getFunctionError({ context: response, message: 'non-2xx' }), 'Google rejected credentials')
   assert.equal(response.bodyUsed, false)
 })
+test('verification email activates a new account and links to secure upload',async()=>{
+ const f=fixture();assert.equal((await f.invoke({member_id:'member-1',purpose:'verification'})).status,200)
+ const mail=f.state.calls.find(([name])=>name==='mail')[1]
+ assert.match(mail.subject,/DD-214/);assert.match(mail.html,/activate your account/);assert.match(mail.html,/https:\/\/cvoa.one\/membership-verification/);assert.match(mail.html,/&lt;Member&gt;/)
+})
+test('an activated member gets an upload request without a password recovery link',async()=>{
+ const f=fixture({confirmed:true,profile:{id:'user-1'}});f.state.member.profile_id='user-1'
+ assert.equal((await f.invoke({member_id:'member-1',purpose:'verification'})).status,200)
+ assert.equal(f.state.calls.some(([name])=>name==='generate'),false)
+ const mail=f.state.calls.find(([name])=>name==='mail')[1]
+ assert.match(mail.html,/membership-verification/);assert.doesNotMatch(mail.html,/activate your account/);assert.equal(mail.attachments.length,0)
+})
+test('a verification request preserves the linked-account identity check',async()=>{
+ const f=fixture({confirmed:true,userEmail:'different@example.com'});f.state.member.profile_id='user-1'
+ assert.equal((await f.invoke({member_id:'member-1',purpose:'verification'})).status,409)
+ assert.equal(f.state.calls.some(([name])=>name==='mail'),false)
+})

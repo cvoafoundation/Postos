@@ -102,7 +102,7 @@ export default function PersonWorkspace({
     refresh();
     onChanged?.();
   }
-  async function sendEmail(membership: LinkedMembership) {
+  async function sendEmail(membership: LinkedMembership, purpose: "activation" | "verification" = "activation") {
     if (busy) return;
     setBusy(true);
     setActionError(null);
@@ -110,11 +110,11 @@ export default function PersonWorkspace({
     try {
       const { data: result, error } = await supabase.functions.invoke(
         "invite-member",
-        { body: { member_id: membership.id, method: "email" } },
+        { body: { member_id: membership.id, method: "email", purpose } },
       );
       if (error || result?.error)
         throw new Error(await getFunctionError(error, result));
-      changed(`Activation / password setup email sent to ${membership.email}.`);
+      changed(`${purpose === "verification" ? "DD-214 upload request" : "Activation / password setup email"} sent to ${membership.email}.`);
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : "Could not send the email.",
@@ -321,6 +321,7 @@ export default function PersonWorkspace({
                           : "Resend activation / password setup email"}
                       </button>
                     )}
+                    {isNational && m.email && <button type="button" className="text-gold disabled:opacity-50" disabled={busy} onClick={() => sendEmail(m, "verification")}>Send DD-214 upload request</button>}
                   </div>
                   {person &&
                     m.email &&

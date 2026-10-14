@@ -1,3 +1,4 @@
+import ServiceVerification from '@/components/membership/ServiceVerification'
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { MembershipCardVisual } from "@/components/membership/MembershipCardVisual";
@@ -208,6 +209,7 @@ export default function MyMembership() {
       {member && (
         <>
           <MembershipCardVisual member={member} role={profile?.role} />
+          <ServiceVerification />
           <div className="grid md:grid-cols-2 gap-6 mt-8">
             <section className="panel p-5">
               <h2 className="font-display text-xl mb-3">

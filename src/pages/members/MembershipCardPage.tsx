@@ -1,3 +1,4 @@
+import ServiceVerification from '@/components/membership/ServiceVerification'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -21,6 +22,7 @@ export default function MembershipCardPage() {
     {error && <p role="alert" className="text-status-attention">{error}</p>}
     {!loading && !error && !cards.length && <p className="text-sm text-muted">Your membership card is being prepared. Contact National if you need assistance.</p>}
     <div className="space-y-6">{cards.map(member => <MembershipCardVisual key={member.id} member={member} role={profile?.role} />)}</div>
+    <ServiceVerification />
     {cards.length > 0 && <div className="text-center mt-6 print:hidden"><button className="btn-gold" onClick={() => window.print()}>Print membership card</button></div>}
   </div>
 }

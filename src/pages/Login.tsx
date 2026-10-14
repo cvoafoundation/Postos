@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { PostApplicationForm } from '@/components/forms/PostApplicationForm'
 import { MembershipForm } from '@/pages/members/JoinCVOA'
@@ -11,7 +11,8 @@ type Path = 'choose' | 'start_post' | 'join_existing' | 'member_only' | 'staff'
 
 export default function Login() {
   const [searchParams] = useSearchParams()
-  const [path, setPath] = useState<Path>(searchParams.get('login') === 'true' ? 'staff' : 'choose')
+  const { pathname } = useLocation()
+  const [path, setPath] = useState<Path>(searchParams.get('login') === 'true' || pathname === '/membership-verification' ? 'staff' : 'choose')
   const [submitted, setSubmitted] = useState(false)
   const [posts, setPosts] = useState<Post[]>([])
 

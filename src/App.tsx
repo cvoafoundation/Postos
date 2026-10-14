@@ -11,6 +11,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { AppShell } from "@/components/layout/AppShell";
 import { RoleGuard } from "@/components/layout/RoleGuard";
+const MembershipVerification = lazy(() => import("@/pages/members/MembershipVerification"));
 const MembershipCardPage = lazy(() => import("@/pages/members/MembershipCardPage"));
 const Login = lazy(() => import("@/pages/Login"));
 const SetPassword = lazy(() => import("@/pages/SetPassword"));
@@ -452,6 +453,7 @@ function AuthenticatedApp() {
           />
           <Route path="/members" element={<RosterRoute />} />
           <Route path="/directory" element={<MemberDirectory />} />
+          <Route path="/membership-verification" element={<MembershipVerification />} />
           <Route path="/my-membership" element={membershipOnly ? <MembershipCardPage /> : <MyMembership />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/file-complaint" element={<FileComplaint />} />
