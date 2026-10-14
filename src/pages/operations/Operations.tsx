@@ -83,7 +83,38 @@ function Field({
   );
 }
 export default function Operations() {
-  const { session, selectedScope } = useAuth();
+  const {
+    session,
+    selectedScope,
+    isNational,
+    scopes,
+    accessSuspended,
+    loading,
+  } = useAuth();
+  if (loading)
+    return (
+      <p role="status" className="p-5 text-sm text-muted">
+        Checking Operations access…
+      </p>
+    );
+  if (
+    accessSuspended ||
+    !(
+      isNational ||
+      scopes?.some((s) =>
+        ["national_commander", "national_staff"].includes(s.role),
+      )
+    )
+  )
+    return (
+      <div className="panel p-8 m-5">
+        <h1 className="font-display text-2xl">National access only</h1>
+        <p className="text-sm text-muted mt-3">
+          Operations and the CVOA assistant are currently available to National
+          Command and National staff.
+        </p>
+      </div>
+    );
   return (
     <OperationsWorkspace
       key={`${session?.user.id}:${selectedScope}`}

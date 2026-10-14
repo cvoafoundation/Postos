@@ -359,3 +359,37 @@ test("leadership can moderate without impersonating an author or losing the orig
     ),
   );
 });
+
+test("National rollout closes existing channels and attachments to state, post, and member accounts", async () => {
+  await db.exec(
+    fs.readFileSync(
+      "supabase/migrations/20261014002629_operations_national_only.sql",
+      "utf8",
+    ),
+  );
+  for (const actor of [2, 3, 4, 5]) {
+    assert.equal(
+      (await as(actor, "select ops_access_enabled() allowed")).rows[0].allowed,
+      false,
+    );
+    assert.equal(
+      (await as(actor, "select * from ops_channels")).rows.length,
+      0,
+    );
+    assert.equal(
+      (await as(actor, "select * from ops_messages")).rows.length,
+      0,
+    );
+    assert.equal((await as(actor, "select * from ops_tasks")).rows.length, 0);
+    assert.equal(
+      (await as(actor, "select * from storage.objects")).rows.length,
+      0,
+    );
+    await assert.rejects(as(actor, "select ops_bootstrap()"));
+  }
+  assert.equal(
+    (await as(1, "select ops_access_enabled() allowed")).rows[0].allowed,
+    true,
+  );
+  assert.ok((await as(1, "select * from ops_channels")).rows.length);
+});

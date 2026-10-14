@@ -6,7 +6,7 @@ import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 const stub = `
 const user='10000000-0000-0000-0000-000000000001',channel='20000000-0000-0000-0000-000000000001';
-export const useAuth=()=>({session:{user:{id:globalThis.__OPS_UI_ACCOUNT || user}},selectedScope:'primary'});
+export const useAuth=()=>({session:{user:{id:globalThis.__OPS_UI_ACCOUNT || user}},selectedScope:'primary',isNational:globalThis.__OPS_UI_NATIONAL !== false,scopes:[],accessSuspended:false,loading:false});
 const people=[{id:user,full_name:'Test Commander'},{id:'10000000-0000-0000-0000-000000000002',full_name:'Test Member'}];
 const channels=[{id:channel,name:'general',description:'Test conversation',scope:'national',state:null,post_id:null,private:false,read_only:false,archived:false,unread:0,can_write:true,can_manage:true}];
 const rows={ops_messages:[{id:'30000000-0000-0000-0000-000000000001',channel_id:channel,author_id:people[1].id,author_name:'Test Member',parent_id:null,body:'Ready for coordination',attachments:[],mentions:[],pinned:false,deleted_at:null,created_at:new Date().toISOString(),edited_at:null}],ops_tasks:[{id:'40000000-0000-0000-0000-000000000001',channel_id:channel,title:'Other member blocked task',owner_id:people[1].id,created_by:user,due_date:'2026-01-01',status:'blocked',outcome:'A result',measure:'Evidence'}],ops_activity:[],ops_reports:[],ops_presence:[],ops_reactions:[]};
@@ -186,12 +186,21 @@ test("Operations UI sends messages, opens threads, creates actions, and shows th
       false,
     );
     assert.equal(document.querySelector('[role="alert"]'), null);
+    globalThis.__OPS_UI_NATIONAL = false;
+    await React.act(async () => root.render(React.createElement(Operations)));
+    await settle();
+    assert.ok(document.body.textContent.includes("National access only"));
+    assert.equal(
+      document.querySelector('button[aria-label="Assistant"]'),
+      null,
+    );
   } finally {
     await React.act(async () => root.unmount());
     fs.unlinkSync(outfile);
     delete require.cache[outfile];
     delete globalThis.__OPS_UI_ACCOUNT;
     delete globalThis.__OPS_AI_CONFIGURED;
+    delete globalThis.__OPS_UI_NATIONAL;
     dom.window.close();
   }
 });

@@ -10,7 +10,7 @@ before(async () => {
   await db.exec(`create role anon;create role authenticated;create schema auth;create schema operations_private;
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  create table profiles(id uuid primary key,role text,post_id uuid,access_suspended boolean default false);
- create function operations_private.active(actor uuid) returns boolean language sql security definer as $$select exists(select 1 from public.profiles where id=actor and not access_suspended)$$;
+ create function operations_private.active(p_user uuid) returns boolean language sql security definer as $$select exists(select 1 from public.profiles where id=p_user and not access_suspended)$$;
  create function public.cvoa_access_enabled() returns boolean language sql as $$select operations_private.active(auth.uid())$$;
  create function public.cvoa_current_scope() returns table(role text) language sql as $$select role from public.profiles where id=auth.uid()$$;
  create function public.cvoa_action_queue() returns jsonb language plpgsql as $$begin if (select role from public.profiles where id=auth.uid())='member' then raise exception 'Staff required';end if;return '{"total":1,"items":[{"id":"launch-task:test","title":"Finish launch task","due_date":"2026-10-15","kind":"task","path":"/post-development?post=test"}]}'::jsonb;end$$;
@@ -209,7 +209,8 @@ test("assistant endpoint verifies the actor, handles missing configuration, and 
   let handler,
     key = null,
     requested = [],
-    authChecks = 0;
+    authChecks = 0,
+    allowed = true;
   const client = {
     auth: {
       getUser: async (token) => {
@@ -219,19 +220,18 @@ test("assistant endpoint verifies the actor, handles missing configuration, and 
       },
     },
     rpc: async (name) => ({
-      data:
-        name === "ops_ai_reserve"
-          ? true
-          : {
-              total: 1,
-              items: [
-                {
-                  title: "Source record",
-                  path: "/meetings/session/test",
-                  module: "Meetings",
-                },
-              ],
-            },
+      data: ["ops_ai_reserve", "ops_access_enabled"].includes(name)
+        ? allowed
+        : {
+            total: 1,
+            items: [
+              {
+                title: "Source record",
+                path: "/meetings/session/test",
+                module: "Meetings",
+              },
+            ],
+          },
       error: null,
     }),
     from: () => ({
@@ -306,12 +306,41 @@ test("assistant endpoint verifies the actor, handles missing configuration, and 
     assert.equal(response.status, 200);
     const answer = await response.json();
     assert.equal(answer.sources[0].path, "/meetings/session/test");
-    assert.equal(authChecks, 2);
+    allowed = false;
+    assert.equal((await handler(request())).status, 403);
+    assert.equal(authChecks, 3);
     assert.equal(requested.includes("SUPABASE_SERVICE_ROLE_KEY"), false);
   } finally {
     globalThis.fetch = originalFetch;
     delete globalThis.Deno;
     delete globalThis.__assistantClient;
     fs.unlinkSync(file);
+  }
+});
+
+test("National rollout blocks module and AI access for non-National accounts", async () => {
+  await db.exec(`alter table profiles add column deleted_at timestamptz;
+ create function public.cvoa_access_scopes(p_user uuid) returns table(role text) language sql as $$select role from public.profiles where id=p_user$$;
+ update profiles set access_suspended=false where role='national_staff';`);
+  await db.exec(
+    fs.readFileSync(
+      "supabase/migrations/20261014002629_operations_national_only.sql",
+      "utf8",
+    ),
+  );
+  assert.equal(
+    (await as(3, "select ops_access_enabled() allowed")).rows[0].allowed,
+    true,
+  );
+  assert.ok(
+    (await as(3, "select ops_module_queue() data")).rows[0].data.items.length,
+  );
+  for (const actor of [1, 2]) {
+    assert.equal(
+      (await as(actor, "select ops_access_enabled() allowed")).rows[0].allowed,
+      false,
+    );
+    await assert.rejects(as(actor, "select ops_module_queue()"));
+    await assert.rejects(as(actor, "select ops_ai_reserve()"));
   }
 });

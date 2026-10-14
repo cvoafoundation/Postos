@@ -72,13 +72,14 @@ const MEMBER_ITEMS: NavItem[] = [
 
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { session, profile, isNational, signOut, scopes, selectedScope, selectWorkspace } = useAuth()
+  const { session, profile, isNational, signOut, scopes, selectedScope, selectWorkspace, accessSuspended } = useAuth()
   const navigate = useNavigate()
   const [scopeError, setScopeError] = useState<string | null>(null)
   const [switchingScope, setSwitchingScope] = useState(false)
   const isPlainMember = profile?.role === 'member' || profile?.role === 'delegate'
   const isPostOfficer = profile?.role === 'post_commander' || profile?.role === 'post_officer'
   const isState = profile?.role === 'state_commander'
+  const canUseOperations = !accessSuspended && (isNational || scopes.some(s => ['national_commander', 'national_staff'].includes(s.role)))
   const canSeeBadges = !isPlainMember && (isPostOfficer || isNational)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const location = useLocation()
@@ -86,14 +87,14 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   useEffect(() => {
     let active = true
     setOperationsUnread(0)
-    if (isDemoMode || !session?.user.id || profile?.role === 'guest_applicant') return
+    if (isDemoMode || !session?.user.id || !canUseOperations) return
     const refresh = () => supabase.rpc('ops_unread_count').then(({ data, error }: any) => { if (active) setOperationsUnread(error ? 0 : Number(data ?? 0)) })
     void refresh()
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh() }, 30000)
     const channel = supabase.channel(`operations-sidebar-${session.user.id}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ops_messages' }, refresh).subscribe()
     window.addEventListener('operations-read', refresh)
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('operations-read', refresh); void supabase.removeChannel(channel) }
-  }, [session?.user.id, profile?.role, selectedScope, location.pathname])
+  }, [session?.user.id, profile?.role, selectedScope, location.pathname, canUseOperations])
 
   function refetchCounts() {
     if (!canSeeBadges) return
@@ -117,7 +118,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     { to: '/', label: isNational ? 'National Dashboard' : isState ? 'State Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
     { to: '/schedlr', label: 'Schedlr', icon: CalendarCheck },
-    { to: '/operations', label: 'Operations', icon: MessagesSquare },
+    ...(canUseOperations ? [{ to: '/operations', label: 'Operations', icon: MessagesSquare }] : []),
     ...(isState || isPlainMember ? [{ to: '/meetings', label: 'Meetings', icon: CalendarCheck }] : []),
     ...(isState ? [{ to: '/sponsors', label: 'State Sponsorship', icon: HandCoins }, { to: '/drive', label: 'Documents & Files', icon: HardDrive }, { to: '/health', label: 'State Posts', icon: HeartPulse }, { to: '/members', label: 'State Membership Roster', icon: IdCard }, { to: '/post-development', label: 'Post Development', icon: Hammer }, { to: '/congress', label: 'Veterans Congress', icon: Landmark }] : []),
     // National always gets the full toolset too, on top of their own-only

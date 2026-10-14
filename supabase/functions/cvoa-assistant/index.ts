@@ -17,10 +17,8 @@ const response = (data: unknown, status = 200) =>
   });
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  // Non-sensitive readiness metadata only; deployment JWT verification still applies.
-  if (req.method === "GET")
-    return response({ configured: !!Deno.env.get("ANTHROPIC_API_KEY") });
-  if (req.method !== "POST") return response({ error: "Use POST." }, 405);
+  if (!["POST", "GET"].includes(req.method))
+    return response({ error: "Use GET or POST." }, 405);
   const header = req.headers.get("Authorization") || "";
   if (!/^Bearer\s+\S+$/i.test(header))
     return response({ error: "Sign in to use the assistant." }, 401);
@@ -38,6 +36,17 @@ Deno.serve(async (req: Request) => {
   } = await client.auth.getUser(header.replace(/^Bearer\s+/i, ""));
   if (error || !user)
     return response({ error: "Your session expired. Sign in again." }, 401);
+  const access = await client.rpc("ops_access_enabled");
+  if (access.error || access.data !== true)
+    return response(
+      {
+        error:
+          "The assistant is currently limited to National Command and National staff.",
+      },
+      403,
+    );
+  if (req.method === "GET")
+    return response({ configured: !!Deno.env.get("ANTHROPIC_API_KEY") });
   let body;
   try {
     const raw = await req.text();
