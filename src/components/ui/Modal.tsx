@@ -5,10 +5,12 @@ export function Modal({
   title,
   onClose,
   children,
+  size = 'normal',
 }: {
   title: string
   onClose: () => void
   children: ReactNode
+  size?: 'normal' | 'wide'
 }) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -42,14 +44,14 @@ export function Modal({
   }, [])
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="panel w-full max-w-lg max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-hairline sticky top-0 bg-charcoal">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className={`panel w-full ${size === 'wide' ? 'max-w-4xl' : 'max-w-lg'} max-h-[90dvh] overflow-y-auto`}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-hairline sticky top-0 bg-charcoal z-10">
           <div id={titleId} className="font-display text-xl tracking-wide">{title}</div>
           <button type="button" aria-label="Close dialog" onClick={onClose} className="text-muted hover:text-gold">
             <X size={18} />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-4 sm:p-6">{children}</div>
       </div>
     </div>
   )

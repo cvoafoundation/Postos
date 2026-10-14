@@ -7,7 +7,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Modal } from '@/components/ui/Modal'
 import RemovePerson, { RemovedPeople, notifyPeopleChanged } from '@/components/access/RemovePerson'
 import MembershipListExport from '@/components/access/MembershipListExport'
-import MemberRecord from '@/components/workspaces/MemberRecord'
+import PersonWorkspace from '@/components/access/PersonWorkspace'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { getFunctionError } from '@/lib/functionErrors'
@@ -49,6 +49,7 @@ export default function MembershipRoster() {
   const [searchingGlobal, setSearchingGlobal] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Member | null>(null)
+  const [editingView, setEditingView] = useState<'record' | 'edit'>('record')
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -133,12 +134,14 @@ export default function MembershipRoster() {
         if (!member) return
         setSelectedPostId(member.post_id ?? UNASSIGNED)
         setHighlightId(member.id)
+        setEditingView(searchParams.get('edit') === 'true' ? 'edit' : 'record')
         setEditing(member)
+        searchParams.delete('edit')
         searchParams.delete('highlight')
         setSearchParams(searchParams, { replace: true })
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNational])
+  }, [isNational, searchParams])
 
   async function loadMembers() {
     if (!selectedPostId) return
@@ -416,7 +419,7 @@ export default function MembershipRoster() {
             {filtered.slice(page * LIST_PAGE_SIZE, (page + 1) * LIST_PAGE_SIZE).map((m) => (
               <tr
                 key={m.id}
-                onClick={() => setEditing(m)}
+                onClick={() => { setEditingView('record'); setEditing(m) }}
                 className={`cursor-pointer hover:bg-surface/60 ${highlightId === m.id ? 'bg-gold/5' : ''}`}
               >
                 <td className="table-cell font-mono text-xs text-gold">{m.membership_number ?? '—'}</td>
@@ -487,6 +490,8 @@ export default function MembershipRoster() {
 
       {editing && (
         <EditMemberModal
+          key={`${editing.id}-${editingView}`}
+          initialView={editingView}
           member={editing}
           onClose={() => {
             setEditing(null)
@@ -629,12 +634,12 @@ function AddMemberModal({
       ) : (
         <form onSubmit={handleSubmit} className="space-y-3">
           <input required placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <input type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
             <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
           </div>
           <input placeholder="Address" className="input-field" value={form.address} onChange={(e) => update('address', e.target.value)} />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <select className="input-field" value={form.state} onChange={(e) => update('state', e.target.value)}>
               <option value="">State (for membership #)</option>
               {US_STATES.map((s) => (
@@ -692,6 +697,7 @@ function AddMemberModal({
 }
 
 function EditMemberModal({
+  initialView = 'record',
   member,
   onClose,
   onSaved,
@@ -699,7 +705,9 @@ function EditMemberModal({
   member: Member
   onClose: () => void
   onSaved: () => void
+  initialView?: 'record' | 'edit'
 }) {
+  const [view, setView] = useState<'record' | 'edit'>(initialView)
   const navigate = useNavigate()
   const [form, setForm] = useState({
     full_name: member.full_name,
@@ -729,7 +737,7 @@ function EditMemberModal({
     setInviteError(null)
     setInviteSent(false)
     try {
-      const { data, error } = await supabase.functions.invoke('invite-member', { body: { member_id: member.id, method } })
+  const { data, error } = await supabase.functions.invoke('invite-member', { body: { member_id: member.id, method } })
       if (error || data?.error) {
         setInviteError(await getFunctionError(error, data))
         return
@@ -843,10 +851,12 @@ function EditMemberModal({
 
 
   return (
-    <Modal title={`Edit ${member.full_name}`} onClose={onClose}>
+    <Modal size="wide" title={member.full_name} onClose={onClose}>
+      <nav aria-label="Member views" className="flex gap-3 border-b border-hairline pb-4 mb-6"><button type="button" className={view === 'record' ? 'btn-gold' : 'btn-ghost'} onClick={() => setView('record')}>Person record</button><button type="button" className={view === 'edit' ? 'btn-gold' : 'btn-ghost'} onClick={() => setView('edit')}>Edit membership</button></nav>
+      {view === 'record' && <PersonWorkspace memberId={member.id} />}
+      <div hidden={view !== 'edit'}>
       <div className="space-y-3">
         <RemovePerson memberId={member.id} name={member.full_name} onRemoved={onSaved} />
-        <MemberRecord key={`${member.id}-${inviteSent}`} member={member} />
         <div className="font-mono text-xs text-gold">{member.membership_number ?? 'No number assigned'}</div>
         <div className="panel p-2.5">
             {tempPassword ? (
@@ -898,12 +908,12 @@ function EditMemberModal({
             {inviteError && <p role="alert" className="text-xs text-status-attention mt-1.5">{inviteError}</p>}
         </div>
         <input placeholder="Full name" className="input-field" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <input type="email" placeholder="Email" className="input-field" value={form.email} onChange={(e) => update('email', e.target.value)} />
           <input placeholder="Phone" className="input-field" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
         </div>
         <input placeholder="Address" className="input-field" value={form.address} onChange={(e) => update('address', e.target.value)} />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <select className="input-field" value={form.state} onChange={(e) => update('state', e.target.value)}>
             <option value="">State</option>
             {US_STATES.map((s) => (
@@ -915,7 +925,7 @@ function EditMemberModal({
           <input placeholder="Branch" className="input-field" value={form.military_branch} onChange={(e) => update('military_branch', e.target.value)} />
         </div>
 
-        <div className="border-t border-hairline pt-3 grid grid-cols-2 gap-3">
+        <div className="border-t border-hairline pt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="eyebrow block mb-1.5">Membership Type</label>
             <select className="input-field" value={form.membership_type} onChange={(e) => update('membership_type', e.target.value as MembershipType)}>
@@ -976,6 +986,7 @@ function EditMemberModal({
 
       </div>
 
+      </div>
       {showAddToFoundingTeam && <AddToFoundingTeamModal member={member} onClose={() => setShowAddToFoundingTeam(false)} />}
     </Modal>
   )

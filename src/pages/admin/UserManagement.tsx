@@ -42,6 +42,11 @@ export default function UserManagement() {
     "cvoa_accounts_directory",
     { p_search: search, p_view: filter, p_page: page, p_size: LIST_PAGE_SIZE },
   );
+  useEffect(() => {
+    window.addEventListener('cvoa:people-changed', refresh);
+    window.addEventListener('focus', refresh);
+    return () => { window.removeEventListener('cvoa:people-changed', refresh); window.removeEventListener('focus', refresh); };
+  }, [refresh]);
   const [selected, setSelected] = useState<{
       profile?: string;
       member?: string;
@@ -153,7 +158,7 @@ export default function UserManagement() {
             className={`panel p-4 text-left ${filter === c.filter ? "border-gold" : ""}`}
           >
             <span className="eyebrow">{c.label}</span>
-            <span className="block font-display text-3xl mt-2">
+            <span className="block font-display text-2xl mt-1">
               {loading ? "—" : c.count}
             </span>
             <span className="block text-xs text-muted mt-2">{c.detail}</span>
@@ -331,12 +336,11 @@ export default function UserManagement() {
         </>
       )}
       {selected && (
-        <Modal title="Person workspace" onClose={() => setSelected(null)}>
+        <Modal size="wide" title="Person record" onClose={() => setSelected(null)}>
           <PersonWorkspace
             profileId={selected.profile}
             memberId={selected.member}
             posts={data?.posts}
-            onChanged={refresh}
           />
         </Modal>
       )}

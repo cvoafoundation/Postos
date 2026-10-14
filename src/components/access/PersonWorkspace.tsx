@@ -1,5 +1,6 @@
 import MembershipAccess from "./MembershipAccess";
-import RemovePerson from "./RemovePerson";
+import RemovePerson, { notifyPeopleChanged } from "./RemovePerson";
+import PermissionPreview from "./PermissionPreview";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -63,6 +64,8 @@ export default function PersonWorkspace({
     { p_profile: profileId ?? null, p_member: memberId ?? null },
   );
   const [posts, setPosts] = useState<PostChoice[]>(suppliedPosts ?? []);
+  const [membershipOnly, setMembershipOnly] = useState<boolean | null>(null);
+  const [tab, setTab] = useState("overview");
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -70,6 +73,7 @@ export default function PersonWorkspace({
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
   const person = data?.profile;
+  useEffect(() => { setMembershipOnly(null); }, [person?.id]);
   const [removed, setRemoved] = useState(false);
   useEffect(() => {
     if (suppliedPosts) {
@@ -100,6 +104,7 @@ export default function PersonWorkspace({
     setEditing(false);
     setAdding(false);
     refresh();
+    notifyPeopleChanged();
     onChanged?.();
   }
   async function sendEmail(membership: LinkedMembership, purpose: "activation" | "verification" = "activation") {
@@ -183,7 +188,7 @@ export default function PersonWorkspace({
       </p>
     );
   return (
-    <section className="space-y-5">
+    <section className="space-y-6">
       <WorkspaceStatus loading={loading} error={error} retry={refresh} />
       {message && (
         <p role="status" className="panel p-3 text-sm text-status-active">
@@ -207,7 +212,7 @@ export default function PersonWorkspace({
                 data.memberships[0]?.email ??
                 "Email not recorded"}
             </p>
-            <dl className="grid grid-cols-2 gap-3 text-sm mt-4">
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-sm mt-5">
               <div>
                 <dt className="text-muted">Login access</dt>
                 <dd>
@@ -250,9 +255,14 @@ export default function PersonWorkspace({
               </p>
             )}
           </div>
-          <section className="panel p-4">
-            <h3 className="font-display text-xl">Membership & affiliation</h3>
+          <nav aria-label="Person record sections" className="flex flex-wrap gap-2 border-b border-hairline pb-3">
+            {[['overview', 'Overview'], ['access', 'Access'], ...(isNational ? [['history', 'History']] : [])].map(([id, label]) => <button key={id} type="button" aria-pressed={tab === id} onClick={() => setTab(id)} className={`px-4 py-2 text-sm rounded-sm ${tab === id ? 'bg-gold text-base' : 'text-muted hover:bg-surface'}`}>{label}</button>)}
+          </nav>
+          <div hidden={tab !== 'overview'} className="space-y-6">
+          <section className="py-2">
+            <h3 className="font-display text-xl mb-4">Membership & affiliation</h3>
             {isNational && person && (
+              <details className="mb-4 text-sm"><summary className="cursor-pointer text-muted">Account record management</summary><div className="mt-3">
               <RemovePerson
                 profileId={person.id}
                 name={person.full_name}
@@ -260,7 +270,7 @@ export default function PersonWorkspace({
                   setRemoved(true);
                   onChanged?.();
                 }}
-              />
+              /></div></details>
             )}
             {data.memberships.length === 0 ? (
               <p className="text-sm text-muted mt-2">
@@ -271,9 +281,9 @@ export default function PersonWorkspace({
               data.memberships.map((m) => (
                 <div
                   key={m.id}
-                  className="border-t border-hairline mt-3 pt-3 text-sm"
+                  className="border-t border-hairline mt-5 pt-5 text-sm space-y-3"
                 >
-                  <RemovePerson
+                  <details><summary className="cursor-pointer text-xs text-muted">Membership record management</summary><div className="mt-2"><RemovePerson
                     memberId={m.id}
                     name={m.full_name}
                     onRemoved={() => {
@@ -281,7 +291,7 @@ export default function PersonWorkspace({
                       else refresh();
                       onChanged?.();
                     }}
-                  />
+                  /></div></details>
                   <p>
                     {m.membership_number ?? "Number pending"} ·{" "}
                     {m.membership_type} ·{" "}
@@ -302,12 +312,12 @@ export default function PersonWorkspace({
                         ? "Lifetime membership"
                         : "Expiration not recorded"}
                   </p>
-                  <div className="flex flex-wrap gap-3 mt-3">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-4 mt-4">
                     <Link
                       className="text-gold"
-                      to={`/members?highlight=${m.id}`}
+                      to={`/members?highlight=${m.id}&edit=true`}
                     >
-                      Open roster record →
+                      Edit membership →
                     </Link>
                     {isNational && m.email && (
                       <button
@@ -337,7 +347,9 @@ export default function PersonWorkspace({
               ))
             )}
           </section>
-          {isNational && person && person.id !== viewer?.id && <MembershipAccess key={person.id} profileId={person.id} onChanged={() => changed("Membership workspace updated.")} />}
+          </div>
+          <div hidden={tab !== 'access'} className="space-y-6">
+          {isNational && person && person.id !== viewer?.id && <MembershipAccess key={person.id} profileId={person.id} onAccessChange={setMembershipOnly} onChanged={() => changed("Membership workspace updated.")} />}
           <section className="panel p-4">
             <div className="flex flex-wrap gap-3 items-center justify-between">
               <h3 className="font-display text-xl">
@@ -364,6 +376,7 @@ export default function PersonWorkspace({
               summaries; formal ballots require a current primary Congress
               designation. Ethics records stay separately restricted.
             </p>
+            {isNational && (membershipOnly !== null || person?.id === viewer?.id) && <PermissionPreview scopes={data.scopes} suspended={person?.access_suspended} membershipOnly={membershipOnly === true} />}
             {data.scopes.length === 0 && (
               <p className="text-sm text-muted mt-3">
                 No linked account appointment.
@@ -448,6 +461,8 @@ export default function PersonWorkspace({
                 key={`${person.id}-${person.access_version}`}
                 person={person}
                 posts={posts}
+                scopes={data.scopes}
+                membershipOnly={membershipOnly === true}
                 onSaved={() =>
                   changed("Account permissions saved with an audit record.")
                 }
@@ -482,7 +497,8 @@ export default function PersonWorkspace({
               </p>
             </section>
           )}
-          {data.payments.length > 0 && (
+          </div>
+          {tab === 'overview' && data.payments.length > 0 && (
             <section className="panel p-4">
               <h3 className="font-display text-xl">
                 Recent membership payments
@@ -497,8 +513,8 @@ export default function PersonWorkspace({
               </ul>
             </section>
           )}
-          {isNational && (
-            <section className="panel p-4">
+          {isNational && tab === 'history' && (
+            <section className="py-2">
               <h3 className="font-display text-xl">Access history</h3>
               {data.history.length === 0 ? (
                 <p className="text-sm text-muted mt-2">
@@ -534,10 +550,14 @@ function AccessForm({
   person,
   posts,
   onSaved,
+  scopes,
+  membershipOnly,
 }: {
   person: AccountProfile;
   posts: PostChoice[];
   onSaved: () => void;
+  scopes: AccessScope[];
+  membershipOnly: boolean;
 }) {
   const [form, setForm] = useState({
     role: person.role,
@@ -672,6 +692,7 @@ function AccessForm({
               : "Workspace access will remain enabled."}{" "}
             {form.test ? "Test account." : "Ordinary account."}
           </p>
+          <PermissionPreview membershipOnly={membershipOnly} suspended={form.suspended} scopes={[{scope_id:'primary',role:form.role,post_id:form.role === 'state_commander' ? null : form.post || null,state:form.role === 'state_commander' ? form.state : posts.find(p => p.id === form.post)?.state ?? null,title:form.title,post_name:posts.find(p => p.id === form.post)?.name ?? null,source:'Account appointment'}, ...scopes.filter(s => s.scope_id !== 'primary')]} />
           <p className="text-muted mt-2">{form.reason}</p>
         </div>
       )}
@@ -831,6 +852,7 @@ function AppointmentForm({
           onChange={(e) => setReason(e.target.value)}
         />
       </label>
+      <PermissionPreview scopes={[{scope_id:'proposed',role,post_id:role === 'state_commander' ? null : post || null,state:role === 'state_commander' ? state : posts.find(p => p.id === post)?.state ?? null,title,post_name:posts.find(p => p.id === post)?.name ?? null,source:'Proposed additional appointment'}]} />
       {error && (
         <p role="alert" className="text-status-attention text-sm">
           {error}

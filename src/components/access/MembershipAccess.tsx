@@ -1,23 +1,23 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 type Access = { enabled: boolean; eligible: boolean; version: number }
-export default function MembershipAccess({ profileId, onChanged }: { profileId: string; onChanged: () => void }) {
+export default function MembershipAccess({ profileId, onChanged, onAccessChange }: { profileId: string; onChanged: () => void; onAccessChange?: (enabled: boolean) => void }) {
   const [access, setAccess] = useState<Access | null>(null)
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   async function load() {
     const { data, error } = await supabase.rpc('cvoa_membership_access', { p_profile: profileId })
-    setAccess(data); setError(error?.message ?? null)
+    setAccess(data); if (data) onAccessChange?.(data.enabled); setError(error?.message ?? null)
   }
-  useEffect(() => { let active = true; void supabase.rpc('cvoa_membership_access', { p_profile: profileId }).then(({ data, error }) => { if (active) { setAccess(data); setError(error?.message ?? null) } }).catch(() => { if (active) setError('Could not load account access. Reload to try again.') }); return () => { active = false } }, [profileId])
+  useEffect(() => { let active = true; void supabase.rpc('cvoa_membership_access', { p_profile: profileId }).then(({ data, error }) => { if (active) { setAccess(data); if (data) onAccessChange?.(data.enabled); setError(error?.message ?? null) } }).catch(() => { if (active) setError('Could not load account access. Reload to try again.') }); return () => { active = false } }, [profileId, onAccessChange])
   async function save() {
     if (!access || busy) return
     setBusy(true); setError(null)
     try {
       const { data, error } = await supabase.rpc('cvoa_set_membership_access', { p_profile: profileId, p_version: access.version, p_enabled: !access.enabled, p_reason: reason.trim() })
       if (error) { await load(); setError(error.message); return }
-      setAccess(data); setReason(''); onChanged()
+      setAccess(data); if (data) onAccessChange?.(data.enabled); setReason(''); onChanged()
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save access.') }
     finally { setBusy(false) }
   }
