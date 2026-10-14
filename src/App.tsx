@@ -1,3 +1,4 @@
+import { isMembershipPath } from "@/lib/membershipAccess";
 import { lazy, Suspense } from "react";
 import {
   Route,
@@ -5,10 +6,12 @@ import {
   Navigate,
   Link,
   useSearchParams,
+  useLocation,
 } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { AppShell } from "@/components/layout/AppShell";
 import { RoleGuard } from "@/components/layout/RoleGuard";
+const MembershipCardPage = lazy(() => import("@/pages/members/MembershipCardPage"));
 const Login = lazy(() => import("@/pages/Login"));
 const SetPassword = lazy(() => import("@/pages/SetPassword"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
@@ -185,7 +188,8 @@ export default function App() {
 }
 
 function AuthenticatedApp() {
-  const { session, loading, accessSuspended, accessError, signOut } = useAuth();
+  const { session, loading, accessSuspended, accessError, signOut, membershipOnly } = useAuth();
+  const { pathname } = useLocation();
 
   if (loading) {
     return (
@@ -223,6 +227,8 @@ function AuthenticatedApp() {
         </button>
       </div>
     );
+
+  if (membershipOnly && !isMembershipPath(pathname)) return <Navigate to="/my-membership" replace />;
 
   return (
     <AppShell>
@@ -446,7 +452,7 @@ function AuthenticatedApp() {
           />
           <Route path="/members" element={<RosterRoute />} />
           <Route path="/directory" element={<MemberDirectory />} />
-          <Route path="/my-membership" element={<MyMembership />} />
+          <Route path="/my-membership" element={membershipOnly ? <MembershipCardPage /> : <MyMembership />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/file-complaint" element={<FileComplaint />} />
           <Route

@@ -72,7 +72,7 @@ const MEMBER_ITEMS: NavItem[] = [
 
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { session, profile, isNational, signOut, scopes, selectedScope, selectWorkspace, accessSuspended } = useAuth()
+  const { session, profile, isNational, signOut, scopes, selectedScope, selectWorkspace, accessSuspended, membershipOnly } = useAuth()
   const navigate = useNavigate()
   const [scopeError, setScopeError] = useState<string | null>(null)
   const [switchingScope, setSwitchingScope] = useState(false)
@@ -114,7 +114,11 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   useEffect(refetchCounts, [canSeeBadges, location.pathname])
   useOnNotificationViewed(refetchCounts)
 
-  const navItems = [
+  const navItems = membershipOnly ? [
+    { to: '/my-membership', label: 'Membership Card', icon: CreditCard },
+    { to: '/congress', label: 'Veterans Congress', icon: Landmark },
+    { to: '/file-complaint', label: 'Ethics Tribunal', icon: Gavel },
+  ] : [
     { to: '/', label: isNational ? 'National Dashboard' : isState ? 'State Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
     { to: '/schedlr', label: 'Schedlr', icon: CalendarCheck },
@@ -190,7 +194,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4">
-          {scopes.length > 1 && <div className="px-4 mb-3"><label className="eyebrow" htmlFor="workspace-selector">Your appointed workspaces</label><select id="workspace-selector" className="input-field mt-2 text-xs" value={selectedScope} disabled={switchingScope} onChange={async e => { setSwitchingScope(true); setScopeError(null); try { await selectWorkspace(e.target.value); navigate('/'); onClose() } catch (error) { setScopeError(error instanceof Error ? error.message : 'Could not switch workspace.') } finally { setSwitchingScope(false) } }}>{scopes.map(s => <option key={s.scope_id} value={s.scope_id}>{ROLE_LABELS[s.role]} · {s.post_name ?? s.state ?? 'Personal / National'}</option>)}</select>{scopeError && <p role="alert" className="text-xs text-status-attention mt-2">{scopeError}</p>}</div>}
+          {!membershipOnly && scopes.length > 1 && <div className="px-4 mb-3"><label className="eyebrow" htmlFor="workspace-selector">Your appointed workspaces</label><select id="workspace-selector" className="input-field mt-2 text-xs" value={selectedScope} disabled={switchingScope} onChange={async e => { setSwitchingScope(true); setScopeError(null); try { await selectWorkspace(e.target.value); navigate('/'); onClose() } catch (error) { setScopeError(error instanceof Error ? error.message : 'Could not switch workspace.') } finally { setSwitchingScope(false) } }}>{scopes.map(s => <option key={s.scope_id} value={s.scope_id}>{ROLE_LABELS[s.role]} · {s.post_name ?? s.state ?? 'Personal / National'}</option>)}</select>{scopeError && <p role="alert" className="text-xs text-status-attention mt-2">{scopeError}</p>}</div>}
           {scopes.find(s=>s.scope_id===selectedScope) && <p className="px-5 text-xs text-muted mb-2">{scopeLabel(scopes.find(s=>s.scope_id===selectedScope)!)}</p>}
           {navItems.map(({ to, label, icon: Icon, end, section }, index) => {
             const group = (path: string) => path === '/' ? 'Overview' : ['/schedlr','/operations'].includes(path) ? 'Collaboration' : ['/my-membership','/member-home','/my-applications'].includes(path) ? 'Personal' : ['/file-complaint','/ethics-tribunal'].includes(path) ? 'Ethics' : NATIONAL_ONLY_ITEMS.some(item=>item.to===path) ? 'National' : isState ? 'State Oversight' : isPlainMember ? 'My Post & Congress' : 'Post Operations'
@@ -228,7 +232,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         <div className="px-5 py-4 border-t border-hairline">
           <div className="text-sm text-ink truncate">{profile?.full_name ?? 'Guest'}</div>
           <div className="eyebrow mb-3">{profile?.role?.replaceAll('_', ' ') ?? 'unauthenticated'}</div>
-          <NavLink
+          {!membershipOnly && <NavLink
             to="/settings"
             onClick={onClose}
             className={({ isActive }) =>
@@ -236,7 +240,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             }
           >
             <SettingsIcon size={14} /> Settings
-          </NavLink>
+          </NavLink>}
           <button
             onClick={signOut}
             className="flex items-center gap-2 text-xs text-muted hover:text-gold transition-colors"

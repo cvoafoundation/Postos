@@ -25,6 +25,8 @@ Deno.serve(async (req) => {
     const { data: member, error: memberError } = await supabase.from('members').select('post_id, stripe_subscription_id, profile_id').eq('id', body.member_id).single()
     if (memberError || !member) return reply(404, { error: 'Member not found.' })
     const { data: canManage, error: permissionError } = await supabase.rpc('cvoa_service_authorized', { p_actor: user.id, p_post: member.post_id, p_capability: 'manage_post' })
+    const { data: personalAccess, error: personalError } = await supabase.rpc('cvoa_service_authorized', { p_actor: user.id, p_post: null, p_capability: 'personal' })
+    if (personalError || !personalAccess) return reply(403, { error: 'This action is outside your available workspace.' })
     const ownsMembership = member.profile_id === user.id
     if (permissionError || (!canManage && !ownsMembership)) return reply(403, { error: 'You can cancel billing for your own membership. Staff access is limited to an assigned post or National.' })
     if (member.stripe_subscription_id) {

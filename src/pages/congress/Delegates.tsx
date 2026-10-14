@@ -14,7 +14,7 @@ interface DelegateRow extends CongressDelegate {
 }
 
 export default function Delegates() {
-  const { profile, isNational } = useAuth()
+  const { profile, isNational, membershipOnly } = useAuth()
   const [rows, setRows] = useState<DelegateRow[]>([])
   const [candidates, setCandidates] = useState<FoundingTeamMember[]>([])
   const [ownDelegate, setOwnDelegate] = useState<CongressDelegate | null>(null)
@@ -23,10 +23,11 @@ export default function Delegates() {
 
   async function load() {
     setLoading(true)
+    const labels = supabase.rpc('cvoa_congress_labels')
     const [delegatesRes, profilesRes, postsRes, votesRes, resolutionsRes] = await Promise.all([
       supabase.from('congress_delegates').select('*'),
-      supabase.from('profiles').select('id, full_name'),
-      supabase.from('posts').select('id, name'),
+      labels.then(result => ({ ...result, data: result.data?.profiles ?? [] })),
+      labels.then(result => ({ ...result, data: result.data?.posts ?? [] })),
       supabase.from('resolution_votes').select('voter_id'),
       supabase.from('resolutions').select('submitted_by'),
     ])
@@ -58,7 +59,7 @@ export default function Delegates() {
       }))
     )
 
-    if (!isNational && profile?.post_id) {
+    if (!membershipOnly && !isNational && profile?.post_id) {
       setOwnDelegate(delegates.find((d) => d.post_id === profile.post_id && !d.is_alternate) ?? null)
       const { data: team } = await supabase
         .from('founding_team_members')
@@ -75,7 +76,7 @@ export default function Delegates() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNational, profile?.post_id])
+  }, [isNational, profile?.post_id, membershipOnly])
 
   async function setDelegate(profileId: string) {
     if (!profile?.post_id) return
@@ -94,7 +95,7 @@ export default function Delegates() {
       <PageHeader eyebrow="Module 8" title="Veterans Congress" />
       <CongressSubNav />
 
-      {!isNational && profile?.post_id && (
+      {!membershipOnly && !isNational && profile?.post_id && (
         <div className="panel p-5 mb-6">
           <div className="eyebrow mb-2">Your Post's Delegate</div>
           <p className="text-xs text-muted mb-3 max-w-xl">

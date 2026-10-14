@@ -1,3 +1,4 @@
+import MembershipAccess from "./MembershipAccess";
 import RemovePerson from "./RemovePerson";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -335,6 +336,7 @@ export default function PersonWorkspace({
               ))
             )}
           </section>
+          {isNational && person && person.id !== viewer?.id && <MembershipAccess key={person.id} profileId={person.id} onChanged={() => changed("Membership workspace updated.")} />}
           <section className="panel p-4">
             <div className="flex flex-wrap gap-3 items-center justify-between">
               <h3 className="font-display text-xl">

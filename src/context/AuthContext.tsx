@@ -12,6 +12,7 @@ interface AuthContextValue {
   isDelegate: boolean
   scopes: AccessScope[]
   selectedScope: string
+  membershipOnly: boolean
   accessSuspended: boolean
   accessError: string | null
   selectWorkspace: (scope: string) => Promise<void>
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [baseProfile, setProfile] = useState<Profile | null>(null)
   const [scopes, setScopes] = useState<AccessScope[]>([])
   const [selectedScope, setSelectedScope] = useState('primary')
+  const [membershipOnly, setMembershipOnly] = useState(false)
   const [accessSuspended, setAccessSuspended] = useState(false)
   const [accessError, setAccessError] = useState<string | null>(null)
   const [accessLoading, setAccessLoading] = useState(false)
@@ -194,18 +196,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setScopes([])
     setIsDelegate(false)
     setAccessError(null)
-    if (!baseProfile?.id) { setAccessSuspended(false); return }
+    if (!baseProfile?.id) { setAccessSuspended(false); setMembershipOnly(false); return }
     setAccessLoading(true)
-    void supabase.rpc('cvoa_my_access').then(({ data, error }) => {
-      if (!active) return
+    let request = 0
+    const refreshAccess = () => {
+      const currentRequest = ++request
+      return supabase.rpc('cvoa_my_access').then(({ data, error }) => {
+      if (!active || currentRequest !== request) return
       if (error) { setAccessError(error.message); return }
-      const access = data as { scopes: AccessScope[]; selected: string | null; suspended: boolean }
+      const access = data as { scopes: AccessScope[]; selected: string | null; suspended: boolean; membership_only?: boolean }
+      setAccessError(null)
+      setMembershipOnly(access.membership_only === true)
       setScopes(access.scopes)
       setSelectedScope(access.selected ?? 'primary')
       setAccessSuspended(access.suspended)
-    }).catch((error: unknown) => { if (active) setAccessError(error instanceof Error ? error.message : 'Could not verify access.') })
-      .finally(() => { if (active) setAccessLoading(false) })
-    return () => { active = false }
+    }).catch((error: unknown) => { if (active && currentRequest === request) setAccessError(error instanceof Error ? error.message : 'Could not verify access.') })
+      .finally(() => { if (active && currentRequest === request) setAccessLoading(false) })
+    }
+    void refreshAccess()
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refreshAccess() }, 30000)
+    window.addEventListener('focus', refreshAccess)
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refreshAccess) }
   }, [baseProfile?.id, baseProfile?.role, baseProfile?.post_id, baseProfile?.state])
 
   useEffect(() => {
@@ -237,7 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, profile, loading: loading || accessLoading, isNational, isDelegate, scopes, selectedScope, accessSuspended, accessError, selectWorkspace, hasRole, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, profile, loading: loading || accessLoading, isNational, isDelegate, scopes, selectedScope, membershipOnly, accessSuspended, accessError, selectWorkspace, hasRole, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

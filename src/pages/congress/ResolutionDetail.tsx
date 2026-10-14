@@ -72,7 +72,7 @@ export default function ResolutionDetail() {
       supabase.from('resolution_documents').select('*').eq('resolution_id', id).order('created_at', { ascending: false }),
       supabase.from('resolution_comments').select('*').eq('resolution_id', id).order('created_at', { ascending: true }),
       supabase.from('resolution_votes').select('vote, voter_post_id, voter_id').eq('resolution_id', id),
-      supabase.from('posts').select('id, name'),
+      supabase.rpc('cvoa_congress_labels').then(result => ({ ...result, data: result.data?.posts ?? [] })),
       supabase.rpc('cvoa_vote_totals', { p_resolution: id }),
     ])
     setResolution((resRes.data as Resolution) ?? null)

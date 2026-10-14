@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useAuth } from '@/context/AuthContext'
 import clsx from 'clsx'
 
 const TABS = [
@@ -10,9 +11,11 @@ const TABS = [
 ]
 
 export function CongressSubNav() {
+  const { membershipOnly } = useAuth()
+  const tabs = membershipOnly ? TABS.filter(tab => ['/congress', '/congress/delegates'].includes(tab.to)) : TABS
   return (
     <div className="flex gap-1 border-b border-hairline mb-6 -mt-2">
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <NavLink
           key={tab.to}
           to={tab.to}
