@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CongressSubNav } from './CongressSubNav'
+import { Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
-import type { CongressDelegate, FoundingTeamMember } from '@/lib/types'
+import type { CongressDelegate } from '@/lib/types'
 
 interface DelegateRow extends CongressDelegate {
   profile_name: string
@@ -14,12 +15,11 @@ interface DelegateRow extends CongressDelegate {
 }
 
 export default function Delegates() {
-  const { profile, isNational, membershipOnly } = useAuth()
+  const { isNational } = useAuth()
+  const [canManage, setCanManage] = useState(false)
+  useEffect(() => { let active = true; setCanManage(false); if (isNational) void supabase.rpc('cvoa_congress_admin_access').then(({ data, error }) => { if (active) setCanManage(!error && data === true) }); return () => { active = false } }, [isNational])
   const [rows, setRows] = useState<DelegateRow[]>([])
-  const [candidates, setCandidates] = useState<FoundingTeamMember[]>([])
-  const [ownDelegate, setOwnDelegate] = useState<CongressDelegate | null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -59,80 +59,20 @@ export default function Delegates() {
       }))
     )
 
-    if (!membershipOnly && !isNational && profile?.post_id) {
-      setOwnDelegate(delegates.find((d) => d.post_id === profile.post_id && !d.is_alternate) ?? null)
-      const { data: team } = await supabase
-        .from('founding_team_members')
-        .select('*')
-        .eq('post_id', profile.post_id)
-        .eq('verification_status', 'verified')
-        .not('profile_id', 'is', null)
-      setCandidates((team ?? []) as FoundingTeamMember[])
-    }
-
     setLoading(false)
   }
 
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNational, profile?.post_id, membershipOnly])
-
-  async function setDelegate(profileId: string) {
-    if (!profile?.post_id) return
-    setSaving(true)
-    if (ownDelegate) {
-      await supabase.from('congress_delegates').update({ profile_id: profileId }).eq('id', ownDelegate.id)
-    } else {
-      await supabase.from('congress_delegates').insert({ post_id: profile.post_id, profile_id: profileId, is_alternate: false })
-    }
-    setSaving(false)
-    load()
-  }
+  }, [])
 
   return (
     <div>
       <PageHeader eyebrow="Module 8" title="Veterans Congress" />
       <CongressSubNav />
 
-      {!membershipOnly && !isNational && profile?.post_id && (
-        <div className="panel p-5 mb-6">
-          <div className="eyebrow mb-2">Your Company's Delegate</div>
-          <p className="text-xs text-muted mb-3 max-w-xl">
-            One delegate per company carries your chapter's formal vote and voice in Congress — on delegate votes,
-            constitutional amendments, and floor debate. Choose from your verified officers below.
-          </p>
-          {ownDelegate?.profile_id ? (
-            <div className="flex items-center justify-between border border-hairline rounded-sm p-3 mb-3">
-              <div className="text-sm">
-                Currently: <span className="text-gold">{rows.find((r) => r.id === ownDelegate.id)?.profile_name}</span>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-status-developing mb-3">No delegate designated yet — your company's formal vote can't be cast until one is.</p>
-          )}
-          {candidates.length === 0 ? (
-            <p className="text-xs text-muted">
-              No verified officers with an account yet — verify a founding team member with an account first
-              (Founding Team page), then they'll show up here to choose from.
-            </p>
-          ) : (
-            <select
-              className="input-field"
-              value={ownDelegate?.profile_id ?? ''}
-              disabled={saving}
-              onChange={(e) => e.target.value && setDelegate(e.target.value)}
-            >
-              <option value="">Choose your delegate…</option>
-              {candidates.map((c) => (
-                <option key={c.id} value={c.profile_id!}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-      )}
+      <p className="text-sm text-muted mb-6">Congress appointments are managed by NCC members from the person's profile card under Access → Veterans Congress. {canManage && <Link className="text-gold" to="/users">Open Accounts & Access →</Link>}</p>
 
       <div className="panel overflow-hidden">
         <table className="w-full">

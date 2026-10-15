@@ -216,7 +216,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refreshAccess()
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refreshAccess() }, 30000)
     window.addEventListener('focus', refreshAccess)
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refreshAccess) }
+    window.addEventListener('cvoa:people-changed', refreshAccess)
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refreshAccess); window.removeEventListener('cvoa:people-changed', refreshAccess) }
   }, [baseProfile?.id, baseProfile?.role, baseProfile?.post_id, baseProfile?.state])
 
   useEffect(() => {

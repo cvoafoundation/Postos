@@ -1,3 +1,4 @@
+import CongressAppointment from "./CongressAppointment";
 import MembershipAccess from "./MembershipAccess";
 import RemovePerson, { notifyPeopleChanged } from "./RemovePerson";
 import PermissionPreview from "./PermissionPreview";
@@ -349,6 +350,7 @@ export default function PersonWorkspace({
           </section>
           </div>
           <div hidden={tab !== 'access'} className="space-y-6">
+          {isNational && person && <CongressAppointment key={`congress-${person.id}`} profileId={person.id} onChanged={() => changed("Congress representation updated.")} />}
           {isNational && person && person.id !== viewer?.id && <MembershipAccess key={person.id} profileId={person.id} onAccessChange={setMembershipOnly} onChanged={() => changed("Membership workspace updated.")} />}
           <section className="panel p-4">
             <div className="flex flex-wrap gap-3 items-center justify-between">
@@ -441,7 +443,7 @@ export default function PersonWorkspace({
                     to="/congress/delegates"
                     className="text-gold text-sm block mt-3"
                   >
-                    Manage Congress designations →
+                    View Congress delegates →
                   </Link>
                 </>
               )}
