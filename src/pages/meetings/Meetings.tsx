@@ -155,7 +155,7 @@ export default function Meetings() {
   return (
     <div>
       <PageHeader
-        eyebrow="Recurring Post Obligation — Unified Rules of Order"
+        eyebrow="Recurring Company Obligation — Unified Rules of Order"
         title="Meetings"
         action={
           <div className="flex gap-2">
@@ -240,7 +240,7 @@ export default function Meetings() {
               <div className="text-xs text-muted mt-0.5">
                 {myLastSubmission
                   ? `Last submitted ${format(new Date(myLastSubmission), 'MMM d, yyyy')}`
-                  : 'No minutes submitted yet for your post'}
+                  : 'No minutes submitted yet for your company'}
               </div>
             </div>
           </div>
@@ -259,7 +259,7 @@ export default function Meetings() {
 
       {isNational && activePosts.length > 0 && (
         <div className="panel p-4 mb-6">
-          <div className="eyebrow mb-3">Post Compliance — Meeting Minutes Submission</div>
+          <div className="eyebrow mb-3">Company Compliance — Meeting Minutes Submission</div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {activePosts
               .map((p) => ({ post: p, last: lastSubmission[p.id] ?? null, status: complianceStatus(lastSubmission[p.id] ?? null) }))
@@ -289,7 +289,7 @@ export default function Meetings() {
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input
-            placeholder={isNational ? "Search all posts' minutes — e.g. 'PACT Act', 'fundraiser'…" : "Search your post's minutes…"}
+            placeholder={isNational ? "Search all companies' minutes — e.g. 'PACT Act', 'fundraiser'…" : "Search your company's minutes…"}
             className="input-field pl-9"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -315,7 +315,7 @@ export default function Meetings() {
       {!loading && results.length === 0 ? (
         <EmptyState
           title="No meeting records found"
-          hint={query.trim() ? 'Try a different search term.' : "Submit your post's meeting minutes to start building the archive."}
+          hint={query.trim() ? 'Try a different search term.' : "Submit your company's meeting minutes to start building the archive."}
         />
       ) : (
         <div className="space-y-3">

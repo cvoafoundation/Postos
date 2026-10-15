@@ -71,7 +71,7 @@ function PostTabBar({
     { key: "meetings", label: "Meetings" },
     { key: "recruiting", label: "Recruiting" },
     { key: "sponsors", label: "Sponsors" },
-    { key: "build_a_post", label: "Post Development" },
+    { key: "build_a_post", label: "Company Development" },
   ];
   return (
     <div className="flex gap-1 mb-6 border-b border-hairline flex-wrap">
@@ -339,7 +339,7 @@ export default function PostHealthDetail() {
           onClick={() => navigate(`/health/${post.id}`)}
           className="text-xs font-mono text-muted hover:text-gold mb-4"
         >
-          ← Back to Post Dashboard
+          ← Back to Company Dashboard
         </button>
 
         <div className="flex items-center justify-between">
@@ -361,7 +361,7 @@ export default function PostHealthDetail() {
             <div className="panel p-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <div>
-                  <div className="eyebrow mb-1">Post Status</div>
+                  <div className="eyebrow mb-1">Company Status</div>
                   <StatusBadge
                     label={POST_STATUS_LABELS[post.status]}
                     tone="developing"
@@ -385,7 +385,7 @@ export default function PostHealthDetail() {
                   {advancing
                     ? "Advancing…"
                     : nextStatus === "active_post"
-                      ? "Review Opening in Post Development"
+                      ? "Review Opening in Company Development"
                       : `Advance to ${POST_STATUS_LABELS[nextStatus]}`}{" "}
                   <ArrowRight size={14} />
                 </button>
@@ -398,7 +398,7 @@ export default function PostHealthDetail() {
                   <h2 className="font-display text-lg">Ready to launch?</h2>
                   <p className="text-sm text-muted">
                     Review the location, funding and opening requirements in
-                    Post Development.
+                    Company Development.
                   </p>
                 </div>
                 <button
@@ -406,7 +406,7 @@ export default function PostHealthDetail() {
                   disabled={advancing}
                   onClick={() => advanceStatus("active_post")}
                 >
-                  Review Opening in Post Development
+                  Review Opening in Company Development
                 </button>
               </div>
             )}
@@ -443,7 +443,7 @@ export default function PostHealthDetail() {
             className="btn-gold"
             onClick={() => navigate(`/post-development?post=${post.id}`)}
           >
-            Open Post Development
+            Open Company Development
           </button>
         )}
       </div>
@@ -474,7 +474,7 @@ export default function PostHealthDetail() {
         onClick={() => navigate(`/health/${post.id}`)}
         className="text-xs font-mono text-muted hover:text-gold mb-4"
       >
-        ← Back to Post Dashboard
+        ← Back to Company Dashboard
       </button>
 
       <div className="flex items-center justify-between">
@@ -819,7 +819,7 @@ export default function PostHealthDetail() {
           className="btn-gold"
           onClick={() => navigate(`/post-development?post=${post.id}`)}
         >
-          Open Post Development
+          Open Company Development
         </button>
       )}
 

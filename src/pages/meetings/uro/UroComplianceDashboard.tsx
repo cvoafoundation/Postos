@@ -63,7 +63,7 @@ export default function UroComplianceDashboard() {
         </div>
         <div className="panel p-4 text-center">
           <div className="font-display text-3xl text-status-attention">{missing.length}</div>
-          <div className="eyebrow mt-1">Posts Missing Recent Minutes</div>
+          <div className="eyebrow mt-1">Companies Missing Recent Minutes</div>
         </div>
         <div className="panel p-4 text-center">
           <div className="font-display text-3xl">{compliancePct}%</div>
@@ -87,7 +87,7 @@ export default function UroComplianceDashboard() {
           </select>
         </div>
         {posts.length === 0 ? (
-          <EmptyState title="No active posts yet" />
+          <EmptyState title="No active companies yet" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {posts.map((post) => {
@@ -138,7 +138,7 @@ export default function UroComplianceDashboard() {
         </div>
 
         <div className="panel p-5">
-          <div className="eyebrow mb-3">Posts Missing Recent Minutes (45+ days)</div>
+          <div className="eyebrow mb-3">Companies Missing Recent Minutes (45+ days)</div>
           {missing.length === 0 ? (
             <p className="text-sm text-status-active">Every active post is current.</p>
           ) : (

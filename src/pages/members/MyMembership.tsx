@@ -303,14 +303,14 @@ export default function MyMembership() {
               )}
             </section>
             <section className="panel p-5">
-              <h2 className="font-display text-xl mb-3">Post Affiliation</h2>
+              <h2 className="font-display text-xl mb-3">Company Affiliation</h2>
               <p className="text-sm">
                 Current:{" "}
                 {posts.find((p) => p.id === member.post_id)?.name ??
                   (member.post_id ? "Assigned post" : "At-large member (no post)")}
               </p>
               <p className="text-xs text-muted mt-2 mb-4">
-                Post affiliation and staff appointments are separate. A transfer
+                Company affiliation and staff appointments are separate. A transfer
                 changes where your membership belongs; staff appointments remain
                 assigned until National changes them.
               </p>
@@ -381,7 +381,7 @@ export default function MyMembership() {
           </div>
           <div className="flex gap-4 mt-6 text-sm">
             <Link className="text-gold" to="/member-home">
-              Start a Post / Get Involved
+              Start a Company / Get Involved
             </Link>
             <Link className="text-gold" to="/my-applications">
               Track My Applications

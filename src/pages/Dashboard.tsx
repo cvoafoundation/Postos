@@ -271,7 +271,7 @@ export default function Dashboard() {
           </div>
           <Link to="/health" className="block h-full">
             <StatCard
-              label="Active Posts"
+              label="Active Companies"
               value={metrics?.activePosts ?? "—"}
               accent="gold"
             />

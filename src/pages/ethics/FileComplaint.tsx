@@ -92,7 +92,7 @@ export default function FileComplaint() {
       <div className="panel p-4 mb-6 flex items-start gap-3 border-gold/30">
         <ShieldAlert size={18} className="text-gold shrink-0 mt-0.5" />
         <p className="text-sm text-muted">
-          This goes directly and only to the Ethics Tribunal — not to National Command, not to your post's
+          This goes directly and only to the Ethics Tribunal — not to National Command, not to your company's
           leadership. Nobody else can see what you submit here, including who filed it if you choose to file
           anonymously.
         </p>

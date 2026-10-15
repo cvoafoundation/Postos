@@ -171,7 +171,7 @@ export function dashboardActions(
   if (data.post.status !== "active_post" && !data.plan)
     actions.push({
       id: "plan",
-      title: "Start the post development plan",
+      title: "Start the company development plan",
       detail:
         "After National application approval, assign an owner and target date, then plan the location and funding.",
       path: dev,

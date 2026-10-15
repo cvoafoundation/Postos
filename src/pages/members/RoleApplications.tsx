@@ -18,8 +18,8 @@ interface RoleApplication {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  post_officer: 'Post Officer',
-  post_commander: 'Post Commander',
+  post_officer: 'Company Officer',
+  post_commander: 'Company Commander',
 }
 
 export default function RoleApplications() {
@@ -84,11 +84,11 @@ export default function RoleApplications() {
 
   return (
     <div>
-      <PageHeader eyebrow={isNational ? 'National Only' : 'Your Post'} title="Role Applications" />
+      <PageHeader eyebrow={isNational ? 'National Only' : 'Your Company'} title="Role Applications" />
       <p className="text-sm text-muted mb-6 max-w-2xl">
         {isNational
-          ? 'Every pending Post Commander request across the organization, plus any Officer request nobody at that post has acted on yet.'
-          : "Officer applications for your post — approving here grants that person real Post Officer access immediately."}
+          ? 'Every pending Company Commander request across the organization, plus any Officer request nobody at that post has acted on yet.'
+          : "Officer applications for your company — approving here grants that person real Company Officer access immediately."}
       </p>
 
       {loading ? (

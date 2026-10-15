@@ -49,7 +49,7 @@ export default function UroActionItemReport() {
   return (
     <div>
       <PageHeader
-        eyebrow={isNational ? 'Across Every Post' : 'Your Post'}
+        eyebrow={isNational ? 'Across Every Company' : 'Your Company'}
         title="Action Items"
         action={
           <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">

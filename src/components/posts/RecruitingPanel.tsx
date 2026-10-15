@@ -48,7 +48,7 @@ export function RecruitingPanel({ postId }: { postId: string }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-muted">{recruits.length} recruit{recruits.length !== 1 ? 's' : ''} in this post's pipeline.</p>
+        <p className="text-sm text-muted">{recruits.length} recruit{recruits.length !== 1 ? 's' : ''} in this company's pipeline.</p>
         <button onClick={() => navigate(`/recruiting?post=${postId}`)} className="btn-ghost flex items-center gap-2 text-sm shrink-0">
           Open Full Recruiting Engine <ArrowRight size={14} />
         </button>

@@ -462,7 +462,7 @@ export default function PostDevelopment() {
     <div>
       <PageHeader
         eyebrow="From Formation to Opening"
-        title="Post Development"
+        title="Company Development"
         action={
           <button
             className="btn-ghost"
@@ -479,13 +479,13 @@ export default function PostDevelopment() {
         post.
       </p>
       <label className="block text-sm mb-5">
-        Post
+        Company
         <select
           className="input-field mt-1 max-w-xl"
           value={postId}
           onChange={(e) => selectPost(e.target.value)}
         >
-          <option value="">All Assigned Posts</option>
+          <option value="">All Assigned Companies</option>
           {posts.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name} · {p.state}
@@ -508,15 +508,15 @@ export default function PostDevelopment() {
           <h2 className="font-display text-2xl mb-3">Launch Review Queue</h2>
           <p className="text-sm text-muted mb-4">
             Submitted locations, opening reviews, overdue work and requests for
-            help appear first. Select a post to read its complete record.
+            help appear first. Select a company to read its complete record.
           </p>
           <label className="block text-sm mb-4">
-            Find a post
+            Find a company
             <input
               className="input-field mt-1"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Post name or state"
+              placeholder="Company name or state"
             />
           </label>
           <div className="space-y-3">
@@ -575,7 +575,7 @@ export default function PostDevelopment() {
               ))}
           </div>
           {!loading && !posts.length && (
-            <p>No posts are assigned to this workspace.</p>
+            <p>No companies are assigned to this workspace.</p>
           )}
         </>
       )}
@@ -586,7 +586,7 @@ export default function PostDevelopment() {
           </h2>
           <p className="text-sm text-muted my-3">
             Existing facility projects, campaigns and sponsor receipts stay in
-            place. Existing active posts begin at Open &amp; Operating.
+            place. Existing active companies begin at Open &amp; Operating.
           </p>
           {canEdit ? (
             <button
@@ -598,17 +598,17 @@ export default function PostDevelopment() {
                 )
               }
             >
-              Start Post Development
+              Start Company Development
             </button>
           ) : (
-            <p>Ask the post commander or National to start this workspace.</p>
+            <p>Ask the company commander or National to start this workspace.</p>
           )}
         </section>
       )}
       {post && plan && (
         <>
           <nav
-            aria-label="Post development"
+            aria-label="Company development"
             className="flex flex-wrap gap-2 mb-5"
           >
             {tabs.map((key) => (
@@ -820,7 +820,7 @@ export default function PostDevelopment() {
                                     className="btn-gold"
                                     to={`/health/${post.id}`}
                                   >
-                                    Open Post Dashboard
+                                    Open Company Dashboard
                                   </Link>
                                 )}
                               </div>
@@ -1067,7 +1067,7 @@ export default function PostDevelopment() {
                   <p className="text-sm text-muted my-3">
                     Location standards apply to all locations. Changing them
                     requires unopened locations to be reviewed again. Opening
-                    templates seed new launch workspaces; edit existing posts'
+                    templates seed new launch workspaces; edit existing companies'
                     tasks separately. Education and employment spaces start as
                     recommended.
                   </p>

@@ -65,7 +65,7 @@ export function ToolkitGenerateModal({ item, onClose }: { item: ToolkitItem; onC
         {!result && (
           <>
             <p className="text-sm text-muted">
-              Claude will write a ready-to-use version of this for your post automatically.
+              Claude will write a ready-to-use version of this for your company automatically.
             </p>
             {extraKeys.map((key) => (
               <input

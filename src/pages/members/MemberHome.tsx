@@ -173,7 +173,7 @@ export default function MemberHome() {
 
       {member?.post_id && (
         <section className="panel p-5 mb-6">
-          <h2 className="font-display text-xl">My Post Records</h2>
+          <h2 className="font-display text-xl">My Company Records</h2>
           <p className="text-sm text-muted mt-2">
             {homePost ? postDisplayName(homePost) : "Your affiliated post"} ·
             Read scheduled meetings, published minutes, and documents shared
@@ -225,7 +225,7 @@ export default function MemberHome() {
           Manage Membership →
         </Link>
         <Link to="/my-applications" className="text-gold">
-          Track My Post Applications →
+          Track My Company Applications →
         </Link>
       </div>
       <div className="eyebrow mb-3">Get Involved</div>
@@ -237,7 +237,7 @@ export default function MemberHome() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="group panel p-5 hover:border-gold/60 hover:-translate-y-0.5 transition-all">
           <TileIcon icon={Flag} />
-          <div className="font-display text-lg mb-1">Start a Post</div>
+          <div className="font-display text-lg mb-1">Start a Company</div>
           <p className="text-xs text-muted mb-4">
             No CVOA post near you? Start one — this goes straight to National's
             Application Pipeline for review.
@@ -246,7 +246,7 @@ export default function MemberHome() {
             onClick={() => setShowStartPost(true)}
             className="btn-gold w-full text-sm flex items-center justify-center gap-1.5"
           >
-            Start a Post <ArrowRight size={14} />
+            Start a Company <ArrowRight size={14} />
           </button>
         </div>
 
@@ -255,7 +255,7 @@ export default function MemberHome() {
           <div className="font-display text-lg mb-1">Veterans Congress</div>
           <p className="text-xs text-muted mb-4">
             Members can follow and vote on open resolutions — delegates are
-            chosen by posts to carry a formal vote.
+            chosen by companies to carry a formal vote.
           </p>
           <button
             onClick={() => navigate("/congress")}
@@ -284,7 +284,7 @@ export default function MemberHome() {
           <TileIcon icon={UserPlus} />
           <div className="font-display text-lg mb-1">Recruit a Member</div>
           <p className="text-xs text-muted mb-4">
-            Know a veteran who should be part of this? Share your post's sign-up
+            Know a veteran who should be part of this? Share your company's sign-up
             link directly.
           </p>
           <button
@@ -302,14 +302,14 @@ export default function MemberHome() {
         </p>
       )}
       <div id="join-a-post" className="panel p-5 max-w-lg">
-        <div className="eyebrow mb-1">Join a Post</div>
+        <div className="eyebrow mb-1">Join a Company</div>
         <p className="text-xs text-muted mb-4">
           Pick an active post near you. The receiving post commander reviews
           join requests; your current membership stays in place until approval.
         </p>
         {posts.length === 0 ? (
           <p className="text-sm text-muted">
-            No active posts yet — be the first to start one.
+            No active companies yet — be the first to start one.
           </p>
         ) : joinRequested ? (
           <div className="text-sm text-status-active flex items-center gap-1.5">
@@ -327,7 +327,7 @@ export default function MemberHome() {
               value={selectedPostId}
               onChange={(e) => setSelectedPostId(e.target.value)}
             >
-              <option value="">Select a post…</option>
+              <option value="">Select a company…</option>
               {posts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -463,7 +463,7 @@ function StartPostModal({
   }
 
   return (
-    <Modal title="Start a CVOA Post" onClose={onClose}>
+    <Modal title="Start a CVOA Company" onClose={onClose}>
       {submitted ? (
         <div className="text-center py-6">
           <CheckCircle2 className="mx-auto mb-3 text-status-active" size={36} />
@@ -516,7 +516,7 @@ function StartPostModal({
             onChange={(e) => update("phone", e.target.value)}
           />
           <textarea
-            placeholder="Why do you want to start a post here?"
+            placeholder="Why do you want to start a company here?"
             className="input-field"
             rows={3}
             value={form.motivation}

@@ -39,8 +39,8 @@ export default function PostOfficersDirectory() {
 
   return (
     <div>
-      <PageHeader eyebrow="Your Post" title="Post Officers" />
-      <p className="text-sm text-muted mb-6 max-w-xl">Who's currently leading your post.</p>
+      <PageHeader eyebrow="Your Company" title="Company Officers" />
+      <p className="text-sm text-muted mb-6 max-w-xl">Who's currently leading your company.</p>
 
       {loading ? (
         <p className="text-sm text-muted">Loading…</p>

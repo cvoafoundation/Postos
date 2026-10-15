@@ -21,7 +21,7 @@ export default function MyApplications() {
   >("cvoa_my_applications");
   return (
     <div>
-      <PageHeader eyebrow="Member Workspace" title="My Post Applications" />
+      <PageHeader eyebrow="Member Workspace" title="My Company Applications" />
       <p className="text-sm text-muted mb-6">
         Follow your application, read National’s feedback, and send requested
         documents here. Applying starts a review; staff access follows an
@@ -32,7 +32,7 @@ export default function MyApplications() {
         <div className="panel p-5">
           <p>No post applications on file for your account.</p>
           <Link to="/member-home" className="text-gold inline-block mt-3">
-            Start a Post →
+            Start a Company →
           </Link>
         </div>
       )}

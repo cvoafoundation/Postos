@@ -52,7 +52,7 @@ export function UsStatusMap({ posts }: { posts: Post[] }) {
   return (
     <div className="panel p-5">
       <div className="flex items-center justify-between mb-3">
-        <div className="eyebrow">Post Status — National Map</div>
+        <div className="eyebrow">Company Status — National Map</div>
         <div className="flex items-center gap-4 text-[11px] font-mono uppercase">
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS_COLOR.green }} /> Active

@@ -168,7 +168,7 @@ function SignoffPanel({ applicationId, documentPath }: { applicationId: string; 
         <Users size={12} /> National reviewer sign-offs ({signoffs.length}/{nationalAccounts.length})
       </div>
       <p className="text-xs text-muted mb-3">
-        Every current National account must sign off before application approval. The charter decision is recorded later in the post workspace.
+        Every current National account must sign off before application approval. The charter decision is recorded later in the company workspace.
       </p>
       <div className="space-y-1.5 mb-3">
         {error && <p role="alert" className="text-status-attention text-xs">{error} <button className="underline" onClick={load}>Retry</button></p>}
@@ -257,7 +257,7 @@ export function ApplicationDetailModal({
           <Field label="Leadership Experience" value={application.leadership_experience} />
           <Field label="Existing Veteran Network" value={application.existing_veteran_network} />
           <Field label="Estimated Membership Potential" value={application.estimated_membership_potential} />
-          <Field label="Why do you want to start a post?" value={application.motivation} />
+          <Field label="Why do you want to start a company?" value={application.motivation} />
         </div>
 
         <div className="border-t border-hairline pt-4">

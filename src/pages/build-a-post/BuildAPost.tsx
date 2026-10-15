@@ -67,8 +67,8 @@ export default function BuildAPost({ embedded = false }: { embedded?: boolean })
       />}
 
       <p className="text-sm text-muted mb-6 max-w-2xl">
-        Explore what it takes to build out each part of a post — cost estimates, equipment,
-        sponsor and grant angles, and revenue potential. Select a post above to start tracking a
+        Explore what it takes to build out each part of a company — cost estimates, equipment,
+        sponsor and grant angles, and revenue potential. Select a company above to start tracking a
         real project: a checklist, a budget, and actual spend against it.
       </p>
 

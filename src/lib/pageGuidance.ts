@@ -1,0 +1,41 @@
+/** Short orientation copy shared by page headers. Specific pages can override it. */
+export function pageGuidance(path: string): string | undefined {
+  if (path === '/') return 'Review organizational activity, open records, and choose your next action.'
+  const descriptions: [string, string][] = [
+    ['/membership-verification', 'Submit service documents privately and follow their review status.'],
+    ['/membership-review', 'Review submitted service documents and record a verification decision.'],
+    ['/my-membership', 'View your membership card, service verification, and available membership actions.'],
+    ['/my-applications', 'Follow your company applications, feedback, and next steps.'],
+    ['/member-home', 'Choose how to get involved or begin a company application.'],
+    ['/applications', 'Move company applications through review, vetting, and approval.'],
+    ['/vetting', 'Review applicants, save assessments, and prepare the next decision.'],
+    ['/users', 'Review connected person records, account activation, and staff authority.'],
+    ['/directory', 'Find members and the contact information available to your account.'],
+    ['/members', 'Find a member, open their connected record, or update membership information.'],
+    ['/post-development', 'Track company launch milestones, facility planning, fundraising, and approvals.'],
+    ['/post-overview', 'Review this company’s activity, membership, and outstanding work.'],
+    ['/post-records', 'Review company health, supporting records, and follow-up actions.'],
+    ['/health', 'Review company health and open the records that need attention.'],
+    ['/state', 'Review battalions, companies, and the support they need within your authority.'],
+    ['/meetings/session', 'Follow the agenda and record the business of this meeting.'],
+    ['/meetings', 'Schedule a meeting or open its agenda, decisions, and minutes.'],
+    ['/schedlr', 'Manage your scheduling availability and appointments.'],
+    ['/operations', 'Discuss work, coordinate follow-up, and open connected organizational records.'],
+    ['/congress/resolutions', 'Read the resolution, follow the discussion, and participate according to your voting eligibility.'],
+    ['/congress/delegates', 'Find congressional delegates and their designated companies.'],
+    ['/congress/committees', 'Review committee assignments and resolution recommendations.'],
+    ['/congress/legislative', 'Track legislation, policy research, and organizational engagement.'],
+    ['/congress/calendar', 'Review scheduled Congress business and deadlines.'],
+    ['/congress', 'Review resolutions and participate in Veterans Congress.'],
+    ['/file-complaint', 'Submit a complaint privately and follow your own submissions.'],
+    ['/ethics-tribunal', 'Review Tribunal matters within your assigned judicial authority.'],
+    ['/drive', 'Find, organize, and share documents within your authorized workspace.'],
+    ['/shared-files', 'Find documents shared with your company and account.'],
+    ['/sponsors', 'Track sponsor conversations, proposals, meetings, and contributions.'],
+    ['/recruiting', 'Organize recruitment activity and follow up with prospective members.'],
+    ['/role-applications', 'Review staff appointment requests and record the next decision.'],
+    ['/toolkit', 'Find operational templates and resources for your company.'],
+    ['/settings', 'Manage your personal account preferences.'],
+  ]
+  return descriptions.find(([base]) => path === base || path.startsWith(`${base}/`))?.[1]
+}

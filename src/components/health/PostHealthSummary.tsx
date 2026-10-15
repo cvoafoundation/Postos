@@ -18,7 +18,7 @@ export function PostHealthSummary({
       className={`panel p-5 mb-5 border-l-4 ${healthColor(result?.overall)}`}
     >
       <h2 className="font-display text-xl">
-        Post health ·{" "}
+        Company health ·{" "}
         {status !== "active_post"
           ? "Preparing to launch"
           : result
@@ -35,7 +35,7 @@ export function PostHealthSummary({
       {status !== "active_post" && (
         <p className="text-sm text-muted mt-2">
           Launch readiness is tracked separately. The operating health score
-          starts when the post becomes active.
+          starts when the company becomes active.
         </p>
       )}
       {result && (

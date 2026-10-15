@@ -38,7 +38,7 @@ type NavItem = { to: string; label: string; icon: typeof GitBranch; end?: boolea
 
 const groups = [
   { id: 'people', label: 'Members & Access', icon: Users },
-  { id: 'posts', label: 'Posts & Development', icon: HeartPulse },
+  { id: 'posts', label: 'Companies & Development', icon: HeartPulse },
   { id: 'governance', label: 'Meetings & Governance', icon: Landmark },
   { id: 'resources', label: 'Funding & Files', icon: HardDrive },
   { id: 'personal', label: 'My Membership', icon: CreditCard },
@@ -48,7 +48,7 @@ const NATIONAL_ONLY_ITEMS: NavItem[] = [
   { to: '/applications', label: 'Application Pipeline', icon: GitBranch, section: 'applications' },
   { to: '/vetting', label: 'Applicant Vetting', icon: ClipboardCheck },
   { to: '/users', label: 'Accounts & Access', icon: UserCog },
-  { to: '/state', label: 'States & Posts', icon: HeartPulse },
+  { to: '/state', label: 'Battalions & Companies', icon: HeartPulse },
   { to: '/drive', label: 'Documents & Files', icon: HardDrive },
 ]
 
@@ -63,11 +63,11 @@ const SHARED_ITEMS: NavItem[] = [
   { to: '/meetings', label: 'Meetings', icon: CalendarCheck, section: 'meetings' },
   { to: '/members', label: 'Membership Roster', icon: IdCard, section: 'membership_roster' },
   { to: '/membership-review', label: 'DD-214 Review', icon: FileCheck2, section: 'dd214_review' },
-  { to: '/toolkit', label: 'Post Toolkit', icon: FolderDown },
+  { to: '/toolkit', label: 'Company Toolkit', icon: FolderDown },
   { to: '/recruiting', label: 'Recruitment', icon: Radar },
   { to: '/sponsors', label: 'Sponsorships', icon: HandCoins },
-  { to: '/health', label: 'Posts', icon: HeartPulse },
-  { to: '/post-development', label: 'Post Development', icon: Hammer },
+  { to: '/health', label: 'Companies', icon: HeartPulse },
+  { to: '/post-development', label: 'Company Development', icon: Hammer },
 ]
 
 // A plain paying member — their card, their post's own drive drop, who
@@ -75,8 +75,8 @@ const SHARED_ITEMS: NavItem[] = [
 const MEMBER_ITEMS: NavItem[] = [
   { to: '/sponsors', label: 'Sponsorship', icon: HandCoins },
   { to: '/shared-files', label: 'Documents & Files', icon: HardDrive },
-  { to: '/post-officers', label: 'Post Officers', icon: Users },
-  { to: '/post-members', label: 'Post Members', icon: IdCard },
+  { to: '/post-officers', label: 'Company Officers', icon: Users },
+  { to: '/post-members', label: 'Company Members', icon: IdCard },
   { to: '/congress', label: 'Veterans Congress', icon: Landmark },
 ]
 
@@ -129,12 +129,12 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     { to: '/congress', label: 'Veterans Congress', icon: Landmark },
     { to: '/file-complaint', label: 'Ethics Tribunal', icon: Gavel },
   ] : [
-    { to: '/', label: isNational ? 'National Dashboard' : isState ? 'State Dashboard' : isPostOfficer ? 'Post Dashboard' : 'Home', icon: LayoutGrid, end: true },
+    { to: '/', label: isNational ? 'National Dashboard' : isState ? 'Battalion Dashboard' : isPostOfficer ? 'Company Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
     { to: '/schedlr', label: 'Schedlr', icon: CalendarCheck },
     ...(canUseOperations ? [{ to: '/operations', label: 'Operations', icon: MessagesSquare }] : []),
     ...(isState || isPlainMember ? [{ to: '/meetings', label: 'Meetings', icon: CalendarCheck }] : []),
-    ...(isState ? [{ to: '/sponsors', label: 'State Sponsorship', icon: HandCoins }, { to: '/drive', label: 'Documents & Files', icon: HardDrive }, { to: '/health', label: 'State Posts', icon: HeartPulse }, { to: '/members', label: 'State Membership Roster', icon: IdCard }, { to: '/post-development', label: 'Post Development', icon: Hammer }, { to: '/congress', label: 'Veterans Congress', icon: Landmark }] : []),
+    ...(isState ? [{ to: '/sponsors', label: 'Battalion Sponsorship', icon: HandCoins }, { to: '/drive', label: 'Documents & Files', icon: HardDrive }, { to: '/health', label: 'Battalion Companies', icon: HeartPulse }, { to: '/members', label: 'Battalion Membership Roster', icon: IdCard }, { to: '/post-development', label: 'Company Development', icon: Hammer }, { to: '/congress', label: 'Veterans Congress', icon: Landmark }] : []),
     // National always gets the full toolset too, on top of their own-only
     // items above — they manage every post's modules directly. A plain
     // member gets the small member set. A guest_applicant (not yet
@@ -156,7 +156,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
       : []),
     { to: '/directory', label: 'Member Directory', icon: IdCard },
     { to: '/my-membership', label: 'Card & Membership', icon: CreditCard },
-    { to: '/member-home', label: 'Start a Post', icon: GitBranch },
+    { to: '/member-home', label: 'Start a Company', icon: GitBranch },
     { to: '/my-applications', label: 'My Applications', icon: ClipboardCheck },
     // Every real member gets a way to reach the Tribunal directly — this is
     // deliberately available regardless of role (except an unverified
@@ -214,7 +214,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             )}
             {isPostOfficer && profile?.post_id && (
               <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-hairline text-muted font-mono text-[10px] uppercase tracking-wide">
-                Post Staff Workspace
+                Company Staff Workspace
               </div>
             )}
           </div>

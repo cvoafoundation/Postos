@@ -48,9 +48,9 @@ export interface AccessDirectory {
 export const ROLE_LABELS: Record<UserRole, string> = {
   national_commander: "National Commander",
   national_staff: "National Staff",
-  state_commander: "State Commander",
-  post_commander: "Post Commander",
-  post_officer: "Post Officer",
+  state_commander: "Battalion Commander",
+  post_commander: "Company Commander",
+  post_officer: "Company Officer",
   member: "Member",
   delegate: "Congressional Delegate",
   ethics_tribunal: "Ethics Tribunal",
@@ -75,13 +75,13 @@ export function scopeLabel(scope: AccessScope) {
     return "Organization-wide · Ethics records restricted";
   if (scope.role === "ethics_tribunal") return "Separate Tribunal workspace";
   if (scope.role === "state_commander")
-    return scope.state ? `State · ${scope.state}` : "State assignment missing";
+    return scope.state ? `Battalion · ${scope.state}` : "State assignment missing";
   if (scope.role === "delegate")
-    return `${scope.post_name ?? "Post designation required"} · ${scope.state ?? "State derived from designated post"}`;
+    return `${scope.post_name ?? "Company designation required"} · ${scope.state ?? "State derived from designated company"}`;
   if (scope.role === "member") return "Member services · no staff authority";
   if (scope.role === "guest_applicant") return "Own application · no staff authority";
   return (
-    scope.post_name ?? (scope.post_id ? "Assigned post" : "No post assignment")
+    scope.post_name ?? (scope.post_id ? "Assigned company" : "No company assignment")
   );
 }
 export function accountIssues(row: AccountRow) {

@@ -13,7 +13,7 @@ export function RoleGuard({ roles, children, allowNational = true }: { roles: Us
     <div className="panel p-8 text-center">
       <div className="eyebrow mb-2">Access Restricted</div>
       <p className="text-sm text-muted">
-        Your role does not have access to this module. Contact your Post Commander or National Staff if you
+        Your role does not have access to this module. Contact your Company Commander or National Staff if you
         believe this is an error.
       </p>
     </div>

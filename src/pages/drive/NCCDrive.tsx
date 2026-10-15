@@ -538,7 +538,7 @@ export default function NCCDrive() {
                           <Folder size={18} style={{ color: folder.color ?? '#C9A227' }} fill={folder.color ?? '#C9A227'} fillOpacity={0.15} />
                           <span className="text-sm">{folder.name}</span>
                           {folder.shared_with_posts && (
-                            <span title="Shared with all posts (read-only)">
+                            <span title="Shared with all companies (read-only)">
                               <Users size={13} className="text-gold" />
                             </span>
                           )}

@@ -97,9 +97,9 @@ export default function Delegates() {
 
       {!membershipOnly && !isNational && profile?.post_id && (
         <div className="panel p-5 mb-6">
-          <div className="eyebrow mb-2">Your Post's Delegate</div>
+          <div className="eyebrow mb-2">Your Company's Delegate</div>
           <p className="text-xs text-muted mb-3 max-w-xl">
-            One delegate per post carries your chapter's formal vote and voice in Congress — on delegate votes,
+            One delegate per company carries your chapter's formal vote and voice in Congress — on delegate votes,
             constitutional amendments, and floor debate. Choose from your verified officers below.
           </p>
           {ownDelegate?.profile_id ? (
@@ -109,7 +109,7 @@ export default function Delegates() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-status-developing mb-3">No delegate designated yet — your post's formal vote can't be cast until one is.</p>
+            <p className="text-sm text-status-developing mb-3">No delegate designated yet — your company's formal vote can't be cast until one is.</p>
           )}
           {candidates.length === 0 ? (
             <p className="text-xs text-muted">
@@ -139,7 +139,7 @@ export default function Delegates() {
           <thead>
             <tr>
               <th className="table-head">Delegate</th>
-              <th className="table-head">Post</th>
+              <th className="table-head">Company</th>
               <th className="table-head">Alternate</th>
               <th className="table-head">Term</th>
               <th className="table-head">Votes Cast</th>

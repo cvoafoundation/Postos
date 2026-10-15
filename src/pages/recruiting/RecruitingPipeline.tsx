@@ -108,7 +108,7 @@ export default function RecruitingPipeline() {
     return (
       <div>
         <PageHeader eyebrow="Module 6" title="Recruiting Engine" />
-        <p className="text-sm text-muted">No posts yet to recruit for.</p>
+        <p className="text-sm text-muted">No companies yet to recruit for.</p>
       </div>
     )
   }

@@ -57,8 +57,8 @@ export default function ApplicationsPipeline() {
   return (
     <div className="min-w-0">
       <PageHeader
-        eyebrow="Post development"
-        title="Post Application Pipeline"
+        eyebrow="Company development"
+        title="Company Application Pipeline"
         action={
           <div className="flex flex-wrap gap-2">
             <button className="btn-ghost" onClick={refresh} disabled={loading}>

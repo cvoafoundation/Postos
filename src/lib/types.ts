@@ -38,7 +38,7 @@ export const POST_STATUS_LABELS: Record<PostStatus, string> = {
   approved: 'Approved',
   founding_team_building: 'Founding Team Building',
   charter_ready: 'Charter Ready',
-  active_post: 'Active Post',
+  active_post: 'Active Company',
 }
 
 export type PostHealthStatus = 'green' | 'yellow' | 'red'

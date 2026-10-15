@@ -122,10 +122,10 @@ export default function ScopedPostOverview() {
               {profile?.role === "delegate" ? (
                 <>
                   <Link className="text-gold" to="/post-officers">
-                    Post officers →
+                    Company officers →
                   </Link>
                   <Link className="text-gold" to="/post-members">
-                    Post member directory →
+                    Company member directory →
                   </Link>
                 </>
               ) : (

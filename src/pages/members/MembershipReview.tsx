@@ -50,7 +50,7 @@ export default function MembershipReview() {
 
   return (
     <div>
-      <PageHeader eyebrow={isNational ? 'National Only' : 'Your Post'} title="Membership DD214 Review" />
+      <PageHeader eyebrow={isNational ? 'National Only' : 'Your Company'} title="Membership DD214 Review" />
       <p className="text-sm text-muted mb-6 max-w-2xl">
         A member's card activates instantly the moment payment clears — that never waits on this. This is a
         separate, second check: confirm the DD214 they uploaded actually holds up, at your own pace.

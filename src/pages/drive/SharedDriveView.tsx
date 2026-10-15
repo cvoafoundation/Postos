@@ -60,7 +60,7 @@ export default function SharedDriveView() {
 
   return (
     <div>
-      <PageHeader eyebrow="From National" title="Post Drive" />
+      <PageHeader eyebrow="From National" title="Company Drive" />
       <p className="text-sm text-muted mb-6 max-w-xl">
         Files National has shared — some visible to every post, some sent privately to yours alone. Read-only.
       </p>
@@ -81,7 +81,7 @@ export default function SharedDriveView() {
                   <Folder size={18} style={{ color: folder.color ?? '#C9A227' }} />
                   <span className="text-sm">{folder.name}</span>
                   {folder.shared_with_post_id && (
-                    <span title="Sent privately to your post only" className="text-[10px] font-mono text-gold flex items-center gap-1">
+                    <span title="Sent privately to your company only" className="text-[10px] font-mono text-gold flex items-center gap-1">
                       <Lock size={11} /> Private
                     </span>
                   )}

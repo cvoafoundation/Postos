@@ -4,7 +4,7 @@ export const VETTING_QUESTIONS = [
   {
     id: "purpose",
     title: "Why do you want to open a CVOA post?",
-    hint: "Describe the local need, who you intend to serve, and how the post supports CVOA’s mission.",
+    hint: "Describe the local need, who you intend to serve, and how the company supports CVOA’s mission.",
   },
   {
     id: "eligibility",
@@ -14,7 +14,7 @@ export const VETTING_QUESTIONS = [
   },
   {
     id: "region",
-    title: "Where will the post operate, and why is it viable there?",
+    title: "Where will the company operate, and why is it viable there?",
     hint: "Identify the city/county/region, nearby veteran organizations, and how you will work with them.",
   },
   {
@@ -46,7 +46,7 @@ export const VETTING_QUESTIONS = [
   },
   {
     id: "resources",
-    title: "How will you fund and responsibly operate the post?",
+    title: "How will you fund and responsibly operate the company?",
     hint: "Describe a realistic budget, fundraising, recordkeeping, financial controls, and a meeting location. Identify gaps without making unsupported commitments.",
   },
   {

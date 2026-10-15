@@ -74,15 +74,15 @@ export default function PostHealth() {
         eyebrow={
           profile?.role === "state_commander"
             ? `State Command · ${profile.state}`
-            : "Post operations"
+            : "Company operations"
         }
-        title="Posts"
+        title="Companies"
       />
       <button
         className="btn-ghost mb-4"
         onClick={() => setVersion((v) => v + 1)}
       >
-        Refresh posts & scores
+        Refresh companies & scores
       </button>
       {(error || health.error) && (
         <p role="alert" className="text-status-attention mb-4">
@@ -154,8 +154,8 @@ export default function PostHealth() {
           <p className="text-muted">Refresh to retry loading health data.</p>
         ) : scored.length === 0 ? (
           <EmptyState
-            title="No active posts yet"
-            hint="A real composite score — officers, sponsors, meetings, membership, Congress participation, governance, community service, and finances — rolls up here once posts go active."
+            title="No active companies yet"
+            hint="A real composite score — officers, sponsors, meetings, membership, Congress participation, governance, community service, and finances — rolls up here once companies go active."
           />
         ) : (
           <>
@@ -184,7 +184,7 @@ export default function PostHealth() {
               <table className="w-full">
                 <thead>
                   <tr>
-                    <th className="table-head">Post</th>
+                    <th className="table-head">Company</th>
                     <th className="table-head">State</th>
                     <th className="table-head">Score</th>
                     <th className="table-head">Status</th>
@@ -235,13 +235,13 @@ export default function PostHealth() {
           </>
         )
       ) : loading ? (
-        <p className="text-muted">Loading forming posts…</p>
+        <p className="text-muted">Loading forming companies…</p>
       ) : error ? (
-        <p className="text-muted">Refresh to retry loading posts.</p>
+        <p className="text-muted">Refresh to retry loading companies.</p>
       ) : formingPosts.length === 0 ? (
         <EmptyState
           title="Nothing forming right now"
-          hint="Posts show up here once an application advances to Founding Team Building."
+          hint="Companies show up here once an application advances to Founding Team Building."
         />
       ) : (
         <div className="panel overflow-x-auto">

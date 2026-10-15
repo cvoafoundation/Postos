@@ -230,7 +230,7 @@ export function MembershipForm({ mode, posts }: { mode: 'join_existing' | 'membe
           {mode === 'join_existing' && (
             <>
               <select required className="input-field" value={form.post_id} onChange={(e) => update('post_id', e.target.value)}>
-                <option value="">Select your post…</option>
+                <option value="">Select your company…</option>
                 {posts.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} — {p.city ? `${p.city}, ` : ''}
@@ -243,8 +243,8 @@ export function MembershipForm({ mode, posts }: { mode: 'join_existing' | 'membe
                 <label className="eyebrow block mb-1.5">Applying As</label>
                 <select className="input-field" value={form.requested_role} onChange={(e) => update('requested_role', e.target.value as typeof form.requested_role)}>
                   <option value="member">Member</option>
-                  <option value="post_officer">Post Officer (needs your Commander's approval)</option>
-                  <option value="post_commander">Post Commander (needs National's approval)</option>
+                  <option value="post_officer">Company Officer (needs your Commander's approval)</option>
+                  <option value="post_commander">Company Commander (needs National's approval)</option>
                 </select>
                 {form.requested_role !== 'member' && (
                   <p className="text-xs text-status-developing mt-1.5">

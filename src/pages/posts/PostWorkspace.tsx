@@ -20,7 +20,7 @@ const tabs: { id: DashboardTab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "people", label: "People" },
   { id: "meetings", label: "Meetings" },
-  { id: "development", label: "Post Development" },
+  { id: "development", label: "Company Development" },
   { id: "sponsors", label: "Sponsors" },
   { id: "finances", label: "Finances" },
   { id: "documents", label: "Documents" },
@@ -94,7 +94,7 @@ export default function PostWorkspace() {
   if (!data)
     return (
       <div>
-        <PageHeader eyebrow="Post operations" title="Post Dashboard" />
+        <PageHeader eyebrow="Company operations" title="Company Dashboard" />
         <WorkspaceStatus loading={loading} error={error} retry={refresh} />
       </div>
     );
@@ -123,7 +123,7 @@ export default function PostWorkspace() {
   return (
     <div className="space-y-6">
       <Link className="text-sm text-muted hover:text-gold" to="/health">
-        ← Posts in my jurisdiction
+        ← Companies in my jurisdiction
       </Link>
       <div className="flex justify-between gap-4 flex-wrap">
         <PageHeader
@@ -176,7 +176,7 @@ export default function PostWorkspace() {
         </p>
       )}
       <nav
-        aria-label="Post dashboard sections"
+        aria-label="Company dashboard sections"
         className="flex gap-1 flex-wrap border-b border-hairline"
       >
         {tabs.map((t) => (
@@ -242,7 +242,7 @@ export default function PostWorkspace() {
                   ? score
                     ? `${score.overall.toUpperCase()} · ${score.coverage}% scored record coverage`
                     : "Current records required"
-                  : "Opening approval stays in Post Development"
+                  : "Opening approval stays in Company Development"
               }
               onClick={() => go(active ? "governance" : "development")}
             />
@@ -313,7 +313,7 @@ export default function PostWorkspace() {
                 separate views.
               </p>
               <Link className="text-gold text-sm block mt-3" to={dev}>
-                Open Post Development →
+                Open Company Development →
               </Link>
             </section>
           </div>
@@ -517,7 +517,7 @@ export default function PostWorkspace() {
       )}
       {tab === "development" && (
         <section className="panel p-5">
-          <h2 className="font-display text-xl">Post Development</h2>
+          <h2 className="font-display text-xl">Company Development</h2>
           <p className="text-sm mt-3">
             Stage: {data.plan?.stage.replaceAll("_", " ") ?? "Not initialized"}{" "}
             · Owner: {data.plan?.owner_name || "Unassigned"} · Target:{" "}
@@ -528,7 +528,7 @@ export default function PostWorkspace() {
             campaigns, budgets, and launch tasks share one workflow.
           </p>
           <Link className="btn-gold inline-block mt-4" to={dev}>
-            Open Post Development
+            Open Company Development
           </Link>
         </section>
       )}
@@ -548,7 +548,7 @@ export default function PostWorkspace() {
           </div>
           <p className="text-xs text-muted mt-3">
             Test payments excluded. Receipt allocation to an opening campaign is
-            managed in Post Development.
+            managed in Company Development.
           </p>
           <Link
             className="btn-gold inline-block mt-4"
@@ -604,13 +604,13 @@ export default function PostWorkspace() {
       )}
       {tab === "documents" && (
         <section className="panel p-5">
-          <h2 className="font-display text-xl">Post Documents & Files</h2>
+          <h2 className="font-display text-xl">Company Documents & Files</h2>
           <p className="text-sm mt-3">
-            Open this post’s drive for minutes, agreements, plans, and working
+            Open this company’s drive for minutes, agreements, plans, and working
             documents. Existing workspace and sharing permissions apply.
           </p>
           <Link className="btn-gold inline-block mt-4" to={`/drive?post=${id}`}>
-            Open Post Drive
+            Open Company Drive
           </Link>
           <Link
             className="btn-ghost inline-block mt-4 ml-3"
@@ -633,8 +633,8 @@ export default function PostWorkspace() {
             )}
             {!active ? (
               <p className="text-sm mt-3">
-                Operating health starts when the post is active. Follow launch
-                requirements in Post Development.
+                Operating health starts when the company is active. Follow launch
+                requirements in Company Development.
               </p>
             ) : score ? (
               <>
@@ -701,12 +701,12 @@ export default function PostWorkspace() {
                 onClick={() => setShowAdmin((v) => !v)}
                 aria-expanded={showAdmin}
               >
-                Post Administration
+                Company Administration
               </button>
               {showAdmin && (
                 <div className="mt-4">
                   <p className="text-sm">
-                    Archive removes the post from current operations lists and
+                    Archive removes the company from current operations lists and
                     preserves its records and access. Account suspension is
                     managed separately in Accounts & Access.
                   </p>
@@ -728,8 +728,8 @@ export default function PostWorkspace() {
                     {busy
                       ? "Saving…"
                       : data.post.archived_at
-                        ? "Restore Post"
-                        : "Archive Post"}
+                        ? "Restore Company"
+                        : "Archive Company"}
                   </button>
                   {data.archive_history.map((h) => (
                     <p className="text-xs text-muted mt-3" key={h.id}>

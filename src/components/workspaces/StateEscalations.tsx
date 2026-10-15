@@ -92,7 +92,7 @@ export default function StateEscalations({
     <section className="panel p-5 mt-6">
       <h2 className="font-display text-2xl">Escalations to National</h2>
       <p className="text-sm text-muted mt-2">
-        Saved to National’s review queue in States &amp; Posts. National can
+        Saved to National’s review queue in States &amp; Companies. National can
         respond here and close the request. This does not send an email
         automatically.
       </p>
@@ -100,7 +100,7 @@ export default function StateEscalations({
       {posts.length > 0 && (
         <form onSubmit={submit} className="space-y-3 mt-4">
           <label className="block text-sm">
-            Post
+            Company
             <select
               className="input-field mt-1"
               required

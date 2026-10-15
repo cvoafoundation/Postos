@@ -160,7 +160,7 @@ export default function BodySetup({
             {(directory.national || directory.states?.length > 0) && (
               <option value="state">State</option>
             )}
-            {directory.posts?.length > 0 && <option value="post">Post</option>}
+            {directory.posts?.length > 0 && <option value="post">Company</option>}
           </select>
         </label>
         {jurisdiction === "state" && (
@@ -177,7 +177,7 @@ export default function BodySetup({
         )}
         {jurisdiction === "post" && (
           <label className="block text-sm">
-            Post
+            Company
             <select
               className="input-field mt-1"
               value={post}

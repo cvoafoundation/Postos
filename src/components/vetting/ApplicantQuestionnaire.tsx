@@ -142,7 +142,7 @@ export default function ApplicantQuestionnaire({
       {!loading && !data && !error && (
         <p className="text-sm text-muted">
           {reviewer
-            ? "Request this questionnaire so the applicant can complete it in My Post Applications."
+            ? "Request this questionnaire so the applicant can complete it in My Company Applications."
             : "National has not requested a questionnaire yet."}
         </p>
       )}

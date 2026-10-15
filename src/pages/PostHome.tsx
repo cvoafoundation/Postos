@@ -56,7 +56,7 @@ export default function PostHome() {
       <div>
         <div className="eyebrow mb-1">Welcome</div>
         <h1 className="font-display text-3xl tracking-wide mb-4">{profile?.full_name}</h1>
-        <p className="text-sm text-muted">Your account isn't tied to a post yet — contact National.</p>
+        <p className="text-sm text-muted">Your account isn't tied to a company yet — contact National.</p>
       </div>
     )
   }
@@ -90,7 +90,7 @@ export default function PostHome() {
           <button onClick={() => navigate(`/health/${post.id}`)} className={`panel border-l-4 p-4 text-left hover:border-gold transition-colors ${healthColor(health?.overall)}`}>
             <HeartPulse className="text-gold mb-2" size={18} />
             <div className="font-display text-2xl">{health ? `${health.score}/100` : healthData.loading ? "Loading…" : "Unavailable"}</div>
-            <div className="eyebrow mt-1">Post Health{health ? ` · ${health.overall}` : ""}</div>
+            <div className="eyebrow mt-1">Company Health{health ? ` · ${health.overall}` : ""}</div>
           </button>
         ) : (
           <button onClick={() => navigate(`/health/${post.id}`)} className="panel p-4 text-left hover:border-gold transition-colors">

@@ -71,10 +71,10 @@ export default function StateHome() {
       <PageHeader
         eyebrow={
           isNational
-            ? "National → States → Posts"
+            ? "National → States → Companies"
             : `State Command · ${data?.state ?? "Assigned state"}`
         }
-        title="State Overview"
+        title="Battalion Overview"
       />
       <p className="text-muted text-sm mb-6">
         Monitor post readiness, membership, meeting reports, and outstanding
@@ -113,12 +113,12 @@ export default function StateHome() {
           )}
           <div className="flex flex-wrap items-end gap-4 mb-6">
             <label className="text-sm flex-1 min-w-48">
-              Find a post
+              Find a company
               <input
                 className="input-field mt-1"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Post name, city, or state"
+                placeholder="Company name, city, or state"
               />
             </label>
             <label className="text-sm flex items-center gap-2 pb-3">
@@ -147,14 +147,14 @@ export default function StateHome() {
           </div>
           {visible.length === 0 && (
             <p className="text-muted">
-              No posts match this view. Clear the filters to see all assigned
-              posts.
+              No companies match this view. Clear the filters to see all assigned
+              companies.
             </p>
           )}
           <section className="panel p-5 mb-6">
-            <h2 className="font-display text-xl">Posts needing support</h2>
+            <h2 className="font-display text-xl">Companies needing support</h2>
             <p className="text-xs text-muted mt-1 mb-3">
-              Recorded work and reporting gaps; contact the post to confirm what
+              Recorded work and reporting gaps; contact the company to confirm what
               help is needed.
             </p>
             {visible.filter((p) => needs(p).length).length === 0 ? (
@@ -218,7 +218,7 @@ export default function StateHome() {
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-muted">Post health</dt>
+                    <dt className="text-muted">Company health</dt>
                     <dd
                       className={`font-medium ${healthColor(health.scores[p.id]?.overall)}`}
                     >
@@ -286,12 +286,12 @@ export default function StateHome() {
                   </Link>
                   {isNational && (
                     <Link className="text-sm text-gold" to={`/health/${p.id}`}>
-                      Manage Post →
+                      Manage Company →
                     </Link>
                   )}
                 </div>
                 <p className="text-xs text-muted mt-3">
-                  For intervention or a missing report, contact the post
+                  For intervention or a missing report, contact the company
                   commander or escalate to National.
                 </p>
               </section>

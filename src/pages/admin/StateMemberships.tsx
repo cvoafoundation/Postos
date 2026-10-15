@@ -81,15 +81,15 @@ export default function StateMemberships() {
     <div>
       <PageHeader
         eyebrow={`State oversight · ${profile?.state ?? "Assignment required"}`}
-        title="State Membership Roster"
+        title="Battalion Membership Roster"
       />
       <p className="text-sm text-muted mb-6">
         Read membership, affiliation, activation, and verification information
-        for posts in your assigned state. National manages access appointments;
+        for companies in your assigned state. National manages access appointments;
         post staff manage member changes.
       </p>
       <label className="block text-sm mb-4">
-        Post
+        Company
         <select
           className="input-field mt-2"
           value={postFilter}
@@ -101,7 +101,7 @@ export default function StateMemberships() {
             setPage(0);
           }}
         >
-          <option value="">All posts in my state</option>
+          <option value="">All companies in my state</option>
           {data?.posts.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -146,7 +146,7 @@ export default function StateMemberships() {
       </div>
       {!loading && visible.length === 0 && (
         <p className="text-muted">
-          No members match within your assigned posts.
+          No members match within your assigned companies.
         </p>
       )}
       <ListPagination

@@ -32,12 +32,12 @@ export function BuildAPostPanel({ postId }: { postId: string }) {
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-muted">{projects.length} facility project{projects.length !== 1 ? 's' : ''} being tracked for this post.</p>
         <button onClick={() => navigate(`/build-a-post?post=${postId}`)} className="btn-ghost flex items-center gap-2 text-sm shrink-0">
-          Open Full Build A Post <ArrowRight size={14} />
+          Open Full Build A Company <ArrowRight size={14} />
         </button>
       </div>
 
       {projects.length === 0 ? (
-        <EmptyState title="No facility projects started yet" hint="Pick a module from the full Build A Post tool to start tracking one." />
+        <EmptyState title="No facility projects started yet" hint="Pick a module from the full Build A Company tool to start tracking one." />
       ) : (
         <div className="space-y-2">
           {projects.map((p) => (

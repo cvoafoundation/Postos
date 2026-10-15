@@ -171,7 +171,7 @@ export default function BuildAPostDetail() {
   return (
     <div>
       <button onClick={() => navigate(`/post-development?post=${postId ?? ''}&tab=facility`)} className="text-xs font-mono text-muted hover:text-gold mb-4">
-        ← Back to Post Development
+        ← Back to Company Development
       </button>
 
       <PageHeader eyebrow="Facility Plan" title={module.name} />
@@ -210,7 +210,7 @@ export default function BuildAPostDetail() {
             {matchedSponsors.length > 0 && (
               <div className="border-t border-hairline pt-3">
                 <div className="text-[11px] font-mono uppercase text-gold mb-2">
-                  Matches from {profile?.post_id ? 'your' : "this post's"} sponsor list
+                  Matches from {profile?.post_id ? 'your' : "this company's"} sponsor list
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {matchedSponsors.map((s) => (
@@ -230,7 +230,7 @@ export default function BuildAPostDetail() {
         <div className="space-y-6">
           {!postId ? (
             <div className="panel p-5">
-              <p className="text-sm text-muted">Select a post from the Facility Planning list to start tracking a real project here.</p>
+              <p className="text-sm text-muted">Select a company from the Facility Planning list to start tracking a real project here.</p>
             </div>
           ) : !project ? (
             <div className="panel p-5">

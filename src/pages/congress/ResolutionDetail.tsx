@@ -384,7 +384,7 @@ export default function ResolutionDetail() {
                 onChange={(e) => setNewComment(e.target.value)}
               />
               <button onClick={postComment} disabled={postingComment} className="btn-gold px-4 shrink-0">
-                Post
+                Send
               </button>
             </div>
 
@@ -428,7 +428,7 @@ export default function ResolutionDetail() {
                 <div>
                   <p className="text-xs text-muted mb-3">
                     This is a formal {resolution.vote_type === 'constitutional_amendment' ? 'constitutional amendment' : 'delegate'} vote —
-                    only your post's designated delegate casts the vote that actually counts. But you can still show
+                    only your company's designated delegate casts the vote that actually counts. But you can still show
                     them how you'd vote — it's anonymous, non-binding, and only your own delegate sees the tally.
                   </p>
                   <div className="grid grid-cols-2 gap-2">
@@ -452,7 +452,7 @@ export default function ResolutionDetail() {
                     </button>
                   </div>
                   {myPreference !== null && (
-                    <p className="text-[11px] text-muted mt-2">Your delegate can see this reflected in their post's tally, anonymously.</p>
+                    <p className="text-[11px] text-muted mt-2">Your delegate can see this reflected in their company's tally, anonymously.</p>
                   )}
                 </div>
               ) : (
@@ -481,7 +481,7 @@ export default function ResolutionDetail() {
                 preferenceTally &&
                 preferenceTally.support + preferenceTally.oppose > 0 && (
                   <div className="border-t border-hairline mt-4 pt-3">
-                    <div className="eyebrow mb-2">Your Post's Member Sentiment (anonymous)</div>
+                    <div className="eyebrow mb-2">Your Company's Member Sentiment (anonymous)</div>
                     <div className="flex justify-between text-xs text-muted mb-1">
                       <span>{preferenceTally.support} support</span>
                       <span>{preferenceTally.oppose} oppose</span>

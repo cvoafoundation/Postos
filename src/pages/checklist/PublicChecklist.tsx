@@ -29,7 +29,7 @@ export default function PublicChecklist() {
       <div className="max-w-3xl mx-auto">
         <div className="text-center mb-10">
           <div className="font-display text-3xl tracking-wide text-gold">CVOA</div>
-          <div className="eyebrow mt-1">Post Launch Checklist</div>
+          <div className="eyebrow mt-1">Company Launch Checklist</div>
         </div>
 
         {loading ? (

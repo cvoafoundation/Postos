@@ -26,9 +26,9 @@ export default function PostMembersDirectory() {
 
   return (
     <div>
-      <PageHeader eyebrow="Your Post" title="Post Members" />
+      <PageHeader eyebrow="Your Company" title="Company Members" />
       <p className="text-sm text-muted mb-6 max-w-xl">
-        Everyone in your post. Contact info stays private between each member and staff — this is just who's here.
+        Everyone in your company. Contact info stays private between each member and staff — this is just who's here.
       </p>
 
       {loading ? (

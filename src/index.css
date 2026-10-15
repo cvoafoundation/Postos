@@ -62,3 +62,52 @@
  .drive-print-area, .drive-print-area * { visibility: visible; color: #111 !important; background: #fff !important; }
  .drive-print-area { position: absolute; left: 0; top: 0; width: 100%; }
 }
+
+/* Shared workspace rhythm: clear headings, predictable actions, readable forms. */
+@layer components {
+  .page-header {
+    @apply flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5 mb-8 pb-6 border-b border-hairline;
+  }
+  .page-actions {
+    @apply flex flex-wrap items-center gap-3 shrink-0 w-full sm:w-auto;
+    max-width: 100%;
+  }
+  .page-actions > div { @apply flex flex-wrap gap-3; }
+  .workspace-main .panel { @apply min-w-0; }
+  .workspace-main .table-cell { @apply align-top leading-relaxed; }
+  .workspace-main .table-head { white-space: nowrap; }
+  .workspace-main details > summary { @apply py-2; }
+  .btn-gold, .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 text-center leading-snug;
+    min-height: 42px;
+  }
+  .btn-gold:disabled, .btn-ghost:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+  .input-field { min-height: 42px; }
+  textarea.input-field { @apply leading-relaxed; min-height: 96px; resize: vertical; }
+  .skip-navigation {
+    @apply fixed left-4 top-4 z-[100] bg-gold text-base px-4 py-3 rounded-sm;
+    transform: translateY(-180%);
+  }
+  .skip-navigation:focus { transform: translateY(0); }
+}
+@media (max-width: 639px) {
+  /* Prevent iOS input zoom and provide a comfortable touch target. */
+  .input-field { font-size: 16px; min-height: 44px; }
+  .btn-gold, .btn-ghost { min-height: 44px; }
+  .page-actions > div { width: 100%; }
+  .page-actions button, .page-actions a { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+@media print {
+  .skip-navigation, .page-actions { display: none !important; }
+}

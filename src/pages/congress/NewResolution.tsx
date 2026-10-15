@@ -122,7 +122,7 @@ export function NewResolutionModal({ onClose, onCreated }: { onClose: () => void
           />
         </div>
         <textarea
-          placeholder="Organizational impact — how does this affect posts, members, or national operations?"
+          placeholder="Organizational impact — how does this affect companies, members, or national operations?"
           className="input-field"
           rows={2}
           value={form.organizational_impact}

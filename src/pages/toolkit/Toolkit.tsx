@@ -52,7 +52,7 @@ export default function Toolkit() {
 
   return (
     <div>
-      <PageHeader eyebrow="Module 5 — The Playbook" title="Post Toolkit" />
+      <PageHeader eyebrow="Module 5 — The Playbook" title="Company Toolkit" />
 
       <Link
         to="/meetings"
@@ -74,7 +74,7 @@ export default function Toolkit() {
           <div className="eyebrow mb-2 text-status-attention">Couldn't load the toolkit</div>
           <p className="text-sm text-muted mb-1">{error}</p>
           <p className="text-xs text-muted">
-            This usually means the Post Toolkit database migration hasn't been run on this
+            This usually means the Company Toolkit database migration hasn't been run on this
             Supabase project yet — run <code className="text-gold">post-toolkit-upgrade.sql</code> in
             the SQL Editor, then refresh this page.
           </p>

@@ -240,7 +240,7 @@ export function PostApplicationForm({
           />
           <textarea
             required
-            placeholder="Why do you want to start a post?"
+            placeholder="Why do you want to start a company?"
             className="input-field"
             rows={3}
             value={form.motivation}

@@ -371,8 +371,8 @@ export default function PersonWorkspace({
                 )}
             </div>
             <p className="text-xs text-muted mt-2">
-              State appointments provide oversight. Post officers manage their
-              assigned posts. Delegates receive post visibility and state voting
+              State appointments provide oversight. Company officers manage their
+              assigned companies. Delegates receive post visibility and state voting
               summaries; formal ballots require a current primary Congress
               designation. Ethics records stay separately restricted.
             </p>
@@ -748,7 +748,7 @@ function ScopeFields({
         value={post}
         onChange={(e) => onPost(e.target.value)}
       >
-        <option value="">No assigned post</option>
+        <option value="">No assigned company</option>
         {posts.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name} · {p.state}

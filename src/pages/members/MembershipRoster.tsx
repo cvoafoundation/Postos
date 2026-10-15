@@ -1,3 +1,4 @@
+import { useListMemory } from '@/hooks/useListMemory'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import Papa from 'papaparse'
@@ -42,9 +43,9 @@ export default function MembershipRoster() {
   const { profile, isNational } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [posts, setPosts] = useState<Post[]>([])
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
+  const [selectedPostId, setSelectedPostId] = useListMemory<string>('roster-company', '')
   const [members, setMembers] = useState<Member[]>([])
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useListMemory<string>('roster-search', '')
   const [globalResults, setGlobalResults] = useState<Member[] | null>(null)
   const [searchingGlobal, setSearchingGlobal] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -271,7 +272,7 @@ export default function MembershipRoster() {
         action={
           isNational ? (
             <select className="input-field w-64" value={selectedPostId} onChange={(e) => { setSelectedPostId(e.target.value); setMembers([]); setPage(0) }}>
-              <option value={ALL_POSTS}>All Members (Every Post)</option>
+              <option value={ALL_POSTS}>All Members (Every Company)</option>
               {posts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -336,7 +337,7 @@ export default function MembershipRoster() {
         <div className="panel p-4 mb-6 flex items-center justify-between gap-4">
           <p className="text-sm text-muted">
             Members not currently tied to any post — either joined as national-at-large via <code>/join</code>,
-            or their post was later deleted. Their membership itself is untouched either way.
+            or their company was later deleted. Their membership itself is untouched either way.
           </p>
           <div className="flex gap-2 shrink-0">
             <label className="btn-ghost flex items-center gap-2 cursor-pointer">
@@ -368,7 +369,7 @@ export default function MembershipRoster() {
 
       {isNational && query.trim() && (
         <div className="panel p-4 mb-4">
-          <div className="eyebrow mb-2">Search Results — Every Post + Unassigned (up to 100 matches)</div>
+          <div className="eyebrow mb-2">Search Results — Every Company + Unassigned (up to 100 matches)</div>
           {searchingGlobal ? (
             <p className="text-sm text-muted">Searching…</p>
           ) : !globalResults || globalResults.length === 0 ? (
@@ -404,7 +405,7 @@ export default function MembershipRoster() {
             <tr>
               <th className="table-head">Member #</th>
               <th className="table-head">Name</th>
-              {selectedPostId === ALL_POSTS && <th className="table-head">Post</th>}
+              {selectedPostId === ALL_POSTS && <th className="table-head">Company</th>}
               <th className="table-head">Contact</th>
               <th className="table-head">DD214</th>
               <th className="table-head">Address</th>
@@ -980,7 +981,7 @@ function EditMemberModal({
           onClick={() => setShowAddToFoundingTeam(true)}
           className="btn-ghost w-full text-sm"
         >
-          Add to a Post's Founding Team
+          Add to a Company's Founding Team
         </button>
 
 

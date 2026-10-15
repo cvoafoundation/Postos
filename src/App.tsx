@@ -567,7 +567,7 @@ function HomeRoute() {
           Check Membership & Payment
         </a>
         <a className="btn-ghost" href="/my-applications">
-          Track Post Application
+          Track Company Application
         </a>
       </div>
     </div>

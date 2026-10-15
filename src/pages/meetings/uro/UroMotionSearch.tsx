@@ -40,7 +40,7 @@ export default function UroMotionSearch() {
 
   return (
     <div>
-      <PageHeader eyebrow="Across Every Post" title="National Motion Search" />
+      <PageHeader eyebrow="Across Every Company" title="National Motion Search" />
       <p className="text-sm text-muted mb-6 max-w-xl">
         Every motion ever made, at any post, permanently searchable — the full history of what's been proposed
         and how it was decided.

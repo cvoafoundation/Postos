@@ -49,13 +49,13 @@ export default function MemberDirectory() {
         }
       />
       <p className="text-sm text-muted mb-6">
-        Find active CVOA members and their post or state affiliation. Contact
+        Find active CVOA members and their company or state affiliation. Contact
         information, service documents, payments, and account permissions stay
         private.
       </p>
       <div className="flex flex-wrap gap-4 mb-5">
         <label className="text-sm flex-1">
-          Search Members or Posts
+          Search Members or Companies
           <input
             className="input-field mt-1"
             placeholder="Name, post, city, or state…"

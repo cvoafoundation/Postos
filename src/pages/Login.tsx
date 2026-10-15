@@ -34,13 +34,13 @@ export default function Login() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <PillarCard
               icon={Flag}
-              title="Start a New Post"
+              title="Start a New Company"
               subtitle="There isn't one in my area yet"
               onClick={() => setPath('start_post')}
             />
             <PillarCard
               icon={UserPlus}
-              title="Join an Existing Post"
+              title="Join an Existing Company"
               subtitle="There's already a CVOA post near me"
               onClick={() => setPath('join_existing')}
             />

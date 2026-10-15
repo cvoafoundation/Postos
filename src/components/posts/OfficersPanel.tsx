@@ -29,12 +29,12 @@ const REQUIRED_POSITIONS = [
 ];
 
 const ALL_POSITIONS: { value: string; label: string }[] = [
-  { value: "commander", label: "Post Commander" },
-  { value: "vice_commander", label: "Post Vice Commander" },
-  { value: "quartermaster", label: "Post Quartermaster" },
-  { value: "adjutant", label: "Post Adjutant" },
-  { value: "post_delegate", label: "Post Delegate" },
-  { value: "chaplain", label: "Post Chaplain" },
+  { value: "commander", label: "Company Commander" },
+  { value: "vice_commander", label: "Company Vice Commander" },
+  { value: "quartermaster", label: "Company Quartermaster" },
+  { value: "adjutant", label: "Company Adjutant" },
+  { value: "post_delegate", label: "Company Delegate" },
+  { value: "chaplain", label: "Company Chaplain" },
   { value: "sergeant_at_arms", label: "Sergeant at Arms" },
   { value: "associate_member", label: "Associate Member (no voting rights)" },
   { value: "member", label: "Additional Member" },

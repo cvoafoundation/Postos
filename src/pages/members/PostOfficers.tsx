@@ -37,8 +37,8 @@ export default function PostOfficers() {
 
   return (
     <div>
-      <PageHeader eyebrow="Your Post" title="Officers" />
-      <p className="text-sm text-muted mb-6 max-w-xl">Who to reach out to at your post.</p>
+      <PageHeader eyebrow="Your Company" title="Officers" />
+      <p className="text-sm text-muted mb-6 max-w-xl">Who to reach out to at your company.</p>
 
       {officers.length === 0 ? (
         <EmptyState title="No officers on file yet" />

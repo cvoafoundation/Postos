@@ -90,7 +90,7 @@ export default function SponsorsCRM() {
     <div className="space-y-5">
       <PageHeader
         title="Sponsorship"
-        eyebrow="Post sponsorship workspace"
+        eyebrow="Company sponsorship workspace"
         action={
           <button
             className="btn-gold"
@@ -120,12 +120,12 @@ export default function SponsorsCRM() {
       )}
       <div className="flex gap-3 flex-wrap">
         <select
-          aria-label="Post sponsorship workspace"
+          aria-label="Company sponsorship workspace"
           className="input-field max-w-sm"
           value={postId}
           onChange={(e) => setPostId(e.target.value)}
         >
-          <option value="all">All posts in my scope</option>
+          <option value="all">All companies in my scope</option>
           {posts.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -200,7 +200,7 @@ export default function SponsorsCRM() {
         <p>Loading sponsorships…</p>
       ) : !posts.length ? (
         <p className="panel p-5">
-          Join a post to use its sponsorship workspace.
+          Join a company to use its sponsorship workspace.
         </p>
       ) : (
         <div className="space-y-4">
@@ -344,7 +344,7 @@ export default function SponsorsCRM() {
           fields={[
             {
               key: "post_id",
-              label: "Post",
+              label: "Company",
               type: "select",
               required: true,
               options: posts.map((p) => ({ value: p.id, label: p.name })),

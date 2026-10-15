@@ -156,7 +156,7 @@ export default function Fundraising({
     },
     {
       key: "launch_funding",
-      label: "Contributes to the post opening budget",
+      label: "Contributes to the company opening budget",
       type: "checkbox",
     },
     {
@@ -177,7 +177,7 @@ export default function Fundraising({
   return (
     <div>
       {!embedded && (
-        <PageHeader eyebrow="Post Development" title="Fundraising" />
+        <PageHeader eyebrow="Company Development" title="Fundraising" />
       )}
       <div className="flex flex-wrap justify-between gap-3 mb-4">
         <div>

@@ -1,3 +1,4 @@
+import { useListMemory } from '@/hooks/useListMemory';
 import { useState, useEffect, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/AppShell";
@@ -29,9 +30,9 @@ const ROLES = Object.entries(ROLE_LABELS).map(([value, label]) => ({
 type Filter = "all" | "attention" | "unlinked" | "test";
 export default function UserManagement() {
   const [params] = useSearchParams();
-  const [query, setQuery] = useState(params.get("q") ?? ""),
-    [filter, setFilter] = useState<Filter>("all"),
-    [page, setPage] = useState(0),
+  const [query, setQuery] = useListMemory("accounts-search", params.get("q") ?? ""),
+    [filter, setFilter] = useListMemory<Filter>("accounts-filter", "all"),
+    [page, setPage] = useListMemory<number>("accounts-page", 0),
     [showInvite, setShowInvite] = useState(false);
   const [search, setSearch] = useState(query);
   useEffect(() => {
@@ -168,8 +169,8 @@ export default function UserManagement() {
       <div className="panel p-4 mb-5 flex flex-wrap gap-4 items-center">
         <ShieldCheck size={20} className="text-gold" />
         <p className="text-sm flex-1">
-          National: organization-wide. States: assigned state oversight. Post
-          staff: assigned post operations. Delegates: designated post and state
+          National: organization-wide. States: assigned state oversight. Company
+          staff: assigned company operations. Delegates: designated post and state
           voting summaries.
         </p>
         <Link to="/members" className="text-gold text-sm">
@@ -181,7 +182,7 @@ export default function UserManagement() {
         Refresh People
       </button>
       <label className="block text-sm mb-4">
-        Search people, roles, states, or posts
+        Search people, roles, states, or companies
         <input
           className="input-field mt-2"
           value={query}
@@ -533,7 +534,7 @@ function InviteUserModal({
           value={form.post_id}
           onChange={(e) => update("post_id", e.target.value)}
         >
-          <option value="">No assigned post</option>
+          <option value="">No assigned company</option>
           {posts.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
