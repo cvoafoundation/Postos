@@ -156,7 +156,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
       : []),
     { to: '/directory', label: 'Member Directory', icon: IdCard },
     { to: '/my-membership', label: 'Card & Membership', icon: CreditCard },
-    { to: '/member-home', label: 'Start a Company', icon: GitBranch },
+    { to: '/member-home', label: 'My CVOA', icon: GitBranch },
     { to: '/my-applications', label: 'My Applications', icon: ClipboardCheck },
     // Every real member gets a way to reach the Tribunal directly — this is
     // deliberately available regardless of role (except an unverified

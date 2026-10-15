@@ -31,7 +31,7 @@ export default function MyApplications() {
       {data?.length === 0 && (
         <div className="panel p-5">
           <p>No post applications on file for your account.</p>
-          <Link to="/member-home" className="text-gold inline-block mt-3">
+          <Link to="/member-home?start=company" className="text-gold inline-block mt-3">
             Start a Company →
           </Link>
         </div>

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import ServiceVerification from '@/components/membership/ServiceVerification'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -18,6 +19,7 @@ export default function MembershipCardPage() {
   }, [profile?.id])
   return <div>
     <PageHeader eyebrow="Combat Veterans of America" title="Membership Card" />
+    <nav aria-label="Membership actions" className="flex flex-wrap gap-4 mb-6 text-sm print:hidden"><Link to="/congress" className="text-gold">Votes & resolutions →</Link><Link to="/congress/delegates" className="text-gold">Congress delegates →</Link><Link to="/file-complaint" className="text-gold">Ethics Tribunal →</Link></nav>
     {loading && <p role="status" className="text-sm text-muted">Loading your membership card…</p>}
     {error && <p role="alert" className="text-status-attention">{error}</p>}
     {!loading && !error && !cards.length && <p className="text-sm text-muted">Your membership card is being prepared. Contact National if you need assistance.</p>}

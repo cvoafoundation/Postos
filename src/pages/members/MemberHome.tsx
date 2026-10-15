@@ -1,21 +1,16 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, type FormEvent } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
-import type { Member, Post } from "@/lib/types";
+import type { Post } from "@/lib/types";
 import { postDisplayName } from "@/pages/posts/model";
 import { Modal } from "@/components/ui/Modal";
 import { MembershipCardVisual } from "@/components/membership/MembershipCardVisual";
-import {
-  Flag,
-  Landmark,
-  UserPlus,
-  ScrollText,
-  CheckCircle2,
-  Copy,
-  Check,
-  ArrowRight,
-} from "lucide-react";
+import MembershipCardPage from "./MembershipCardPage";
+import { PageHeader } from "@/components/layout/AppShell";
+import { CheckCircle2, Copy, Check } from "lucide-react";
+import { useMemberHome } from "./useMemberHome";
+import { nextSteps, companySessions } from "./memberHomeModel";
 
 const US_STATES = [
   "AL",
@@ -71,296 +66,424 @@ const US_STATES = [
   "WY",
 ];
 
-// Icon badge shared by every action tile below — a consistent ring treatment
-// is what makes four different actions read as one designed system instead
-// of four separate cards someone bolted on over time.
-function TileIcon({ icon: Icon }: { icon: typeof Flag }) {
-  return (
-    <div className="w-11 h-11 rounded-full border border-gold/40 flex items-center justify-center mb-4 group-hover:border-gold group-hover:bg-gold/5 transition-colors">
-      <Icon className="text-gold" size={20} />
-    </div>
+export default function MemberHome() {
+  const { membershipOnly, profile } = useAuth();
+  return membershipOnly ? (
+    <MembershipCardPage />
+  ) : (
+    <MemberOverview key={profile?.id} />
   );
 }
-
-export default function MemberHome() {
-  const navigate = useNavigate();
+function MemberOverview() {
   const { profile } = useAuth();
-  const [member, setMember] = useState<Member | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showStartPost, setShowStartPost] = useState(false);
-  const [showRecruit, setShowRecruit] = useState(false);
-
-  // Join-a-post is a dropdown now instead of one card per post — same
-  // action either way (drops a prospect into that post's recruiting
-  // pipeline), just a much shorter list on screen.
-  const [selectedPostId, setSelectedPostId] = useState("");
-  const [joinSubmitting, setJoinSubmitting] = useState(false);
-  const [joinRequested, setJoinRequested] = useState(false);
-  const [joinError, setJoinError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!profile) return;
-    Promise.all([
-      // .single() breaks silently (returns null, no thrown error we catch)
-      // if duplicate members rows ever share the same profile_id — a real
-      // possibility from repeated test signups. Ordering + taking the first
-      // active row (or just the most recent) means one duplicate row can
-      // never blank out the whole card.
-      supabase
-        .from("members")
-        .select("*")
-        .eq("profile_id", profile.id)
-        .order("membership_status", { ascending: true }) // 'active' sorts before 'pending_payment'
-        .order("created_at", { ascending: false }),
-      supabase.rpc("cvoa_public_posts"),
-    ]).then(([m, p]) => {
-      const rows = (m.data ?? []) as Member[];
-      setMember(
-        rows.find((r) => r.membership_status === "active") ?? rows[0] ?? null,
-      );
-      setPosts((p.data ?? []) as Post[]);
-      setLoading(false);
-    });
-  }, [profile]);
-
-  async function requestToJoin(e: FormEvent) {
-    e.preventDefault();
-    if (!selectedPostId) return;
-    setJoinSubmitting(true);
-    setJoinError(null);
-    try {
-      if (!member)
-        throw new Error(
-          "Link your membership before requesting a post affiliation.",
-        );
-      const { error } = await supabase.rpc("cvoa_request_post_change", {
-        p_member: member.id,
-        p_post: selectedPostId,
-        p_reason: "Request to join from the member portal.",
-      });
-      if (error) throw error;
-      setJoinRequested(true);
-    } catch (e) {
-      setJoinError((e as Error).message);
-    } finally {
-      setJoinSubmitting(false);
-    }
-  }
-
-  if (loading) return <p className="text-sm text-muted">Loading…</p>;
-
+  const { data, errors, loading, refresh } = useMemberHome(profile?.id);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [showStartPost, setShowStartPost] = useState(
+      searchParams.get("start") === "company",
+    ),
+    [showRecruit, setShowRecruit] = useState(false);
+  const { member, posts } = data;
+  const today = new Date().toLocaleDateString("en-CA");
   const homePost = posts.find((p) => p.id === member?.post_id);
-  const joinedYear = member?.joined_at
-    ? new Date(member.joined_at).getFullYear()
-    : null;
-
+  const verification = data.verification.find((v) => v.id === member?.id);
+  const tasks = errors.membership
+    ? []
+    : nextSteps(member, verification, data.applications, today);
+  const company = companySessions(
+    data.meetings.sessions,
+    data.meetings.bodies,
+    member?.post_id,
+  );
+  const representatives = member?.post_id
+    ? data.delegates.filter(
+        (d) =>
+          d.post_id === member.post_id &&
+          d.profile_id &&
+          (!d.term_start || d.term_start <= today) &&
+          (!d.term_end || d.term_end >= today),
+      )
+    : [];
+  const names = new Map(data.labels.profiles.map((p) => [p.id, p.full_name]));
+  const hasErrors = Object.keys(errors).length > 0;
+  const serviceStatus =
+    verification?.status === "verified"
+      ? "Service verified"
+      : verification?.status === "rejected"
+        ? "Updated document requested"
+        : verification?.has_document
+          ? "Awaiting staff review"
+          : verification
+            ? "Document needed"
+            : "Verification status unavailable";
+  const companyName = homePost
+    ? postDisplayName(homePost)
+    : member?.post_id
+      ? "Your affiliated company"
+      : "National at large";
   return (
-    <div>
-      {/* The card is the first thing anyone sees on this page — full-size,
-          front and center, before anything else. */}
-      {member && (
-        <div className="mb-2">
-          <MembershipCardVisual member={member} role={profile?.role} />
-        </div>
-      )}
-      {member && (
-        <p className="text-xs text-muted text-center mb-8">
-          This card updates automatically as your membership status changes —
-          nothing to regenerate.
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Your CVOA"
+        description="Your membership, company, and representation in one place."
+        title={`Welcome${profile?.full_name ? ", " + profile.full_name.split(" ")[0] : ""}`}
+        action={
+          <button className="btn-ghost" disabled={loading} onClick={refresh}>
+            Refresh
+          </button>
+        }
+      />
+      {loading ? (
+        <p role="status" className="text-sm text-muted">
+          Loading your member home…
         </p>
-      )}
-
-      {member?.post_id && (
-        <section className="panel p-5 mb-6">
-          <h2 className="font-display text-xl">My Company Records</h2>
-          <p className="text-sm text-muted mt-2">
-            {homePost ? postDisplayName(homePost) : "Your affiliated post"} ·
-            Read scheduled meetings, published minutes, and documents shared
-            with you.
-          </p>
-          <div className="flex gap-3 flex-wrap mt-4">
-            <Link className="btn-gold" to={`/meetings?post=${member.post_id}`}>
-              Meetings & Printable Minutes
-            </Link>
-            <Link className="btn-ghost" to={`/drive?post=${member.post_id}`}>
-              Shared Documents & Files
-            </Link>
-          </div>
-        </section>
-      )}
-      {/* Branded hero band — the seal watermark and foil divider here echo
-          the membership card itself, so the page feels like one designed
-          system rather than a card sitting inside a generic app shell. */}
-      <div className="relative overflow-hidden rounded-sm border border-hairline bg-gradient-to-br from-surface to-base mb-8">
-        <img
-          src="/images/cvoa-logo.png"
-          alt=""
-          aria-hidden
-          className="absolute -right-10 -top-10 w-56 h-56 opacity-[0.06] pointer-events-none select-none"
-        />
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-transparent via-ink to-transparent" />
-        <div className="relative p-6">
-          <div className="eyebrow mb-1">Welcome</div>
-          <h1 className="font-display text-3xl tracking-wide mb-3">
-            {profile?.full_name}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            {homePost && (
-              <span className="eyebrow border border-hairline rounded-full px-3 py-1 normal-case tracking-normal text-ink">
-                {homePost.name}
-              </span>
+      ) : (
+        <>
+          {hasErrors && (
+            <p role="alert" className="text-status-attention text-sm">
+              Some information could not be loaded. Available sections are shown
+              below. Use Refresh to retry.
+            </p>
+          )}
+          <section
+            className="panel p-5 sm:p-6"
+            aria-labelledby="next-steps-heading"
+          >
+            <h2 id="next-steps-heading" className="font-display text-2xl">
+              My Next Steps
+            </h2>
+            {tasks.length ? (
+              <ul className="divide-y divide-hairline mt-3">
+                {tasks.map((t) => (
+                  <li key={t.id}>
+                    <Link className="block py-4 hover:text-gold" to={t.to}>
+                      <strong className="text-sm">{t.title} →</strong>
+                      <p className="text-sm text-muted mt-1">{t.detail}</p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted mt-3">
+                {hasErrors
+                  ? "Refresh to check whether anything needs your attention."
+                  : "You’re caught up. Check your company activity and open votes below."}
+              </p>
             )}
-            {joinedYear && (
-              <span className="eyebrow border border-hairline rounded-full px-3 py-1 normal-case tracking-normal text-ink">
-                Serving Since {joinedYear}
-              </span>
+          </section>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+            <section
+              className="panel p-5 sm:p-6 space-y-4"
+              aria-labelledby="membership-heading"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 id="membership-heading" className="font-display text-2xl">
+                  My Membership
+                </h2>
+                <Link to="/my-membership" className="text-sm text-gold">
+                  Manage membership →
+                </Link>
+              </div>
+              {errors.membership ? (
+                <p className="text-status-attention text-sm">
+                  Membership information could not be loaded.
+                </p>
+              ) : member ? (
+                <>
+                  <dl className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <dt className="text-muted">Membership</dt>
+                      <dd className="capitalize mt-1">
+                        {member.membership_type} · {member.membership_status}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted">
+                        {member.membership_type === "lifetime"
+                          ? "Term"
+                          : "Expiration"}
+                      </dt>
+                      <dd className="mt-1">
+                        {member.membership_type === "lifetime"
+                          ? "Lifetime"
+                          : (member.expires_at ?? "Not recorded")}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="text-sm">
+                    {serviceStatus}
+                    {errors.verification && " · Refresh to retry."}
+                  </p>
+                  <div className="flex gap-x-5 gap-y-3 flex-wrap text-sm">
+                    <Link className="text-gold" to="/my-membership">
+                      {member.membership_type === "lifetime"
+                        ? "View membership card"
+                        : "Renew or upgrade"}{" "}
+                      →
+                    </Link>
+                    <Link className="text-gold" to="/membership-verification">
+                      Service verification →
+                    </Link>
+                  </div>
+                  <details className="border-t border-hairline pt-4">
+                    <summary className="text-sm cursor-pointer">
+                      Show my membership card
+                    </summary>
+                    <div className="mt-4">
+                      <MembershipCardVisual
+                        member={member}
+                        role={profile?.role}
+                      />
+                      <Link
+                        to="/my-membership"
+                        className="block text-sm text-gold text-center mt-3"
+                      >
+                        Open card and membership details →
+                      </Link>
+                    </div>
+                  </details>
+                </>
+              ) : (
+                <p className="text-sm text-muted">
+                  Your account does not have a linked membership yet. Open My
+                  Membership for assistance and next steps.
+                </p>
+              )}
+            </section>
+            <section
+              className="panel p-5 sm:p-6 space-y-4"
+              aria-labelledby="company-heading"
+            >
+              <h2 id="company-heading" className="font-display text-2xl">
+                My Company
+              </h2>
+              <p className="text-sm">
+                {errors.membership
+                  ? "Company information unavailable"
+                  : companyName}
+              </p>
+              {member?.post_id ? (
+                <>
+                  <div className="flex flex-wrap gap-x-5 gap-y-3 text-sm">
+                    <Link
+                      className="text-gold"
+                      to={`/meetings?post=${member.post_id}`}
+                    >
+                      Meetings & minutes →
+                    </Link>
+                    <Link className="text-gold" to="/shared-files">
+                      Shared documents →
+                    </Link>
+                    {profile?.post_id === member.post_id && (
+                      <Link className="text-gold" to="/post-officers">
+                        Company leadership →
+                      </Link>
+                    )}
+                  </div>
+                  {errors.meetings ? (
+                    <p className="text-sm text-muted">
+                      Meeting activity could not be loaded. Open Meetings or
+                      refresh to retry.
+                    </p>
+                  ) : (
+                    <>
+                      <h3 className="font-medium text-sm">
+                        Scheduled & ongoing meetings
+                      </h3>
+                      {company.upcoming.length ? (
+                        <ul className="space-y-3">
+                          {company.upcoming.map((s) => (
+                            <li key={s.id} className="text-sm">
+                              <Link
+                                className="text-gold"
+                                to={
+                                  s.readable === false
+                                    ? `/meetings?post=${member.post_id}`
+                                    : `/meetings/session/${s.id}`
+                                }
+                              >
+                                {s.title} →
+                              </Link>
+                              <p className="text-xs text-muted mt-1">
+                                {new Date(s.scheduled_at).toLocaleString()}
+                                {s.readable === false
+                                  ? " · Record available after publication"
+                                  : ""}
+                              </p>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-muted">
+                          No upcoming company meetings listed.
+                        </p>
+                      )}
+                      {company.published.length > 0 && (
+                        <div>
+                          <h3 className="font-medium text-sm mb-2">
+                            Latest published minutes
+                          </h3>
+                          <ul className="space-y-2 text-sm">
+                            {company.published.map((s) => (
+                              <li key={s.id}>
+                                <Link
+                                  className="text-gold"
+                                  to={`/meetings/session/${s.id}`}
+                                >
+                                  {s.title} · Read or print →
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted">
+                  You can participate as a National at-large member. Company
+                  affiliation is optional; explore it in My Membership when
+                  you’re ready.
+                </p>
+              )}
+              {errors.companies && (
+                <p className="text-sm text-muted">
+                  Company names could not be loaded.
+                </p>
+              )}
+              {member?.post_id && (
+                <div>
+                  <h3 className="font-medium text-sm mb-2">
+                    Upcoming company events
+                  </h3>
+                  {errors.events ? (
+                    <p className="text-sm text-muted">
+                      Event information could not be loaded.
+                    </p>
+                  ) : data.events.length ? (
+                    <ul className="space-y-2 text-sm">
+                      {data.events.map((e) => (
+                        <li key={e.id}>
+                          {e.title}
+                          <span className="text-muted"> · {e.event_date}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      No upcoming community events listed.
+                    </p>
+                  )}
+                </div>
+              )}
+              <Link
+                to="/my-membership"
+                className="inline-block text-sm text-gold"
+              >
+                {member?.post_id
+                  ? "Manage company affiliation"
+                  : "Explore company affiliation"}{" "}
+                →
+              </Link>
+            </section>
+          </div>
+          <section
+            className="panel p-5 sm:p-6 space-y-4"
+            aria-labelledby="representation-heading"
+          >
+            <h2 id="representation-heading" className="font-display text-2xl">
+              My Representation
+            </h2>
+            {errors.delegates || errors.labels ? (
+              <p className="text-sm text-muted">
+                Delegate information could not be loaded. Open the Congress
+                directory or refresh to retry.
+              </p>
+            ) : representatives.length ? (
+              <ul className="space-y-2 text-sm">
+                {representatives.map((d) => (
+                  <li key={d.id}>
+                    <strong>
+                      {names.get(d.profile_id!) ?? "Appointed delegate"}
+                    </strong>{" "}
+                    · {d.is_alternate ? "Alternate" : "Primary delegate"} ·{" "}
+                    {companyName}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted">
+                {member?.post_id
+                  ? "No active delegate is listed for your company. NCC manages Congress appointments."
+                  : "You can follow Congress and open resolutions. The delegate directory shows which companies currently have representation."}
+              </p>
             )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-4 mb-6 text-sm">
-        <Link to="/my-membership" className="text-gold">
-          Manage Membership →
-        </Link>
-        <Link to="/my-applications" className="text-gold">
-          Track My Company Applications →
-        </Link>
-      </div>
-      <div className="eyebrow mb-3">Get Involved</div>
-      <p className="text-sm text-muted mb-6 max-w-2xl">
-        Membership is a starting point, not a finish line. Here's how to
-        actually get involved.
-      </p>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="group panel p-5 hover:border-gold/60 hover:-translate-y-0.5 transition-all">
-          <TileIcon icon={Flag} />
-          <div className="font-display text-lg mb-1">Start a Company</div>
-          <p className="text-xs text-muted mb-4">
-            No CVOA post near you? Start one — this goes straight to National's
-            Application Pipeline for review.
-          </p>
-          <button
-            onClick={() => setShowStartPost(true)}
-            className="btn-gold w-full text-sm flex items-center justify-center gap-1.5"
-          >
-            Start a Company <ArrowRight size={14} />
-          </button>
-        </div>
-
-        <div className="group panel p-5 hover:border-gold/60 hover:-translate-y-0.5 transition-all">
-          <TileIcon icon={Landmark} />
-          <div className="font-display text-lg mb-1">Veterans Congress</div>
-          <p className="text-xs text-muted mb-4">
-            Members can follow and vote on open resolutions — delegates are
-            chosen by companies to carry a formal vote.
-          </p>
-          <button
-            onClick={() => navigate("/congress")}
-            className="btn-ghost w-full text-sm flex items-center justify-center gap-1.5"
-          >
-            Open Votes <ArrowRight size={14} />
-          </button>
-        </div>
-
-        <div className="group panel p-5 hover:border-gold/60 hover:-translate-y-0.5 transition-all">
-          <TileIcon icon={ScrollText} />
-          <div className="font-display text-lg mb-1">Transparency Portal</div>
-          <p className="text-xs text-muted mb-4">
-            Passed resolutions, official positions, and legislative tracking —
-            open to every member, always.
-          </p>
-          <button
-            onClick={() => navigate("/transparency")}
-            className="btn-ghost w-full text-sm flex items-center justify-center gap-1.5"
-          >
-            View Portal <ArrowRight size={14} />
-          </button>
-        </div>
-
-        <div className="group panel p-5 hover:border-gold/60 hover:-translate-y-0.5 transition-all">
-          <TileIcon icon={UserPlus} />
-          <div className="font-display text-lg mb-1">Recruit a Member</div>
-          <p className="text-xs text-muted mb-4">
-            Know a veteran who should be part of this? Share your company's sign-up
-            link directly.
-          </p>
-          <button
-            onClick={() => setShowRecruit(true)}
-            className="btn-ghost w-full text-sm flex items-center justify-center gap-1.5"
-          >
-            Get Recruiting Link <ArrowRight size={14} />
-          </button>
-        </div>
-      </div>
-
-      {joinError && (
-        <p role="alert" className="text-status-attention mb-3">
-          {joinError}
-        </p>
+            <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
+              <Link className="text-gold" to="/congress">
+                Open votes & resolutions →
+              </Link>
+              <Link className="text-gold" to="/congress/delegates">
+                Delegate directory →
+              </Link>
+              <Link className="text-gold" to="/file-complaint">
+                Ethics Tribunal · Submit or follow a complaint →
+              </Link>
+            </div>
+          </section>
+          <details className="panel p-5 sm:p-6">
+            <summary className="cursor-pointer font-display text-xl">
+              Get Involved & Company Applications
+            </summary>
+            <p className="text-sm text-muted mt-4">
+              Help grow CVOA or track a company application.
+            </p>
+            <div className="flex flex-wrap gap-3 mt-4">
+              <Link className="btn-ghost" to="/my-applications">
+                My applications
+                {data.applications.length
+                  ? ` (${data.applications.length})`
+                  : ""}
+              </Link>
+              <button
+                className="btn-ghost"
+                onClick={() => setShowStartPost(true)}
+              >
+                Start a company
+              </button>
+              <button
+                className="btn-ghost"
+                onClick={() => setShowRecruit(true)}
+              >
+                Share a membership link
+              </button>
+            </div>
+            {errors.applications && (
+              <p className="text-sm text-muted mt-3">
+                Application updates could not be loaded. Open My Applications or
+                refresh to retry.
+              </p>
+            )}
+          </details>
+        </>
       )}
-      <div id="join-a-post" className="panel p-5 max-w-lg">
-        <div className="eyebrow mb-1">Join a Company</div>
-        <p className="text-xs text-muted mb-4">
-          Pick an active post near you. The receiving post commander reviews
-          join requests; your current membership stays in place until approval.
-        </p>
-        {posts.length === 0 ? (
-          <p className="text-sm text-muted">
-            No active companies yet — be the first to start one.
-          </p>
-        ) : joinRequested ? (
-          <div className="text-sm text-status-active flex items-center gap-1.5">
-            <CheckCircle2 size={16} /> Request sent — the receiving post
-            commander will review it. Track the decision in My Membership.
-          </div>
-        ) : (
-          <form
-            onSubmit={requestToJoin}
-            className="flex flex-col sm:flex-row gap-3"
-          >
-            <select
-              required
-              className="input-field flex-1"
-              value={selectedPostId}
-              onChange={(e) => setSelectedPostId(e.target.value)}
-            >
-              <option value="">Select a company…</option>
-              {posts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.city
-                    ? ` — ${p.city}, ${p.state}`
-                    : p.state
-                      ? ` — ${p.state}`
-                      : ""}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              disabled={joinSubmitting || !selectedPostId}
-              className="btn-gold text-sm disabled:opacity-50 whitespace-nowrap"
-            >
-              {joinSubmitting ? "Sending…" : "Request to Join"}
-            </button>
-          </form>
-        )}
-      </div>
-
       {showStartPost && (
         <StartPostModal
           defaultName={profile?.full_name ?? ""}
           defaultEmail={profile?.email ?? ""}
-          onClose={() => setShowStartPost(false)}
+          onClose={() => {
+            setShowStartPost(false);
+            if (searchParams.has("start")) {
+              const next = new URLSearchParams(searchParams);
+              next.delete("start");
+              setSearchParams(next, { replace: true });
+            }
+            refresh();
+          }}
         />
       )}
-
       {showRecruit && (
         <RecruitLinkModal
-          post={posts.find((p) => p.id === member?.post_id) ?? null}
+          post={homePost ?? null}
           onClose={() => setShowRecruit(false)}
         />
       )}
@@ -475,6 +598,7 @@ function StartPostModal({
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
             required
+            aria-label="Your name"
             placeholder="Your name"
             className="input-field"
             value={form.name}
@@ -483,6 +607,7 @@ function StartPostModal({
           <input
             required
             type="email"
+            aria-label="Email"
             placeholder="Email"
             className="input-field"
             value={form.email}
@@ -490,6 +615,7 @@ function StartPostModal({
           />
           <div className="grid grid-cols-2 gap-3">
             <input
+              aria-label="City"
               placeholder="City"
               className="input-field"
               value={form.city}
@@ -497,6 +623,7 @@ function StartPostModal({
             />
             <select
               required
+              aria-label="State"
               className="input-field"
               value={form.state}
               onChange={(e) => update("state", e.target.value)}
@@ -510,12 +637,14 @@ function StartPostModal({
             </select>
           </div>
           <input
+            aria-label="Phone"
             placeholder="Phone"
             className="input-field"
             value={form.phone}
             onChange={(e) => update("phone", e.target.value)}
           />
           <textarea
+            aria-label="Why do you want to start a company here?"
             placeholder="Why do you want to start a company here?"
             className="input-field"
             rows={3}
