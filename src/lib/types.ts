@@ -227,6 +227,7 @@ export interface PendingProfileSignup {
 }
 
 export interface Profile {
+  avatar_path?: string | null
   id: string
   full_name: string
   email: string

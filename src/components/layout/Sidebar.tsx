@@ -1,3 +1,4 @@
+import ProfileAvatar from '@/components/account/ProfileAvatar'
 import { navigationGroup } from '@/lib/navigationGroups'
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
@@ -128,6 +129,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     { to: '/my-membership', label: 'Membership Card', icon: CreditCard },
     { to: '/congress', label: 'Veterans Congress', icon: Landmark },
     { to: '/file-complaint', label: 'Ethics Tribunal', icon: Gavel },
+    { to: '/settings', label: 'Settings', icon: SettingsIcon },
   ] : [
     { to: '/', label: isNational ? 'National Dashboard' : isState ? 'Battalion Dashboard' : isPostOfficer ? 'Company Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
@@ -158,6 +160,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     { to: '/my-membership', label: 'Card & Membership', icon: CreditCard },
     { to: '/member-home', label: 'My CVOA', icon: GitBranch },
     { to: '/my-applications', label: 'My Applications', icon: ClipboardCheck },
+    { to: '/settings', label: 'Settings', icon: SettingsIcon },
     // Every real member gets a way to reach the Tribunal directly — this is
     // deliberately available regardless of role (except an unverified
     // guest_applicant, who has no nav at all yet). The Tribunal inbox
@@ -198,7 +201,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
       <aside
         className={clsx(
-          'fixed md:sticky inset-y-0 left-0 z-40 w-64 shrink-0 bg-charcoal border-r border-hairline flex flex-col h-screen top-0',
+          'fixed md:sticky inset-y-0 left-0 z-40 w-64 shrink-0 bg-charcoal border-r border-hairline flex flex-col h-[100dvh] top-0',
           'transition-transform duration-200 md:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
@@ -223,7 +226,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-3">
+        <nav className="flex-1 min-h-0 overflow-y-auto py-3">
           {!membershipOnly && scopes.length > 1 && <div className="px-4 mb-3"><label className="eyebrow" htmlFor="workspace-selector">Your appointed workspaces</label><select id="workspace-selector" className="input-field mt-2 text-xs" value={selectedScope} disabled={switchingScope} onChange={async e => { setSwitchingScope(true); setScopeError(null); try { await selectWorkspace(e.target.value); navigate('/'); onClose() } catch (error) { setScopeError(error instanceof Error ? error.message : 'Could not switch workspace.') } finally { setSwitchingScope(false) } }}>{scopes.map(s => <option key={s.scope_id} value={s.scope_id}>{ROLE_LABELS[s.role]} · {s.post_name ?? s.state ?? 'Personal / National'}</option>)}</select>{scopeError && <p role="alert" className="text-xs text-status-attention mt-2">{scopeError}</p>}</div>}
           {scopes.find(s=>s.scope_id===selectedScope) && <p className="px-5 text-xs text-muted mb-2">{scopeLabel(scopes.find(s=>s.scope_id===selectedScope)!)}</p>}
           {membershipOnly ? navItems.map(renderItem) : <>
@@ -249,14 +252,14 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
         </nav>
 
-        <div className="px-5 py-4 border-t border-hairline">
-          <div className="text-sm text-ink truncate">{profile?.full_name ?? 'Guest'}</div>
+        <div className="px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-hairline">
+          <div className="flex gap-3 items-center mb-2"><ProfileAvatar/><div className="text-sm text-ink truncate">{profile?.full_name ?? 'Guest'}</div></div>
           <div className="eyebrow mb-3">{profile?.role?.replaceAll('_', ' ') ?? 'unauthenticated'}</div>
           {!membershipOnly && <NavLink
             to="/settings"
             onClick={onClose}
             className={({ isActive }) =>
-              `flex items-center gap-2 text-xs mb-2 transition-colors ${isActive ? 'text-gold' : 'text-muted hover:text-gold'}`
+              `flex items-center gap-2 min-h-[44px] text-sm mb-2 transition-colors ${isActive ? 'text-gold' : 'text-muted hover:text-gold'}`
             }
           >
             <SettingsIcon size={14} /> Settings

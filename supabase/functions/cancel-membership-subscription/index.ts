@@ -17,16 +17,16 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) return reply(401, { error: 'Please sign in again.' })
-    const { data: caller, error: callerError } = await supabase.from('profiles').select('role, post_id, access_suspended').eq('id', user.id).single()
-    if (callerError || !caller || caller.access_suspended) return reply(403, { error: 'Could not verify your account permissions.' })
+    const { data: caller, error: callerError } = await supabase.from('profiles').select('role, post_id, access_suspended, deleted_at').eq('id', user.id).single()
+    if (callerError || !caller || caller.access_suspended || caller.deleted_at) return reply(403, { error: 'Could not verify your account permissions.' })
     let body: { member_id?: string }
     try { body = await req.json() } catch { return reply(400, { error: 'Invalid cancellation request.' }) }
     if (!body || typeof body.member_id !== 'string' || !body.member_id) return reply(400, { error: 'A member ID is required.' })
-    const { data: member, error: memberError } = await supabase.from('members').select('post_id, stripe_subscription_id, profile_id').eq('id', body.member_id).single()
-    if (memberError || !member) return reply(404, { error: 'Member not found.' })
+    const { data: member, error: memberError } = await supabase.from('members').select('post_id, stripe_subscription_id, profile_id, deleted_at').eq('id', body.member_id).single()
+    if (memberError || !member || member.deleted_at) return reply(404, { error: 'Member not found.' })
     const { data: canManage, error: permissionError } = await supabase.rpc('cvoa_service_authorized', { p_actor: user.id, p_post: member.post_id, p_capability: 'manage_post' })
     const { data: personalAccess, error: personalError } = await supabase.rpc('cvoa_service_authorized', { p_actor: user.id, p_post: null, p_capability: 'personal' })
-    if (personalError || !personalAccess) return reply(403, { error: 'This action is outside your available workspace.' })
+    if (member.profile_id !== user.id && (personalError || !personalAccess)) return reply(403, { error: 'This action is outside your available workspace.' })
     const ownsMembership = member.profile_id === user.id
     if (permissionError || (!canManage && !ownsMembership)) return reply(403, { error: 'You can cancel billing for your own membership. Staff access is limited to an assigned post or National.' })
     if (member.stripe_subscription_id) {

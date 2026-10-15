@@ -21,6 +21,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 import Stripe from 'npm:stripe@14.21.0'
+import {memberBillingCustomer} from '../_shared/memberBilling.ts'
 
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY') ?? Deno.env.get('STRIPE_KEY')
 const SITE_URL = Deno.env.get('SITE_URL') ?? 'http://localhost:5173'
@@ -85,7 +86,7 @@ Deno.serve(async (req) => {
   if ((action !== 'upgrade' && action !== 'discard_checkout' && member.membership_type !== body.membership_type) || (member.post_id ?? null) !== (body.post_id ?? null)) {
     return new Response(JSON.stringify({ error: 'Checkout details do not match the saved membership.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
-  if (action !== 'join') {
+  if (action !== 'join' || member.profile_id) {
     const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
     const { data: { user }, error } = token ? await supabase.auth.getUser(token) : { data: { user: null }, error: null }
     if (error || !user || member.profile_id !== user.id) return new Response(JSON.stringify({ error: 'Sign in to manage your own membership.' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
@@ -103,10 +104,11 @@ Deno.serve(async (req) => {
       } else if(attempt) return new Response(JSON.stringify({ error: 'Checkout is being created. Wait a moment, then retry.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       return new Response(JSON.stringify({ success:true }), { headers: { ...corsHeaders, 'Content-Type':'application/json' } })
     }
-    if (member.membership_type === 'lifetime' && member.membership_status === 'active') return new Response(JSON.stringify({ error: 'Your lifetime membership is already active.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    if (action !== 'join' && member.membership_type === 'lifetime' && member.membership_status === 'active') return new Response(JSON.stringify({ error: 'Your lifetime membership is already active.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     if ((action === 'renew' && body.membership_type !== 'annual') || (action === 'upgrade' && body.membership_type !== 'lifetime')) return new Response(JSON.stringify({ error: 'Membership action and price do not match.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    if (member.auto_renew || member.stripe_subscription_id) return new Response(JSON.stringify({ error: 'Cancel future automatic billing before starting a manual renewal or lifetime upgrade.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-  } else if (member.membership_status === 'active' || member.membership_status === 'lapsed') {
+    if (action !== 'join' && (member.auto_renew || member.stripe_subscription_id)) return new Response(JSON.stringify({ error: 'Cancel future automatic billing before starting a manual renewal or lifetime upgrade.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+  if (action === 'join' && (member.membership_status === 'active' || member.membership_status === 'lapsed')) {
     return new Response(JSON.stringify({ error: 'Use My Membership to renew or upgrade this existing membership.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
   // Prices are set here on the server; browser-supplied amounts are ignored.
@@ -144,9 +146,11 @@ Deno.serve(async (req) => {
   }
   if(!reservation) throw new Error('Could not reserve checkout.')
 
+  const billingCustomer = member.profile_id ? await memberBillingCustomer(supabase,stripe,member.profile_id) : undefined
   const session = isAutoRenew
     ? await stripe.checkout.sessions.create({
         mode: 'subscription',
+        ...(billingCustomer ? {customer:billingCustomer} : {}),
         payment_method_types: ['card'],
         line_items: [
           {
@@ -166,6 +170,7 @@ Deno.serve(async (req) => {
       }, {idempotencyKey:`membership-${reservation.token}`})
     : await stripe.checkout.sessions.create({
         mode: 'payment',
+        ...(billingCustomer ? {customer:billingCustomer} : {customer_creation:'always' as const}),
         payment_method_types: ['card'],
         line_items: [
           {
