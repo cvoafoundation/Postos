@@ -95,6 +95,7 @@ before(async () => {
   await db.exec(fs.readFileSync('supabase/migrations/20261014190152_member_dd214_upload.sql','utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261014133554_ncc_membership_list_export.sql','utf8'));
   await db.exec(fs.readFileSync('supabase/migrations/20261015172850_ncc_congress_appointments.sql','utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20261015175419_congress_membership_choice.sql','utf8'));
 });
 
 after(()=>db.close());
@@ -152,4 +153,23 @@ test('future terms activate on their dates and NCC access removal takes effect w
  await as(1,`select cvoa_set_ncc_export_designation('${uid(8)}',false)`);
  assert.equal((await as(8,'select cvoa_congress_admin_access() allowed')).rows[0].allowed,false);
  await assert.rejects(as(8,`select cvoa_person_congress('${member}')`));
+});
+
+test('explicit non-Congress status removes all current and scheduled representation and retains history',async()=>{
+ await db.exec(`insert into congress_delegates(post_id,profile_id,is_alternate,term_start) values('${post}','${member}',true,current_date),('${otherPost}','${member}',true,current_date+60)`);
+ await assert.rejects(()=>as(2,`select cvoa_clear_congress_appointments('${member}',${0},'Not an appointed delegate')`),/NCC access required/);
+ await assert.rejects(()=>as(1,`select cvoa_clear_congress_appointments('${member}',-1,'Not an appointed delegate')`),/account changed/);
+ const before=(await db.query(`select count(*)::int n from congress_delegates where profile_id='${member}'`)).rows[0].n;
+ const result=(await as(1,`select cvoa_clear_congress_appointments('${member}',${await version(3)},'Not an appointed delegate') data`)).rows[0].data;
+ assert.equal(result.appointments.length,before);
+ assert.ok(result.appointments.every(a=>a.ended));
+ assert.equal((await as(3,'select * from cvoa_current_scope()')).rows[0].role,'member');
+ assert.equal((await as(3,`select cvoa_active_delegate('${otherPost}',false) allowed`)).rows[0].allowed,false);
+ assert.equal((await as(3,`select cvoa_congress_labels() data`)).rows[0].data.profiles.some(p=>p.id===member),true);
+});
+
+test('non-Congress status also clears a legacy delegate account with no designation rows',async()=>{
+ await db.exec(`update profiles set role='delegate',title='Congressional delegate' where id='${member}'`);
+ await as(1,`select cvoa_clear_congress_appointments('${member}',${await version(3)},'Legacy role corrected by NCC')`);
+ assert.equal((await as(3,'select * from cvoa_current_scope()')).rows[0].role,'member');
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -78,6 +78,7 @@ export default function VeteransCongress() {
         }
       />
       <CongressSubNav />
+      <p className="mb-6 text-sm"><Link className="text-gold" to="/congress/delegates">View delegates and the companies they represent →</Link></p>
 
       {trending.length > 0 && (
         <div className="panel p-5 mb-6">

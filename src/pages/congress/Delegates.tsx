@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CongressSubNav } from './CongressSubNav'
@@ -19,11 +19,15 @@ export default function Delegates() {
   const [canManage, setCanManage] = useState(false)
   useEffect(() => { let active = true; setCanManage(false); if (isNational) void supabase.rpc('cvoa_congress_admin_access').then(({ data, error }) => { if (active) setCanManage(!error && data === true) }); return () => { active = false } }, [isNational])
   const [rows, setRows] = useState<DelegateRow[]>([])
+  const [error, setError] = useState<string|null>(null)
+  const [showHistory, setShowHistory] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
-    const labels = supabase.rpc('cvoa_congress_labels')
+    setError(null)
+    try {
+    const labels = Promise.resolve(supabase.rpc('cvoa_congress_labels'))
     const [delegatesRes, profilesRes, postsRes, votesRes, resolutionsRes] = await Promise.all([
       supabase.from('congress_delegates').select('*'),
       labels.then(result => ({ ...result, data: result.data?.profiles ?? [] })),
@@ -32,6 +36,8 @@ export default function Delegates() {
       supabase.from('resolutions').select('submitted_by'),
     ])
 
+    const failure = [delegatesRes, profilesRes, postsRes, votesRes, resolutionsRes].find(result => result.error)
+    if (failure?.error) throw failure.error
     const profileMap: Record<string, string> = {}
     for (const p of (profilesRes.data ?? []) as any[]) profileMap[p.id] = p.full_name
     const postMap: Record<string, string> = {}
@@ -59,13 +65,21 @@ export default function Delegates() {
       }))
     )
 
-    setLoading(false)
-  }
+    } catch(e) { setError((e as {message?:string}).message ?? 'Could not load delegates.') } finally { setLoading(false) }
+  }, [])
 
   useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    void load()
+    const refresh = () => { void load() }
+    window.addEventListener('focus', refresh)
+    window.addEventListener('cvoa:people-changed', refresh)
+    return () => { window.removeEventListener('focus', refresh); window.removeEventListener('cvoa:people-changed', refresh) }
+  }, [load])
+
+  const today = new Date().toLocaleDateString('en-CA')
+  const status = (d: DelegateRow) => d.term_end && d.term_end < today ? 'Ended' : d.term_start && d.term_start > today ? 'Upcoming' : 'Active'
+  const visibleRows = rows.filter(d => d.profile_id && (showHistory || status(d) !== 'Ended'))
+  const activeCount = rows.filter(d => d.profile_id && status(d) === 'Active' && !d.is_alternate).length
 
   return (
     <div>
@@ -74,24 +88,32 @@ export default function Delegates() {
 
       <p className="text-sm text-muted mb-6">Congress appointments are managed by NCC members from the person's profile card under Access → Veterans Congress. {canManage && <Link className="text-gold" to="/users">Open Accounts & Access →</Link>}</p>
 
-      <div className="panel overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <p className="text-sm text-muted">{activeCount} active primary {activeCount === 1 ? 'delegate' : 'delegates'}. Appointments appear here automatically.</p>
+        <div className="flex items-center gap-4"><label className="text-sm"><input type="checkbox" checked={showHistory} onChange={e=>setShowHistory(e.target.checked)} /> Show ended terms</label><button className="btn-ghost" disabled={loading} onClick={()=>void load()}>Refresh delegates</button></div>
+      </div>
+      {error&&<p role="alert" className="text-status-attention mb-4">{error} Use Refresh delegates to retry.</p>}
+      {loading&&<p role="status" className="text-sm text-muted mb-3">Loading delegates…</p>}
+      <div className="panel overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr>
               <th className="table-head">Delegate</th>
               <th className="table-head">Company</th>
-              <th className="table-head">Alternate</th>
+              <th className="table-head">Seat</th>
+              <th className="table-head">Status</th>
               <th className="table-head">Term</th>
               <th className="table-head">Votes Cast</th>
               <th className="table-head">Resolutions Sponsored</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((d) => (
+            {visibleRows.map((d) => (
               <tr key={d.id}>
                 <td className="table-cell">{d.profile_name}</td>
                 <td className="table-cell text-muted">{d.post_name}</td>
-                <td className="table-cell">{d.is_alternate ? 'Yes' : 'No'}</td>
+                <td className="table-cell">{d.is_alternate ? 'Alternate' : 'Primary delegate'}</td>
+                <td className="table-cell"><span className={status(d)==='Active'?'text-status-active':'text-muted'}>{status(d)}</span></td>
                 <td className="table-cell text-muted font-mono text-xs">
                   {d.term_start ?? '—'} → {d.term_end ?? '—'}
                 </td>
@@ -101,9 +123,9 @@ export default function Delegates() {
             ))}
           </tbody>
         </table>
-        {!loading && rows.length === 0 && (
+        {!loading && !error && visibleRows.length === 0 && (
           <div className="p-4">
-            <EmptyState title="No delegates yet" />
+            <EmptyState title="No current delegates" hint="NCC can appoint a delegate from the person’s profile card → Access → Veterans Congress." />
           </div>
         )}
       </div>
