@@ -14,13 +14,14 @@ test('billing uses only trusted membership ownership, never an email match or br
  const file='tests/.member-billing-helper.cjs';await build({entryPoints:['supabase/functions/_shared/memberBilling.ts'],bundle:true,platform:'node',format:'cjs',outfile:file})
  try{const {memberBillingCustomer}=require(process.cwd()+'/'+file)
   const f=fixture();const id=await memberBillingCustomer(f.db,f.stripe,'owner','same@example.test','Owner');assert.equal(id,'cus_new');assert.ok(f.state.calls.some(c=>c[0]==='members'&&c[1]==='profile_id'&&c[2]==='owner'))
+  const noMembership=fixture();noMembership.state.members=[];assert.equal(await memberBillingCustomer(noMembership.db,noMembership.stripe,'owner'),'cus_new');assert.equal(noMembership.state.calls.find(c=>c[0]==='createCustomer')[1].metadata.cvoa_profile_id,'owner');
   const subscription=fixture();subscription.state.members[0].stripe_subscription_id='sub_own';assert.equal(await memberBillingCustomer(subscription.db,subscription.stripe,'owner'),'cus_own')
   const forged=fixture();forged.state.members[0].stripe_subscription_id='sub_other';forged.stripe.subscriptions.retrieve=async()=>({customer:'cus_victim',metadata:{member_id:'victim'}});await assert.rejects(memberBillingCustomer(forged.db,forged.stripe,'owner'),/ownership/)
   const payment=fixture();payment.state.payments=[{member_id:'member',stripe_checkout_session_id:'session_other'}];payment.stripe.checkout.sessions.retrieve=async()=>({customer:'cus_victim',metadata:{member_id:'victim'},payment_status:'paid'});await assert.rejects(memberBillingCustomer(payment.db,payment.stripe,'owner'),/ownership/)
  }finally{fs.unlinkSync(file)}
 })
 test('billing endpoint authenticates, ignores supplied account IDs, and refuses suspended accounts',async()=>{
- const file='tests/.member-billing-endpoint.cjs';const f=fixture();Object.assign(globalThis,{__billingFixture:f,Deno:{env:{get:()=> 'configured'},serve:handler=>{globalThis.__billingHandler=handler}}})
+ const file='tests/.member-billing-endpoint.cjs';const f=fixture();f.state.members=[];Object.assign(globalThis,{__billingFixture:f,Deno:{env:{get:()=> 'configured'},serve:handler=>{globalThis.__billingHandler=handler}}})
  await build({entryPoints:['supabase/functions/create-member-billing-portal/index.ts'],bundle:true,platform:'node',format:'cjs',outfile:file,plugins:[{name:'providers',setup(b){b.onResolve({filter:/^npm:/},a=>({path:a.path,namespace:'provider'}));b.onLoad({filter:/.*/,namespace:'provider'},a=>({contents:a.path.includes('supabase-js')?`export const createClient=()=>globalThis.__billingFixture.db;`:`export default class Stripe {constructor(){return globalThis.__billingFixture.stripe}}`,loader:'js'}))}}]})
  try{require(process.cwd()+'/'+file);const handler=globalThis.__billingHandler
   assert.equal((await handler(new Request('https://edge.test',{method:'POST'}))).status,401)

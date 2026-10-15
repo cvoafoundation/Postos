@@ -38,18 +38,6 @@ Deno.serve(async (req) => {
       profile.data.deleted_at
     )
       return reply(403, { error: "An active account is required." });
-    const memberships = await db
-      .from("members")
-      .select("id")
-      .eq("profile_id", auth.data.user.id)
-      .is("deleted_at", null)
-      .limit(1);
-    if (memberships.error) throw memberships.error;
-    if (!memberships.data?.length)
-      return reply(409, {
-        error:
-          "Link your membership before opening billing. Contact National for assistance.",
-      });
     const secret =
       Deno.env.get("STRIPE_SECRET_KEY") ?? Deno.env.get("STRIPE_KEY");
     if (!secret)

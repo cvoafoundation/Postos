@@ -15,8 +15,6 @@ export async function memberBillingCustomer(
     .eq("profile_id", actor)
     .is("deleted_at", null);
   if (members.error) throw members.error;
-  if (!members.data?.length)
-    throw new Error("Link your membership before opening billing.");
   let customer: string | undefined;
   for (const m of members.data ?? []) {
     if (m.stripe_subscription_id) {

@@ -441,7 +441,7 @@ function BillingSection({
       <div className="flex flex-wrap gap-3">
         <button
           className="btn-gold"
-          disabled={busy || !data.memberships.length}
+          disabled={busy}
           onClick={() => void openPortal()}
         >
           {busy ? "Please wait…" : "Manage payment methods"}
@@ -452,8 +452,9 @@ function BillingSection({
       </div>
       {!data.memberships.length && (
         <p className="text-sm text-muted">
-          Contact National to link your membership before managing payment
-          details.
+          No membership is linked to this sign-in. You can still manage your
+          personal payment methods here. Membership history appears after a
+          membership is linked.
         </p>
       )}
       <ul className="divide-y divide-hairline">
