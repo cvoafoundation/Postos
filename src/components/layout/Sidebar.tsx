@@ -5,6 +5,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutGrid,
   MessagesSquare,
+  Mail,
   GitBranch,
   ClipboardCheck,
   Users,
@@ -133,6 +134,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   ] : [
     { to: '/', label: isNational ? 'National Dashboard' : isState ? 'Battalion Dashboard' : isPostOfficer ? 'Company Dashboard' : 'Home', icon: LayoutGrid, end: true },
     ...(isNational ? NATIONAL_ONLY_ITEMS : []),
+    ...(profile?.role === 'national_commander' ? [{ to: '/member-broadcasts', label: 'Member Broadcasts', icon: Mail }] : []),
     { to: '/schedlr', label: 'Schedlr', icon: CalendarCheck },
     ...(canUseOperations ? [{ to: '/operations', label: 'Operations', icon: MessagesSquare }] : []),
     ...(isState || isPlainMember ? [{ to: '/meetings', label: 'Meetings', icon: CalendarCheck }] : []),

@@ -1,0 +1,4 @@
+# This endpoint validates Auth JWTs itself. Cron uses a separate Vault-held
+# worker secret; disabling the gateway JWT check does not make sending public.
+[functions.member-broadcasts]
+verify_jwt = false
