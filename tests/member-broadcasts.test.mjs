@@ -261,19 +261,374 @@ test("mail is personalized, HTML-escaped, individual and attachment-only (no ext
     true,
   );
 });
-async function endpoint({signedIn=true,allowed=false,secretValid=false}={}) {
- let handler,sends=0,queries=0;
- const source=fs.readFileSync('supabase/functions/member-broadcasts/index.ts','utf8').replace(/import[\s\S]*?from\s+["'][^"']+["'];\n/g,'');
- const compiled=await transform(source,{loader:'ts',format:'esm'});
- const client={auth:{getUser:async()=>({error:signedIn?null:{message:'invalid'},data:{user:signedIn?{id:commander,email:'commander@example.test'}:null}})},rpc:async(name)=>({data:name==='cvoa_broadcast_verify_worker'?secretValid:allowed,error:null}),from:()=>{queries++;throw new Error('Unexpected data read');}};
- const deno={env:{get:()=> 'fixture-not-a-secret'},serve:f=>{handler=f;}};
- new Function('createClient','nodemailer','Buffer','Deno','MAX_TOTAL','MEDIA','prepareBroadcast','signatureMatches','validDraft',compiled.code)(()=>client,{createTransport:()=>{sends++;throw new Error('Unexpected SMTP');}},Buffer,deno,mail.MAX_TOTAL,mail.MEDIA,mail.prepareBroadcast,mail.signatureMatches,mail.validDraft);
- return {request:async(headers={},body={action:'send',id:broadcast})=>handler(new Request('https://example.test',{method:'POST',headers,body:JSON.stringify(body)})),counts:()=>({sends,queries})};
+async function endpoint({
+  signedIn = true,
+  allowed = false,
+  secretValid = false,
+} = {}) {
+  let handler,
+    sends = 0,
+    queries = 0;
+  const source = fs
+    .readFileSync("supabase/functions/member-broadcasts/index.ts", "utf8")
+    .replace(/import[\s\S]*?from\s+["'][^"']+["'];\n/g, "");
+  const compiled = await transform(source, { loader: "ts", format: "esm" });
+  const client = {
+    auth: {
+      getUser: async () => ({
+        error: signedIn ? null : { message: "invalid" },
+        data: {
+          user: signedIn
+            ? { id: commander, email: "commander@example.test" }
+            : null,
+        },
+      }),
+    },
+    rpc: async (name) => ({
+      data: name === "cvoa_broadcast_verify_worker" ? secretValid : allowed,
+      error: null,
+    }),
+    from: () => {
+      queries++;
+      throw new Error("Unexpected data read");
+    },
+  };
+  const deno = {
+    env: { get: () => "fixture-not-a-secret" },
+    serve: (f) => {
+      handler = f;
+    },
+  };
+  new Function(
+    "createClient",
+    "nodemailer",
+    "Buffer",
+    "Deno",
+    "MAX_TOTAL",
+    "MEDIA",
+    "prepareBroadcast",
+    "signatureMatches",
+    "validDraft",
+    compiled.code,
+  )(
+    () => client,
+    {
+      createTransport: () => {
+        sends++;
+        throw new Error("Unexpected SMTP");
+      },
+    },
+    Buffer,
+    deno,
+    mail.MAX_TOTAL,
+    mail.MEDIA,
+    mail.prepareBroadcast,
+    mail.signatureMatches,
+    mail.validDraft,
+  );
+  return {
+    request: async (headers = {}, body = { action: "send", id: broadcast }) =>
+      handler(
+        new Request("https://example.test", {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+        }),
+      ),
+    counts: () => ({ sends, queries }),
+  };
 }
-test('HTTP send endpoint rejects missing/invalid sessions and non-commanders before touching recipients or SMTP',async()=>{
- const noToken=await endpoint();assert.equal((await noToken.request()).status,401);assert.deepEqual(noToken.counts(),{sends:0,queries:0});
- const invalid=await endpoint({signedIn:false});assert.equal((await invalid.request({Authorization:'Bearer forged'})).status,401);
- const staff=await endpoint({allowed:false});assert.equal((await staff.request({Authorization:'Bearer fixture'})).status,403);assert.deepEqual(staff.counts(),{sends:0,queries:0});
- const worker=await endpoint();assert.equal((await worker.request({'x-broadcast-secret':'forged'})).status,401);assert.deepEqual(worker.counts(),{sends:0,queries:0});
- const origin=await endpoint({allowed:true});assert.equal((await origin.request({Origin:'https://attacker.test',Authorization:'Bearer fixture'})).status,403);
+test("HTTP send endpoint rejects missing/invalid sessions and non-commanders before touching recipients or SMTP", async () => {
+  const noToken = await endpoint();
+  assert.equal((await noToken.request()).status, 401);
+  assert.deepEqual(noToken.counts(), { sends: 0, queries: 0 });
+  const invalid = await endpoint({ signedIn: false });
+  assert.equal(
+    (await invalid.request({ Authorization: "Bearer forged" })).status,
+    401,
+  );
+  const staff = await endpoint({ allowed: false });
+  assert.equal(
+    (await staff.request({ Authorization: "Bearer fixture" })).status,
+    403,
+  );
+  assert.deepEqual(staff.counts(), { sends: 0, queries: 0 });
+  const worker = await endpoint();
+  assert.equal(
+    (await worker.request({ "x-broadcast-secret": "forged" })).status,
+    401,
+  );
+  assert.deepEqual(worker.counts(), { sends: 0, queries: 0 });
+  const origin = await endpoint({ allowed: true });
+  assert.equal(
+    (
+      await origin.request({
+        Origin: "https://attacker.test",
+        Authorization: "Bearer fixture",
+      })
+    ).status,
+    403,
+  );
+});
+test("scoped broadcasts and authenticated RSVP isolation", async (t) => {
+  const inPost = id(200),
+    ohPost = id(201),
+    officer = id(6),
+    ohOfficer = id(7),
+    extra = id(8),
+    scoped = id(300);
+  await db.exec(`create table public.posts(id uuid primary key,name text,state text);
+ alter table profiles add column post_id uuid,add column state text;
+ alter table members add column post_id uuid,add column state text,add column membership_type text default 'annual',add column membership_status text default 'active';
+ create table public.access_appointments(profile_id uuid,scope_id text,role text,post_id uuid,state text,revoked_at timestamptz);
+ create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);
+ create function public.cvoa_access_scopes(p_user uuid) returns table(scope_id text,role text,post_id uuid,state text,title text,source text) language sql stable security definer set search_path='' as $$
+ select 'primary',p.role,p.post_id,p.state,'','Account' from public.profiles p where p.id=p_user union all select a.scope_id,a.role,a.post_id,a.state,'','Appointment' from public.access_appointments a where a.profile_id=p_user and a.revoked_at is null $$;
+ insert into posts values('${inPost}','Indiana Company','IN'),('${ohPost}','Ohio Company','OH');
+ insert into profiles(id,role,post_id) values('${officer}','post_officer','${inPost}'),('${ohOfficer}','post_commander','${ohPost}'),('${extra}','member',null);
+ update profiles set state='IN' where id='${state}';
+ insert into access_appointments values('${extra}','appointment-1','post_officer','${inPost}',null,null);
+ insert into auth.users values('${member}','in@example.test',now()),('${extra}','oh@example.test',now());
+ insert into members(full_name,email,profile_id,post_id,state,membership_type) values('Indiana Member','in@example.test','${member}','${inPost}','IN','lifetime'),('Ohio Member','oh@example.test','${extra}','${ohPost}','IN','annual'),('Unaffiliated Indiana','unaffiliated@example.test',null,null,'IN','annual');
+ update member_broadcast_deliveries set state='skipped' where state in ('pending','sending');update member_broadcasts set status='complete';`);
+  await db.exec(
+    fs.readFileSync(
+      "supabase/migrations/20261023185138_scoped_broadcasts_rsvp.sql",
+      "utf8",
+    ),
+  );
+  let stateDraft, postDraft, nationalDraft;
+  await t.test(
+    "only actual appointments authorize a scope; forged other-state/Company workspace rejected",
+    async () => {
+      stateDraft = (
+        await db.query(
+          `select * from cvoa_broadcast_create('${state}','primary')`,
+        )
+      ).rows[0];
+      postDraft = (
+        await db.query(
+          `select * from cvoa_broadcast_create('${officer}','primary')`,
+        )
+      ).rows[0];
+      nationalDraft = (
+        await db.query(
+          `select * from cvoa_broadcast_create('${commander}','primary')`,
+        )
+      ).rows[0];
+      assert.equal(stateDraft.scope_kind, "state");
+      assert.equal(stateDraft.scope_state, "IN");
+      assert.equal(postDraft.scope_post_id, inPost);
+      await assert.rejects(
+        db.query(`select cvoa_broadcast_create('${staff}','primary')`),
+        /unavailable/,
+      );
+      await assert.rejects(
+        db.query(`select cvoa_broadcast_create('${officer}','appointment-1')`),
+        /unavailable/,
+      );
+      assert.equal(
+        (await asUser(extra, "select cvoa_broadcast_context() c")).rows[0].c
+          .scopes[0].post_id,
+        inPost,
+      );
+      const can = async (user, b) =>
+        (await asUser(user, `select cvoa_broadcast_access('${b.id}') ok`))
+          .rows[0].ok;
+      assert.equal(await can(ohOfficer, postDraft), false);
+      assert.equal(await can(state, postDraft), true);
+      assert.equal(await can(officer, stateDraft), false);
+      assert.equal(await can(state, nationalDraft), false);
+      assert.equal(await can(commander, postDraft), true);
+    },
+  );
+  await t.test(
+    "state audience follows Company state, includes unaffiliated local members, Company audience stays local",
+    async () => {
+      const emails = async (b) =>
+        (
+          await db.query(
+            `select email from cvoa_broadcast_recipients('${b.id}') order by email`,
+          )
+        ).rows.map((x) => x.email);
+      assert.deepEqual(await emails(stateDraft), [
+        "in@example.test",
+        "unaffiliated@example.test",
+      ]);
+      assert.deepEqual(await emails(postDraft), ["in@example.test"]);
+      await db.exec(
+        `update member_broadcasts set audience_type='lifetime' where id='${stateDraft.id}'`,
+      );
+      assert.deepEqual(await emails(stateDraft), ["in@example.test"]);
+      await db.exec(
+        `update member_broadcasts set audience_type=null,target_post_id='${ohPost}' where id='${stateDraft.id}'`,
+      );
+      assert.deepEqual(await emails(stateDraft), []); // Forged narrowing never widens state boundary.
+      await db.exec(
+        `update member_broadcasts set target_post_id=null where id='${stateDraft.id}'`,
+      );
+    },
+  );
+  await t.test(
+    "media and delivery rows remain protected across scopes",
+    async () => {
+      await asUser(
+        officer,
+        `insert into storage.objects(bucket_id,name) values('member-broadcasts','${postDraft.id}/asset.png')`,
+      );
+      assert.equal(
+        (
+          await asUser(
+            ohOfficer,
+            `select * from storage.objects where name like '${postDraft.id}/%'`,
+          )
+        ).rows.length,
+        0,
+      );
+      await assert.rejects(
+        asUser(
+          ohOfficer,
+          `insert into storage.objects(bucket_id,name) values('member-broadcasts','${postDraft.id}/forged.png')`,
+        ),
+        /row-level security/,
+      );
+    },
+  );
+  await t.test(
+    "send rejects foreign actor and past events; valid invite claims only scoped recipients",
+    async () => {
+      await db.exec(
+        `update member_broadcasts set subject='Invitation',body='Join us',event=jsonb_build_object('title','Company gathering','starts_at',now()-interval '1 hour','location','Company Hall') where id='${postDraft.id}'`,
+      );
+      await assert.rejects(
+        db.query(
+          `select cvoa_broadcast_queue('${postDraft.id}','${ohOfficer}',1)`,
+        ),
+        /unavailable/,
+      );
+      await assert.rejects(
+        db.query(
+          `select cvoa_broadcast_queue('${postDraft.id}','${officer}',1)`,
+        ),
+        /future/,
+      );
+      await db.exec(
+        `update member_broadcasts set event=jsonb_build_object('title','Company gathering','starts_at',now()+interval '1 day','location','Company Hall') where id='${postDraft.id}'`,
+      );
+      assert.equal(
+        (
+          await db.query(
+            `select cvoa_broadcast_queue('${postDraft.id}','${officer}',1) n`,
+          )
+        ).rows[0].n,
+        1,
+      );
+      const claimed = (await db.query("select cvoa_broadcast_claim() job"))
+        .rows[0].job;
+      assert.equal(claimed.delivery.email, "in@example.test");
+      await db.exec(
+        `update member_broadcast_deliveries set state='sent' where broadcast_id='${postDraft.id}'`,
+      );
+    },
+  );
+  await t.test(
+    "only addressed verified member can RSVP; responses update in place and never leak other recipients",
+    async () => {
+      await assert.rejects(
+        db.query(
+          `select cvoa_broadcast_rsvp('${extra}','${postDraft.id}','yes')`,
+        ),
+        /unavailable/,
+      );
+      const r = (
+        await db.query(
+          `select cvoa_broadcast_rsvp('${member}','${postDraft.id}','yes') r`,
+        )
+      ).rows[0].r;
+      assert.equal(r.response, "yes");
+      assert.equal(r.event.title, "Company gathering");
+      assert.equal(r.people, undefined);
+      await db.query(
+        `select cvoa_broadcast_rsvp('${member}','${postDraft.id}','no')`,
+      );
+      assert.equal(
+        (await db.query(`select cvoa_broadcast_responses('${postDraft.id}') r`))
+          .rows[0].r.counts.no,
+        1,
+      );
+      await db.exec(
+        `update auth.users set email_confirmed_at=null where id='${member}'`,
+      );
+      await assert.rejects(
+        db.query(
+          `select cvoa_broadcast_rsvp('${member}','${postDraft.id}','yes')`,
+        ),
+        /unavailable/,
+      );
+      await db.exec(
+        `update auth.users set email_confirmed_at=now() where id='${member}'`,
+      );
+      await assert.rejects(
+        asUser(
+          member,
+          `select cvoa_broadcast_rsvp('${member}','${postDraft.id}','yes')`,
+        ),
+        /permission denied/,
+      );
+    },
+  );
+  await t.test(
+    "revoked appointments stop queued mail; affiliation changes remove pending recipient",
+    async () => {
+      const d = (
+        await db.query(
+          `select * from cvoa_broadcast_create('${extra}','appointment-1')`,
+        )
+      ).rows[0];
+      await db.exec(
+        `update member_broadcasts set subject='News',body='Local' where id='${d.id}'`,
+      );
+      await db.query(`select cvoa_broadcast_queue('${d.id}','${extra}',1)`);
+      await db.exec(
+        `update access_appointments set revoked_at=now() where profile_id='${extra}'`,
+      );
+      assert.equal(
+        (await db.query("select cvoa_broadcast_claim() job")).rows[0].job,
+        null,
+      );
+      await db.exec(
+        `update access_appointments set revoked_at=null where profile_id='${extra}';update members set post_id='${ohPost}' where email='in@example.test'`,
+      );
+      assert.equal(
+        (await db.query("select cvoa_broadcast_claim() job")).rows[0].job
+          .skipped,
+        true,
+      );
+    },
+  );
+  await t.test(
+    "invitation mail carries scoped signature and safe authenticated RSVP link",
+    () => {
+      const m = mail.prepareBroadcast(
+        {
+          ...postDraft,
+          event: {
+            title: "Gathering <script>",
+            starts_at: new Date(Date.now() + 86400000).toISOString(),
+            location: "Company Hall",
+          },
+        },
+        { email: "in@example.test", member_name: "Indiana Member" },
+        "sender@example.test",
+        [],
+      );
+      assert.match(
+        m.html,
+        new RegExp(`https://cvoa.one/broadcast-rsvp/${postDraft.id}`),
+      );
+      assert.match(m.html, /Company Leadership/);
+      assert.match(m.html, /Gathering &lt;script&gt;/);
+      assert.doesNotMatch(m.html, /National Command<br>/);
+    },
+  );
 });

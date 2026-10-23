@@ -57,6 +57,19 @@ export function prepareBroadcast(
   files: any[],
   test = false,
 ) {
+  const leadership =
+    b.scope_kind === "state"
+      ? `${b.scope_state} Battalion Leadership`
+      : b.scope_kind === "post"
+        ? "Company Leadership"
+        : "National Command";
+  const rsvpUrl = `https://cvoa.one/broadcast-rsvp/${b.id}`;
+  const eventText = b.event
+    ? `\n\n${b.event.title}\nWhen: ${new Date(b.event.starts_at).toUTCString()}${b.event.ends_at ? " to " + new Date(b.event.ends_at).toUTCString() : ""}\nWhere: ${b.event.location || "See invitation"}\nRSVP: ${rsvpUrl}`
+    : "";
+  const eventHtml = b.event
+    ? `<section style="border:1px solid #b79a5b;padding:20px;margin:20px 0"><h3>${escapeHtml(b.event.title)}</h3><p>${escapeHtml(new Date(b.event.starts_at).toUTCString())}</p><p>${escapeHtml(b.event.location || "See invitation")}</p><a style="display:inline-block;background:#171717;color:#fff;padding:12px 20px;text-decoration:none" href="${rsvpUrl}">RSVP to this event</a><p style="font-size:12px">Sign in with the account that received this invitation.</p></section>`
+    : "";
   const name = recipient.member_name || "Member";
   const message = String(b.body)
     .replace(/\{\{first_name\}\}/g, name.split(/\s+/)[0])
@@ -87,8 +100,8 @@ export function prepareBroadcast(
     from: { name: "Combat Veterans of America", address: sender },
     to: { name, address: recipient.email },
     subject: (test ? "[TEST] " : "") + b.subject,
-    text: `Combat Veterans of America\n\nDear ${name},\n\n${message}\n\nNational Command\nhttps://cvoa.one`,
-    html: `<!doctype html><html><body style="margin:0;background:#f3f2ee;color:#202020;font-family:Arial,sans-serif"><div style="max-width:640px;margin:auto;background:white;padding:32px"><img src="https://cvoa.one/images/cvoa-logo.png" width="76" alt="CVOA"><h2 style="border-bottom:2px solid #b79a5b;padding-bottom:18px">Combat Veterans of America</h2><p>Dear ${escapeHtml(name)},</p>${paragraphs}${images}<p style="border-top:1px solid #ddd;padding-top:20px">National Command<br><a href="https://cvoa.one">CVOA.ONE</a></p></div></body></html>`,
+    text: `Combat Veterans of America\n\nDear ${name},\n\n${message}${eventText}\n\n${leadership}\nhttps://cvoa.one`,
+    html: `<!doctype html><html><body style="margin:0;background:#f3f2ee;color:#202020;font-family:Arial,sans-serif"><div style="max-width:640px;margin:auto;background:white;padding:32px"><img src="https://cvoa.one/images/cvoa-logo.png" width="76" alt="CVOA"><h2 style="border-bottom:2px solid #b79a5b;padding-bottom:18px">Combat Veterans of America</h2><p>Dear ${escapeHtml(name)},</p>${paragraphs}${eventHtml}${images}<p style="border-top:1px solid #ddd;padding-top:20px">${escapeHtml(leadership)}<br><a href="https://cvoa.one">CVOA.ONE</a></p></div></body></html>`,
     attachments: files,
     disableFileAccess: true,
     disableUrlAccess: true,

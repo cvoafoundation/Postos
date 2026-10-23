@@ -36,6 +36,7 @@ const GovernanceSession = lazy(
   () => import("@/pages/meetings/governance/GovernanceSession"),
 );
 const Meetings = lazy(() => import("@/pages/meetings/Meetings"));
+const BroadcastRSVP = lazy(() => import("@/pages/broadcasts/BroadcastRSVP"));
 const MemberBroadcasts = lazy(() => import("@/pages/broadcasts/MemberBroadcasts"));
 const Operations = lazy(() => import("@/pages/operations/Operations"));
 const Schedlr = lazy(() => import("@/pages/scheduling/Schedlr"));
@@ -245,7 +246,8 @@ function AuthenticatedApp() {
           <Route path="/" element={<HomeRoute />} />
           <Route path="/schedlr" element={<Schedlr />} />
           <Route path="/operations" element={<Operations />} />
-          <Route path="/member-broadcasts" element={<RoleGuard roles={["national_commander"]} allowNational={false}><MemberBroadcasts /></RoleGuard>} />
+          <Route path="/broadcast-rsvp/:id" element={<BroadcastRSVP />} />
+          <Route path="/member-broadcasts" element={<MemberBroadcasts />} />
           <Route
             path="/post-overview/:postId"
             element={

@@ -24,6 +24,19 @@ type Broadcast = {
   created_at: string;
   sent_at: string | null;
   next_attempt_at: string;
+  scope_kind: "national" | "state" | "post";
+  scope_state: string | null;
+  scope_post_id: string | null;
+  target_state: string | null;
+  target_post_id: string | null;
+  audience_type: string | null;
+  audience_status: string | null;
+  event: {
+    title: string;
+    starts_at: string;
+    ends_at: string | null;
+    location: string;
+  } | null;
 };
 const types: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -54,14 +67,82 @@ async function api(action: string, values: Record<string, unknown> = {}) {
   if (data?.error) throw new Error(data.error);
   return data;
 }
+type Scope = {
+  scope_id: string;
+  kind: string;
+  state: string | null;
+  post_id: string | null;
+  label: string;
+};
+const criteriaFrom = (b: Broadcast) => ({
+  target_state: b.target_state || "",
+  target_post_id: b.target_post_id || "",
+  audience_type: b.audience_type || "",
+  audience_status: b.audience_status || "",
+});
+const localTime = (v: string | null) => {
+  if (!v) return "";
+  const d = new Date(v);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+};
+const eventFrom = (b: Broadcast) => ({
+  enabled: !!b.event,
+  title: b.event?.title || "",
+  start: localTime(b.event?.starts_at || null),
+  end: localTime(b.event?.ends_at || null),
+  location: b.event?.location || "",
+});
 export default function MemberBroadcasts() {
-  const { profile } = useAuth();
-  // Unmount all message state when the signed-in account changes.
-  if (profile?.role !== "national_commander")
-    return <div className="panel p-6">National Commander access required.</div>;
-  return <BroadcastWorkspace key={profile.id} actorId={profile.id} />;
+  const { profile, scopes, selectedScope } = useAuth();
+  if (
+    !profile ||
+    !scopes.some((s) =>
+      [
+        "national_commander",
+        "state_commander",
+        "post_commander",
+        "post_officer",
+      ].includes(s.role),
+    )
+  )
+    return (
+      <div className="panel p-6">
+        An assigned Battalion or Company officer workspace is required.
+      </div>
+    );
+  return (
+    <BroadcastWorkspace
+      key={`${profile.id}:${selectedScope}`}
+      actorId={profile.id}
+    />
+  );
 }
 function BroadcastWorkspace({ actorId }: { actorId: string }) {
+  const { selectedScope } = useAuth();
+  const [scopeOptions, setScopeOptions] = useState<Scope[]>([]),
+    [newScope, setNewScope] = useState(""),
+    [posts, setPosts] = useState<{ id: string; name: string; state: string }[]>(
+      [],
+    );
+  const [criteria, setCriteria] = useState({
+    target_state: "",
+    target_post_id: "",
+    audience_type: "",
+    audience_status: "",
+  });
+  const [eventForm, setEventForm] = useState({
+    enabled: false,
+    title: "",
+    start: "",
+    end: "",
+    location: "",
+  });
+  const [responses, setResponses] = useState<{
+    counts: Record<string, number>;
+    people: any[];
+  }>({ counts: {}, people: [] });
   const [rows, setRows] = useState<Broadcast[]>([]),
     [current, setCurrent] = useState<Broadcast | null>(null);
   const [subject, setSubject] = useState(""),
@@ -86,18 +167,26 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
     !!current &&
     (subject !== current.subject ||
       body !== current.body ||
-      JSON.stringify(files) !== JSON.stringify(current.attachments));
+      JSON.stringify(files) !== JSON.stringify(current.attachments) ||
+      JSON.stringify(criteria) !== JSON.stringify(criteriaFrom(current)) ||
+      JSON.stringify(eventForm) !== JSON.stringify(eventFrom(current)));
   async function refreshList() {
     const result = await api("list");
     setRows(result.broadcasts);
   }
   useEffect(() => {
     let alive = true;
-    Promise.all([api("list"), api("audience")])
+    Promise.all([api("list"), api("context")])
       .then(([list, a]) => {
         if (alive) {
           setRows(list.broadcasts);
-          setAudience(a.count);
+          setScopeOptions(a.scopes);
+          setPosts(a.posts);
+          setNewScope(
+            a.scopes.some((s: Scope) => s.scope_id === selectedScope)
+              ? selectedScope
+              : a.scopes[0]?.scope_id || "",
+          );
         }
       })
       .catch((e) => {
@@ -131,6 +220,7 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
           setCurrent(result.broadcast);
           setStats(result.stats);
           setIssues(result.issues);
+          setResponses(result.responses || { counts: {}, people: [] });
         }
       } catch (e) {
         if (alive) setError((e as Error).message);
@@ -196,6 +286,10 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
     setSubject(b.subject);
     setBody(b.body);
     setFiles(b.attachments);
+    setCriteria(criteriaFrom(b));
+    setEventForm(eventFrom(b));
+    setAudience(null);
+    setResponses({ counts: {}, people: [] });
     setStats({});
     setIssues([]);
     setError("");
@@ -209,6 +303,7 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
       choose(r.broadcast);
       setStats(r.stats);
       setIssues(r.issues);
+      setResponses(r.responses || { counts: {}, people: [] });
     });
   }
   async function save() {
@@ -220,6 +315,17 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
       subject,
       body,
       attachments: files,
+      ...criteria,
+      event: eventForm.enabled
+        ? {
+            title: eventForm.title,
+            starts_at: new Date(eventForm.start).toISOString(),
+            ends_at: eventForm.end
+              ? new Date(eventForm.end).toISOString()
+              : null,
+            location: eventForm.location,
+          }
+        : null,
     });
     setCurrent(r.broadcast);
     setRows((old) =>
@@ -229,8 +335,8 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
   }
   async function upload(selected: File[]) {
     await run(async () => {
-      if (!current || !draft || current.owner_id !== actorId)
-        throw new Error("Create your own draft to add media");
+      if (!current || !draft)
+        throw new Error("Choose an editable draft to add media");
       if (files.length + selected.length > 8)
         throw new Error("Up to 8 attachments per broadcast");
       if (
@@ -268,17 +374,17 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
     <>
       <PageHeader
         title="Member Broadcasts"
-        eyebrow="National Commander"
-        description="Write to the entire CVOA membership, with photos and attachments. Each member receives a private, individually addressed email."
+        eyebrow="Member Communications"
+        description="Email your assigned membership, narrow the audience, or invite members to an event. Recipients receive private, individually addressed emails."
         action={
           <button
             className="btn-gold flex items-center gap-2"
-            disabled={busy}
+            disabled={busy || !newScope}
             onClick={() => {
               if (dirty && !window.confirm("Discard unsaved draft changes?"))
                 return;
               void run(async () => {
-                const r = await api("create");
+                const r = await api("create", { scope: newScope });
                 choose(r.broadcast);
                 await refreshList();
               });
@@ -289,6 +395,27 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
           </button>
         }
       />
+      <div className="panel p-4 mb-4 flex flex-wrap items-center gap-3">
+        <label htmlFor="broadcast-workspace" className="text-sm">
+          Workspace for new broadcasts
+        </label>
+        <select
+          id="broadcast-workspace"
+          className="input"
+          value={newScope}
+          disabled={busy}
+          onChange={(e) => setNewScope(e.target.value)}
+        >
+          {scopeOptions.map((s) => (
+            <option key={s.scope_id} value={s.scope_id}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted">
+          Audience access comes from your current officer appointments.
+        </p>
+      </div>
       {error && (
         <div
           role="alert"
@@ -306,11 +433,10 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
         <div className="panel p-4 sm:p-6">
           <h2 className="font-display text-xl mb-2">Messages</h2>
           <p className="text-sm text-muted mb-6">
-            {audience === null
-              ? "Audience unavailable"
-              : `${audience} unique member email addresses`}
-            . Includes current and expired memberships; excludes removed records
-            and flagged test accounts. Duplicate addresses receive one email.
+            Your assigned workspaces determine which broadcasts you can manage.
+            National Command can reach all members; Battalion officers can reach
+            their state, and Company officers can reach their Company. Counts
+            appear after you choose the audience.
           </p>
           {loading ? (
             <p role="status">Loading broadcasts…</p>
@@ -352,8 +478,6 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
             onClick={() =>
               void run(async () => {
                 await refreshList();
-                const a = await api("audience");
-                setAudience(a.count);
               })
             }
           >
@@ -389,6 +513,191 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
                   : current.status}
               </span>
             </div>
+            <p className="text-sm text-gold">
+              Audience boundary:{" "}
+              {current.scope_kind === "national"
+                ? "National membership"
+                : current.scope_kind === "state"
+                  ? `${current.scope_state} Battalion`
+                  : posts.find((p) => p.id === current.scope_post_id)?.name ||
+                    "Assigned Company"}
+            </p>
+            {draft && (
+              <section className="border border-hairline rounded p-4 space-y-4">
+                <h3 className="font-display text-xl">Choose recipients</h3>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {current.scope_kind === "national" && (
+                    <label className="text-sm">
+                      State (optional)
+                      <input
+                        className="input w-full mt-2"
+                        placeholder="All states, or two-letter code"
+                        maxLength={2}
+                        value={criteria.target_state}
+                        disabled={busy}
+                        onChange={(e) =>
+                          setCriteria((c) => ({
+                            ...c,
+                            target_state: e.target.value.toUpperCase(),
+                            target_post_id: "",
+                          }))
+                        }
+                      />
+                    </label>
+                  )}
+                  {current.scope_kind !== "post" && (
+                    <label className="text-sm">
+                      Company
+                      <select
+                        className="input w-full mt-2"
+                        value={criteria.target_post_id}
+                        disabled={busy}
+                        onChange={(e) =>
+                          setCriteria((c) => ({
+                            ...c,
+                            target_post_id: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">All in this audience</option>
+                        {posts
+                          .filter(
+                            (p) =>
+                              (current.scope_kind !== "state" ||
+                                p.state === current.scope_state) &&
+                              (!criteria.target_state ||
+                                p.state === criteria.target_state),
+                          )
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.state})
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  )}
+                  <label className="text-sm">
+                    Membership term
+                    <select
+                      className="input w-full mt-2"
+                      value={criteria.audience_type}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setCriteria((c) => ({
+                          ...c,
+                          audience_type: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">All terms</option>
+                      <option value="annual">Annual</option>
+                      <option value="lifetime">Lifetime</option>
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    Membership status
+                    <select
+                      className="input w-full mt-2"
+                      value={criteria.audience_status}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setCriteria((c) => ({
+                          ...c,
+                          audience_status: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">All statuses</option>
+                      <option value="active">Active</option>
+                      <option value="lapsed">Lapsed</option>
+                      <option value="pending_payment">Payment pending</option>
+                    </select>
+                  </label>
+                </div>
+                <p className="text-xs text-muted">
+                  These filters narrow your assigned audience. Removed members
+                  and flagged test accounts are excluded, and duplicate
+                  addresses receive one email. Battalion membership follows
+                  Company affiliation, using the member’s state for unaffiliated
+                  members.
+                </p>
+              </section>
+            )}
+            {draft && (
+              <section className="border border-hairline rounded p-4 space-y-4">
+                <label className="flex gap-3 items-center text-sm">
+                  <input
+                    type="checkbox"
+                    checked={eventForm.enabled}
+                    disabled={busy}
+                    onChange={(e) =>
+                      setEventForm((f) => ({ ...f, enabled: e.target.checked }))
+                    }
+                  />
+                  Include an event invitation with tracked RSVPs
+                </label>
+                {eventForm.enabled && (
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <label className="text-sm sm:col-span-2">
+                      Event title
+                      <input
+                        className="input w-full mt-2"
+                        maxLength={180}
+                        value={eventForm.title}
+                        disabled={busy}
+                        onChange={(e) =>
+                          setEventForm((f) => ({ ...f, title: e.target.value }))
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Starts (your device’s time zone)
+                      <input
+                        type="datetime-local"
+                        className="input w-full mt-2"
+                        value={eventForm.start}
+                        disabled={busy}
+                        onChange={(e) =>
+                          setEventForm((f) => ({ ...f, start: e.target.value }))
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Ends (optional)
+                      <input
+                        type="datetime-local"
+                        className="input w-full mt-2"
+                        value={eventForm.end}
+                        disabled={busy}
+                        onChange={(e) =>
+                          setEventForm((f) => ({ ...f, end: e.target.value }))
+                        }
+                      />
+                    </label>
+                    <label className="text-sm sm:col-span-2">
+                      Location or meeting link
+                      <input
+                        className="input w-full mt-2"
+                        maxLength={1000}
+                        value={eventForm.location}
+                        disabled={busy}
+                        onChange={(e) =>
+                          setEventForm((f) => ({
+                            ...f,
+                            location: e.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <p className="text-xs text-muted sm:col-span-2">
+                      The email includes an RSVP button. Members sign in to
+                      record or change their own response. Test-email RSVP links
+                      activate for actual recipients after sending.
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
             {draft && (
               <>
                 <div>
@@ -470,7 +779,7 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
                   </li>
                 ))}
               </ul>
-              {draft && current.owner_id === actorId && (
+              {draft && (
                 <>
                   <input
                     ref={input}
@@ -539,8 +848,8 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
                   disabled={busy || !subject.trim() || !body.trim()}
                   onClick={() =>
                     void run(async () => {
-                      await save();
-                      const r = await api("audience");
+                      const b = await save();
+                      const r = await api("audience", { id: b.id });
                       setAudience(r.count);
                       setConfirm(true);
                     })
@@ -553,6 +862,46 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
             ) : (
               <>
                 <div className="border-t border-hairline pt-5">
+                  {current.event && (
+                    <section className="mb-6">
+                      <h3 className="font-display text-xl mb-3">
+                        Event RSVPs — {current.event.title}
+                      </h3>
+                      <p className="text-sm mb-3">
+                        {responses.counts.yes || 0} attending ·{" "}
+                        {responses.counts.maybe || 0} maybe ·{" "}
+                        {responses.counts.no || 0} unable to attend ·{" "}
+                        {responses.counts.awaiting || 0} awaiting response
+                      </p>
+                      <details>
+                        <summary className="cursor-pointer text-sm">
+                          View responses (latest 500)
+                        </summary>
+                        <ul className="divide-y divide-hairline">
+                          {responses.people.map((p) => (
+                            <li
+                              key={p.email}
+                              className="py-3 text-sm break-words"
+                            >
+                              {p.member_name} — {p.email}:{" "}
+                              {
+                                (
+                                  {
+                                    yes: "Attending",
+                                    maybe: "Maybe",
+                                    no: "Unable to attend",
+                                  } as Record<string, string>
+                                )[p.rsvp]
+                              }
+                              <span className="text-muted block">
+                                {new Date(p.rsvp_at).toLocaleString()}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </section>
+                  )}
                   <h3 className="font-display text-xl mb-3">
                     Delivery results
                   </h3>
@@ -636,6 +985,9 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
                               setCurrent(r.broadcast);
                               setStats(r.stats);
                               setIssues(r.issues);
+                              setResponses(
+                                r.responses || { counts: {}, people: [] },
+                              );
                               setNotice("Rejected deliveries requeued.");
                             });
                           }}
@@ -685,8 +1037,26 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
                   )}
                 </div>
               ))}
+            {eventForm.enabled && (
+              <section className="border p-4 mt-5">
+                <h3 className="font-bold">{eventForm.title}</h3>
+                <p>
+                  {eventForm.start
+                    ? new Date(eventForm.start).toLocaleString()
+                    : "Choose a start time"}
+                </p>
+                <p>{eventForm.location}</p>
+                <span className="inline-block bg-black text-white px-4 py-2 mt-3">
+                  RSVP to this event
+                </span>
+              </section>
+            )}
             <p className="border-t mt-6 pt-5">
-              National Command
+              {current?.scope_kind === "national"
+                ? "National Command"
+                : current?.scope_kind === "state"
+                  ? `${current.scope_state} Battalion Leadership`
+                  : "Company Leadership"}
               <br />
               CVOA.ONE
             </p>
@@ -699,7 +1069,7 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
       )}
       {confirm && current && (
         <Modal
-          title="Send to all members?"
+          title="Send to this audience?"
           onClose={() => {
             if (!busy) setConfirm(false);
           }}
@@ -739,13 +1109,14 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
                   setCurrent(view.broadcast);
                   setStats(view.stats);
                   setIssues(view.issues);
+                  setResponses(view.responses || { counts: {}, people: [] });
                   setNotice(
                     `Broadcast queued${r.count ? ` for ${r.count} members` : ""}. Delivery begins within a minute.`,
                   );
                 })
               }
             >
-              {busy ? "Queuing…" : "Send to all members"}
+              {busy ? "Queuing…" : "Send to selected members"}
             </button>
           </div>
         </Modal>
@@ -772,6 +1143,7 @@ function BroadcastWorkspace({ actorId }: { actorId: string }) {
                 setCurrent(r.broadcast);
                 setStats(r.stats);
                 setIssues(r.issues);
+                setResponses(r.responses || { counts: {}, people: [] });
                 setNotice("Remaining emails stopped.");
               })
             }
