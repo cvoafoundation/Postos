@@ -1,3 +1,4 @@
+import { PublicPageLayout } from "@/components/layout/PublicPageLayout";
 import { isMembershipPath } from "@/lib/membershipAccess";
 import { lazy, Suspense } from "react";
 import {
@@ -11,8 +12,12 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { AppShell } from "@/components/layout/AppShell";
 import { RoleGuard } from "@/components/layout/RoleGuard";
-const MembershipVerification = lazy(() => import("@/pages/members/MembershipVerification"));
-const MembershipCardPage = lazy(() => import("@/pages/members/MembershipCardPage"));
+const MembershipVerification = lazy(
+  () => import("@/pages/members/MembershipVerification"),
+);
+const MembershipCardPage = lazy(
+  () => import("@/pages/members/MembershipCardPage"),
+);
 const Login = lazy(() => import("@/pages/Login"));
 const SetPassword = lazy(() => import("@/pages/SetPassword"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
@@ -37,7 +42,9 @@ const GovernanceSession = lazy(
 );
 const Meetings = lazy(() => import("@/pages/meetings/Meetings"));
 const BroadcastRSVP = lazy(() => import("@/pages/broadcasts/BroadcastRSVP"));
-const MemberBroadcasts = lazy(() => import("@/pages/broadcasts/MemberBroadcasts"));
+const MemberBroadcasts = lazy(
+  () => import("@/pages/broadcasts/MemberBroadcasts"),
+);
 const Operations = lazy(() => import("@/pages/operations/Operations"));
 const Schedlr = lazy(() => import("@/pages/scheduling/Schedlr"));
 const UroMeetingWizard = lazy(
@@ -140,49 +147,56 @@ export default function App() {
   return (
     <Suspense
       fallback={
-        <div role="status" className="p-8 text-sm text-muted">
-          Loading page…
-        </div>
+        <PublicPageLayout>
+          <div role="status" className="p-8 text-sm text-muted">
+            Loading page…
+          </div>
+        </PublicPageLayout>
       }
     >
       <Routes>
-        <Route path="/set-password" element={<SetPassword />} />
-        {legacySetupHash && (
+        <Route element={<PublicPageLayout />}>
+          <Route path="/set-password" element={<SetPassword />} />
+          {legacySetupHash && (
+            <Route
+              path="/login"
+              element={
+                <Navigate to={`/set-password${legacySetupHash}`} replace />
+              }
+            />
+          )}
+          {/* Public — no login required, shared via link */}
           <Route
-            path="/login"
-            element={
-              <Navigate to={`/set-password${legacySetupHash}`} replace />
-            }
+            path="/join-founding-team/:postId"
+            element={<JoinFoundingTeam />}
           />
-        )}
-        {/* Public — no login required, shared via link */}
-        <Route
-          path="/join-founding-team/:postId"
-          element={<JoinFoundingTeam />}
-        />
-        <Route path="/post-checklist/:postId" element={<PublicChecklist />} />
-        <Route path="/join-post/:postId" element={<PublicRecruitSignup />} />
-        <Route path="/become-a-sponsor/:postId" element={<BecomeASponsor />} />
-        <Route path="/join-membership/:postId" element={<JoinMembership />} />
-        <Route path="/join" element={<JoinCVOA />} />
-        <Route
-          path="/verify-membership/:memberId"
-          element={<VerifyMembership />}
-        />
-        <Route path="/campaign/:slug" element={<PublicCampaign />} />
-        <Route
-          path="/campaign-payment"
-          element={<SponsorshipPaymentResult campaign />}
-        />
-        <Route
-          path="/sponsorship-payment"
-          element={<SponsorshipPaymentResult />}
-        />
-        <Route
-          path="/membership-payment-result"
-          element={<MembershipPaymentResult />}
-        />
-        <Route path="/transparency" element={<TransparencyPortal />} />
+          <Route path="/post-checklist/:postId" element={<PublicChecklist />} />
+          <Route path="/join-post/:postId" element={<PublicRecruitSignup />} />
+          <Route
+            path="/become-a-sponsor/:postId"
+            element={<BecomeASponsor />}
+          />
+          <Route path="/join-membership/:postId" element={<JoinMembership />} />
+          <Route path="/join" element={<JoinCVOA />} />
+          <Route
+            path="/verify-membership/:memberId"
+            element={<VerifyMembership />}
+          />
+          <Route path="/campaign/:slug" element={<PublicCampaign />} />
+          <Route
+            path="/campaign-payment"
+            element={<SponsorshipPaymentResult campaign />}
+          />
+          <Route
+            path="/sponsorship-payment"
+            element={<SponsorshipPaymentResult />}
+          />
+          <Route
+            path="/membership-payment-result"
+            element={<MembershipPaymentResult />}
+          />
+          <Route path="/transparency" element={<TransparencyPortal />} />
+        </Route>
         {/* Everything else is gated behind auth */}
         <Route path="/*" element={<AuthenticatedApp />} />
       </Routes>
@@ -191,47 +205,63 @@ export default function App() {
 }
 
 function AuthenticatedApp() {
-  const { session, loading, accessSuspended, accessError, signOut, membershipOnly } = useAuth();
+  const {
+    session,
+    loading,
+    accessSuspended,
+    accessError,
+    signOut,
+    membershipOnly,
+  } = useAuth();
   const { pathname } = useLocation();
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-base">
-        <div className="eyebrow">Loading CVOA.ONE SYSTEM…</div>
-      </div>
+      <PublicPageLayout>
+        <div className="min-h-[70dvh] flex items-center justify-center bg-base">
+          <div className="eyebrow">Loading CVOA.ONE SYSTEM…</div>
+        </div>
+      </PublicPageLayout>
     );
   }
 
   if (!session) {
-    return <Login />;
+    return (
+      <PublicPageLayout>
+        <Login />
+      </PublicPageLayout>
+    );
   }
 
   if (accessSuspended || accessError)
     return (
-      <div className="panel max-w-lg mx-auto mt-20 p-8">
-        <h1 className="font-display text-2xl">
-          {accessSuspended
-            ? "Account access suspended"
-            : "Access verification unavailable"}
-        </h1>
-        <p className="text-sm text-muted my-4">
-          {accessSuspended
-            ? "Contact National about restoring your workspace. Your membership record remains preserved."
-            : accessError}
-        </p>
-        <button className="btn-ghost" onClick={signOut}>
-          Sign out
-        </button>
-        <button
-          className="btn-gold ml-3"
-          onClick={() => window.location.reload()}
-        >
-          Retry
-        </button>
-      </div>
+      <PublicPageLayout>
+        <div className="panel max-w-lg mx-auto mt-20 p-8">
+          <h1 className="font-display text-2xl">
+            {accessSuspended
+              ? "Account access suspended"
+              : "Access verification unavailable"}
+          </h1>
+          <p className="text-sm text-muted my-4">
+            {accessSuspended
+              ? "Contact National about restoring your workspace. Your membership record remains preserved."
+              : accessError}
+          </p>
+          <button className="btn-ghost" onClick={signOut}>
+            Sign out
+          </button>
+          <button
+            className="btn-gold ml-3"
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </button>
+        </div>
+      </PublicPageLayout>
     );
 
-  if (membershipOnly && !isMembershipPath(pathname)) return <Navigate to="/my-membership" replace />;
+  if (membershipOnly && !isMembershipPath(pathname))
+    return <Navigate to="/my-membership" replace />;
 
   return (
     <AppShell>
@@ -457,8 +487,14 @@ function AuthenticatedApp() {
           />
           <Route path="/members" element={<RosterRoute />} />
           <Route path="/directory" element={<MemberDirectory />} />
-          <Route path="/membership-verification" element={<MembershipVerification />} />
-          <Route path="/my-membership" element={membershipOnly ? <MembershipCardPage /> : <MyMembership />} />
+          <Route
+            path="/membership-verification"
+            element={<MembershipVerification />}
+          />
+          <Route
+            path="/my-membership"
+            element={membershipOnly ? <MembershipCardPage /> : <MyMembership />}
+          />
           <Route path="/settings" element={<Settings />} />
           <Route path="/file-complaint" element={<FileComplaint />} />
           <Route

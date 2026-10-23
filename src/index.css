@@ -111,3 +111,21 @@
 @media print {
   .skip-navigation, .page-actions { display: none !important; }
 }
+
+/* Shared footer; the supplied symbol and Lovelo wordmark stay readable at mobile sizes. */
+.moxom-footer {
+  flex-shrink: 0;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border-top: 1px solid #26272b;
+  padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.moxom-footer-lockup { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.moxom-footer-caption { color: #a9a9a3; font-size: 11px; line-height: 1.5; white-space: nowrap; }
+.moxom-footer-symbol { display: block; flex: none; width: 32px; height: 36px; }
+.moxom-footer-wordmark { display: block; width: 102px; height: auto; }
+.public-page-content > .min-h-screen { min-height: 0; }
+@media print { .moxom-footer { display: none !important; } }
