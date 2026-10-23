@@ -55,6 +55,9 @@ export default function StateHome() {
         ? `Launch stage: ${POST_STATUS_LABELS[p.status]}`
         : "",
       !p.last_meeting ? "No published meeting report" : "",
+      ...(health.scores[p.id]?.dimensions
+        .filter((d) => d.status === "red")
+        .map((d) => `${d.label}: ${d.detail}`) ?? []),
     ].filter(Boolean);
   const visible =
     data?.posts.filter(
@@ -147,15 +150,15 @@ export default function StateHome() {
           </div>
           {visible.length === 0 && (
             <p className="text-muted">
-              No companies match this view. Clear the filters to see all assigned
-              companies.
+              No companies match this view. Clear the filters to see all
+              assigned companies.
             </p>
           )}
           <section className="panel p-5 mb-6">
             <h2 className="font-display text-xl">Companies needing support</h2>
             <p className="text-xs text-muted mt-1 mb-3">
-              Recorded work and reporting gaps; contact the company to confirm what
-              help is needed.
+              Recorded work and reporting gaps; contact the company to confirm
+              what help is needed.
             </p>
             {visible.filter((p) => needs(p).length).length === 0 ? (
               <p className="text-sm text-muted">No support flags recorded.</p>
@@ -225,7 +228,7 @@ export default function StateHome() {
                       {p.status !== "active_post"
                         ? "Launch readiness · forming"
                         : health.scores[p.id]
-                          ? `${health.scores[p.id].score}/100 · ${health.scores[p.id].overall.toUpperCase()}`
+                          ? `${health.scores[p.id].score}/100 · ${health.scores[p.id].overall.toUpperCase()}${health.scores[p.id].provisional ? " · provisional" : ""}`
                           : health.loading
                             ? "Loading score…"
                             : "Score unavailable"}

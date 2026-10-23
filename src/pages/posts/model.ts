@@ -1,3 +1,4 @@
+import { healthSourcePath } from "@/lib/healthSnapshot";
 import type { Post, PostStatus } from "@/lib/types";
 import type { HealthPolicy, PostHealthResult } from "@/lib/postHealth";
 export type DashboardTab =
@@ -137,7 +138,7 @@ export function dashboardActions(
         id: issue.key,
         title: `Address ${issue.label.toLowerCase()}`,
         detail: issue.detail,
-        path: `${base}?tab=${issue.key === "officers" ? "people" : issue.key === "membership" ? "people" : issue.key === "meetings" ? "meetings" : issue.key === "financial" ? "finances" : issue.key === "sponsors" ? "sponsors" : "governance"}`,
+        path: healthSourcePath(data.post.id, issue.key, data.can_manage),
       });
   const activation =
     data.account_staff?.filter((s) => !s.email_confirmed || !s.has_signed_in) ??

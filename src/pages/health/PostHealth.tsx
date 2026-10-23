@@ -39,7 +39,10 @@ export default function PostHealth() {
     .flatMap((post) =>
       health.scores[post.id] ? [{ post, result: health.scores[post.id] }] : [],
     )
-    .sort((a, b) => a.result.score - b.result.score);
+    .sort((a, b) => {
+      const priority={red:0,yellow:1,green:2};
+      return priority[a.result.overall]-priority[b.result.overall] || a.result.score-b.result.score;
+    });
   const destination = (id: string) =>
     profile?.role === "state_commander"
       ? `/post-overview/${id}`
@@ -159,6 +162,13 @@ export default function PostHealth() {
           />
         ) : (
           <>
+            {scored.some((s) => s.result.provisional) && (
+              <p className="text-xs text-muted mb-4">
+                Ratings use provisional operational thresholds awaiting National
+                confirmation. Neutral signals are excluded from the average;
+                critical red signals override the composite color.
+              </p>
+            )}
             {struggling.length > 0 && (
               <div className="panel p-4 mb-6">
                 <div className="eyebrow mb-2 text-status-attention">

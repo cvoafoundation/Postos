@@ -2,17 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import ts from "typescript";
-const source = ts.transpileModule(
-  fs.readFileSync("src/pages/posts/model.ts", "utf8"),
-  {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-  },
-).outputText;
+const { build } = await import("esbuild");
+const bundled = await build({
+  entryPoints: ["src/pages/posts/model.ts"],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  write: false,
+});
 const { dashboardActions, postDisplayName } = await import(
-  `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+  "data:text/javascript;base64," +
+    Buffer.from(bundled.outputFiles[0].text).toString("base64")
 );
 const snapshot = {
   post: {

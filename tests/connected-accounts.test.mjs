@@ -1604,3 +1604,35 @@ test('Schedlr: ordinary members, guests and Ethics receive no staff scheduling a
 test('Schedlr: suspension revokes workspace context',async()=>{
  await as(national,async()=>{await db.exec('set local role postgres');await db.query('update profiles set access_suspended=true where id=$1',[national]);await db.exec('set local role authenticated');assert.equal((await db.query('select cvoa_schedlr_context() context')).rows[0].context.workspaces.length,0);});
 });
+test('Company ratings share a complete dated snapshot, valid membership totals, and completed-ballot evidence across command levels',async()=>{
+ await db.exec(`create schema if not exists membership_private;
+ create function public.cvoa_membership_only() returns boolean language sql stable as $$select false$$;`);
+ await db.exec(fs.readFileSync('supabase/migrations/20261023191123_connected_company_health.sql','utf8'));
+ const {build}=await import('esbuild');const bundled=await build({entryPoints:['src/lib/healthSnapshot.ts'],bundle:true,format:'esm',platform:'node',write:false});
+ const {scoreHealthSnapshots}=await import('data:text/javascript;base64,'+Buffer.from(bundled.outputFiles[0].text).toString('base64'));
+ let expected;
+ await as(national,async()=>{
+  await db.exec(`reset role;
+   insert into public.members(id,post_id,full_name,email,membership_type,membership_status,expires_at) values
+   ('${uid(9901)}','${post}','Expired annual','expired@example.test','annual','active',current_date-1),
+   ('${uid(9902)}','${post}','Lifetime','lifetime@example.test','lifetime','active',current_date-1),
+   ('${uid(9903)}','${post}','Removed','removed@example.test','annual','active',current_date+30);
+   select public.cvoa_remove_person('${uid(9903)}',null,'Removed test fixture');
+   insert into public.financial_transactions(post_id,transaction_type,category,amount,transaction_date,description) values('${post}','income','Dues',500,current_date,'Recorded funds'),('${post}','expense','Other',25,current_date+30,'Future budget');
+   insert into public.uro_bodies(id,name,jurisdiction,post_id) values('${uid(9910)}','Completed source','post','${post}');
+   insert into public.uro_sessions(id,body_id,title,type,scheduled_at,started_at,ended_at,published_at,rules) values('${uid(9911)}','${uid(9910)}','Published completed','regular',now()-interval '2 hours',now()-interval '2 hours',now()-interval '1 hour',now(),'{}');
+   update public.resolutions set status='draft';
+   insert into public.resolutions(id,title,body,submitted_by,status,vote_type,voting_opens_at,voting_closes_at) values('${uid(9920)}','Still open','Body','${national}','voting','delegate_vote',now()-interval '1 hour',now()+interval '1 day'),('${uid(9921)}','Completed ballot','Body','${national}','passed','delegate_vote',now()-interval '1 hour',now()-interval '1 minute');
+   set local role authenticated;`);
+  const snapshot=(await db.query(`select public.cvoa_post_health_evidence(array['${post}'::uuid]) e`)).rows[0].e;
+  const e=snapshot[post];assert.ok(e.as_of);assert.equal(e.financial_transactions[0].transaction_date,new Date().toISOString().slice(0,10));assert.ok(e.meeting_dates.includes(new Date().toISOString().slice(0,10)));assert.equal(e.eligible_votes,1);
+  const score=scoreHealthSnapshots(snapshot)[post];assert.equal(score.dimensions.find(d=>d.key==='financial').status,'green');assert.equal(score.dimensions.find(d=>d.key==='meetings').status,'green');assert.equal(score.provisional,true);
+  const dashboard=(await db.query(`select public.cvoa_post_dashboard('${post}') d`)).rows[0].d;
+  const stateView=(await db.query(`select public.cvoa_state_workspace() d`)).rows[0].d;
+  const membership=score.dimensions.find(d=>d.key==='membership');assert.match(membership.detail,new RegExp('^'+dashboard.members.active+' active'));assert.equal(stateView.posts.find(p=>p.id===post).active_members,dashboard.members.active);
+  // All of this fixture rolls back; later assertions use an unchanged source snapshot.
+  expected=e.policy_version;
+ });
+ for(const actor of [national,uid(5),officer])await as(actor,async()=>{const e=(await db.query(`select public.cvoa_post_health_evidence(array['${post}'::uuid]) e`)).rows[0].e;const score=scoreHealthSnapshots(e)[post];assert.equal(score.policyVersion,expected);assert.ok(Array.isArray(e[post].financial_transactions));});
+ await as(officer,async()=>{await assert.rejects(db.query(`select public.cvoa_post_health_evidence(array['${otherPost}'::uuid])`),/outside your appointed jurisdiction/)});
+});

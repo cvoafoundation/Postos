@@ -41,9 +41,13 @@ export function PostHealthSummary({
       {result && (
         <>
           <p className="text-xs text-muted mt-2 mb-3">
+            {result.provisional
+              ? "Provisional standards · "
+              : "National-confirmed standards · "}
             Scored record coverage: {result.coverage}%. Neutral signals
             excluded. Critical issues:{" "}
-            {result.critical.join(", ") || "None flagged"}.
+            {result.critical.join(", ") || "None flagged"}. Evaluated{" "}
+            {new Date(result.evaluatedAt).toLocaleString()}.
           </p>
           <div className="grid sm:grid-cols-2 gap-3">
             {result.dimensions.map((d) => (

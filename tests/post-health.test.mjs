@@ -233,6 +233,130 @@ test("a critical financial deficit stays red even when other recorded indicators
   assert.equal(result.overall, "red");
   assert.ok(result.critical.includes("Financial Records"));
 });
-test('National settings change operational thresholds and required staffing without changing source records',()=>{
- const policy={required_positions:['commander'],membership_green:2,membership_yellow:1,critical_keys:[]};const result=computePostHealth({...inputs,evidence:{...evidence,current_officers:[{position:'commander',profile_id:'commander'}],policy},members:[{membership_status:'active'},{membership_status:'active'}]});assert.equal(result.dimensions.find(d=>d.key==='officers').status,'green');assert.equal(result.dimensions.find(d=>d.key==='membership').status,'green')
-})
+test("National settings change operational thresholds and required staffing without changing source records", () => {
+  const policy = {
+    required_positions: ["commander"],
+    membership_green: 2,
+    membership_yellow: 1,
+    critical_keys: [],
+  };
+  const result = computePostHealth({
+    ...inputs,
+    evidence: {
+      ...evidence,
+      current_officers: [{ position: "commander", profile_id: "commander" }],
+      policy,
+    },
+    members: [{ membership_status: "active" }, { membership_status: "active" }],
+  });
+  assert.equal(
+    result.dimensions.find((d) => d.key === "officers").status,
+    "green",
+  );
+  assert.equal(
+    result.dimensions.find((d) => d.key === "membership").status,
+    "green",
+  );
+});
+test("annual expiry is enforced on the snapshot date while lifetime membership remains active", () => {
+  const result = computePostHealth({
+    ...inputs,
+    evidence: { ...evidence, as_of: "2026-10-23T16:00:00Z" },
+    members: [
+      {
+        membership_status: "active",
+        membership_type: "annual",
+        expires_at: "2026-10-22",
+      },
+      {
+        membership_status: "active",
+        membership_type: "annual",
+        expires_at: "2026-10-23",
+      },
+      {
+        membership_status: "active",
+        membership_type: "lifetime",
+        expires_at: "2020-01-01",
+      },
+      { membership_status: "active", deleted_at: "2026-10-22" },
+    ],
+  });
+  assert.match(
+    result.dimensions.find((d) => d.key === "membership").detail,
+    /^2 active members/,
+  );
+  assert.equal(result.evaluatedAt, "2026-10-23T16:00:00.000Z");
+  assert.equal(result.provisional, true);
+});
+test("a single scoped snapshot preserves ledger dates and never substitutes a stored map color", async () => {
+  const { build } = await import("esbuild");
+  const bundled = await build({
+    entryPoints: ["src/lib/healthSnapshot.ts"],
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    write: false,
+  });
+  const { scoreHealthSnapshots, mapHealthStatus, healthSourcePath } =
+    await import(
+      "data:text/javascript;base64," +
+        Buffer.from(bundled.outputFiles[0].text).toString("base64")
+    );
+  const snapshot = {
+    ...evidence,
+    as_of: "2026-10-23T16:00:00Z",
+    policy_version: 2,
+    post: { ...inputs.post, status: "active_post", health_status: "red" },
+    members: [],
+    meeting_dates: [],
+    governance_signatures: [],
+    annual_review: null,
+    community_service_events: [],
+    financial_transactions: [
+      {
+        transaction_date: "2026-10-23",
+        transaction_type: "income",
+        amount: 500,
+      },
+    ],
+  };
+  const score = scoreHealthSnapshots({ company: snapshot }).company;
+  assert.equal(
+    score.dimensions.find((d) => d.key === "financial").status,
+    "green",
+  );
+  assert.equal(score.policyVersion, 2);
+  assert.equal(
+    mapHealthStatus({ status: "active_post", health_status: "green" }),
+    "unknown",
+  );
+  assert.equal(
+    mapHealthStatus({ status: "charter_ready", health_status: "red" }),
+    "forming",
+  );
+  assert.equal(
+    mapHealthStatus({ status: "active_post" }, score),
+    score.overall,
+  );
+  assert.equal(
+    healthSourcePath("company", "financial"),
+    "/health/company?tab=finances",
+  );
+  assert.equal(healthSourcePath("company", "congress"), "/congress");
+  assert.deepEqual(
+    scoreHealthSnapshots({
+      company: {
+        ...snapshot,
+        post: { ...snapshot.post, archived_at: "2026-10-23" },
+      },
+    }),
+    {},
+  );
+  assert.throws(
+    () =>
+      scoreHealthSnapshots({
+        company: { ...snapshot, financial_transactions: undefined },
+      }),
+    /incomplete/,
+  );
+});

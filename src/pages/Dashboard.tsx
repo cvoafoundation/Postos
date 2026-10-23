@@ -1,3 +1,4 @@
+import { usePostHealth } from "@/lib/usePostHealth";
 import ActionQueue from "@/components/workspaces/ActionQueue";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -7,7 +8,7 @@ import { UsStatusMap } from "@/components/map/UsStatusMap";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { supabase } from "@/lib/supabase";
 import type { ActivityFeedItem, Post } from "@/lib/types";
-import { formatDistanceToNow, differenceInDays } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 
 interface Metrics {
   // Pipeline
@@ -24,12 +25,10 @@ interface Metrics {
   thisMonthRevenue: number;
   lastMonthRevenue: number;
   // Operations
-  overdueOnMinutes: number;
   openResolutions: number;
   activeFacilityProjects: number;
 }
 
-const OVERDUE_RED_DAYS = 60;
 const OPEN_APPLICATION_STATUSES = ["new_inquiry", "application_submitted"];
 const VETTING_STATUSES = ["interview_scheduled", "vetting"];
 const RECRUIT_ACTIVE_STAGES = [
@@ -59,6 +58,12 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const health = usePostHealth(
+    posts.filter((p) => p.status === "active_post").map((p) => p.id),
+  );
+  const overdueMinutes = Object.values(health.scores).filter((s) =>
+    s.dimensions.some((d) => d.key === "meetings" && d.status === "red"),
+  ).length;
   useEffect(() => {
     let cancelled = false;
 
@@ -68,7 +73,6 @@ export default function Dashboard() {
         activityRes,
         membersCountRes,
         sponsorsRes,
-        meetingRecordsRes,
         applicationsRes,
         recruitsRes,
         resolutionsRes,
@@ -85,7 +89,6 @@ export default function Dashboard() {
         supabase
           .from("sponsors")
           .select("sponsorship_value, stage, agreement_start_date, created_at"),
-        supabase.from("meeting_records").select("post_id, meeting_date"),
         supabase.from("post_applications").select("status"),
         supabase.from("recruits").select("stage"),
         supabase.from("resolutions").select("status"),
@@ -100,7 +103,6 @@ export default function Dashboard() {
         activityRes,
         membersCountRes,
         sponsorsRes,
-        meetingRecordsRes,
         applicationsRes,
         recruitsRes,
         resolutionsRes,
@@ -113,18 +115,6 @@ export default function Dashboard() {
       setActivity((activityRes.data ?? []) as ActivityFeedItem[]);
 
       const activePostList = allPosts.filter((p) => p.status === "active_post");
-      const lastByPost: Record<string, string> = {};
-      for (const r of (meetingRecordsRes.data ?? []) as any[]) {
-        if (!lastByPost[r.post_id] || r.meeting_date > lastByPost[r.post_id]) {
-          lastByPost[r.post_id] = r.meeting_date;
-        }
-      }
-      const overdueOnMinutes = activePostList.filter((p) => {
-        const last = lastByPost[p.id];
-        if (!last) return true;
-        return differenceInDays(new Date(), new Date(last)) > OVERDUE_RED_DAYS;
-      }).length;
-
       const applications = (applicationsRes.data ?? []) as any[];
       const recruits = (recruitsRes.data ?? []) as any[];
       const resolutions = (resolutionsRes.data ?? []) as any[];
@@ -184,7 +174,6 @@ export default function Dashboard() {
         ).length,
         thisMonthRevenue,
         lastMonthRevenue,
-        overdueOnMinutes,
         openResolutions: resolutions.filter(
           (r) => !RESOLUTION_CLOSED_STATUSES.includes(r.status),
         ).length,
@@ -323,7 +312,7 @@ export default function Dashboard() {
           <Link to="/meetings" className="block h-full">
             <StatCard
               label="Overdue on Minutes"
-              value={metrics?.overdueOnMinutes ?? "—"}
+              value={health.loading || health.error ? "—" : overdueMinutes}
               accent="developing"
             />
           </Link>
@@ -346,7 +335,18 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          {!loading && <UsStatusMap posts={posts} />}
+          {health.error && (
+            <p role="alert" className="text-status-attention text-sm mb-3">
+              Company ratings unavailable: {health.error}
+            </p>
+          )}
+          {Object.values(health.scores).some((s) => s.provisional) && (
+            <p className="text-xs text-muted mb-3">
+              Company ratings use provisional thresholds awaiting National
+              confirmation.
+            </p>
+          )}
+          {!loading && <UsStatusMap posts={posts} scores={health.scores} />}
         </div>
 
         <div className="panel p-5">

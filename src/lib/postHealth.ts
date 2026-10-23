@@ -25,6 +25,9 @@ export interface PostHealthResult {
   dimensions: HealthDimension[];
   coverage: number;
   critical: string[];
+  provisional: boolean;
+  evaluatedAt: string;
+  policyVersion: number | null;
 }
 
 export interface HealthPolicy {
@@ -62,10 +65,6 @@ export const DEFAULT_HEALTH_POLICY: HealthPolicy = {
   confirmed: false,
 };
 
-function daysAgo(dateStr: string): number {
-  return (Date.now() - new Date(dateStr).getTime()) / 86400000;
-}
-
 export interface PostHealthInputs {
   post: Post;
   foundingTeam: FoundingTeamMember[];
@@ -86,6 +85,8 @@ export interface PostHealthInputs {
     votes_cast: number;
     has_delegate: boolean;
     policy?: HealthPolicy;
+    as_of?: string;
+    policy_version?: number;
   };
 }
 
@@ -103,6 +104,12 @@ export function computePostHealth(inputs: PostHealthInputs): PostHealthResult {
     financialTransactions,
   } = inputs;
 
+  const evaluation = new Date(inputs.evidence?.as_of || Date.now());
+  if (!Number.isFinite(evaluation.getTime()))
+    throw new Error("Company rating timestamp is invalid.");
+  const daysAgo = (date: string) =>
+    (evaluation.getTime() - new Date(date).getTime()) / 86400000;
+  const currentYear = evaluation.getUTCFullYear();
   const policy = { ...DEFAULT_HEALTH_POLICY, ...inputs.evidence?.policy };
   const REQUIRED_POSITIONS = policy.required_positions;
   const postAgeDays = post.charter_date
@@ -193,7 +200,14 @@ export function computePostHealth(inputs: PostHealthInputs): PostHealthResult {
   // 4. Membership — now sourced from the real Membership Roster instead of
   // a Recruiting Engine proxy. Softened for young posts, since a 6-month
   // post shouldn't be judged on the same curve as a 5-year post.
-  const activeMembers = members.filter((m) => m.membership_status === "active");
+  const activeMembers = members.filter(
+    (m) =>
+      m.membership_status === "active" &&
+      !(m as Member & { deleted_at?: string | null }).deleted_at &&
+      (m.membership_type === "lifetime" ||
+        !m.expires_at ||
+        m.expires_at >= evaluation.toISOString().slice(0, 10)),
+  );
   const newMembers90d = activeMembers.filter(
     (m) =>
       m.joined_at && daysAgo(m.joined_at) >= 0 && daysAgo(m.joined_at) <= 90,
@@ -230,10 +244,10 @@ export function computePostHealth(inputs: PostHealthInputs): PostHealthResult {
     detail: !delegatePresent
       ? "No current designated delegate with active account access"
       : eligible === 0
-        ? "No eligible formal votes in the last 365 days"
+        ? "No completed eligible formal votes in the last 365 days"
         : eligible === undefined
           ? "Current voting evidence unavailable"
-          : `${cast}/${eligible} eligible formal votes recorded in the last 365 days`,
+          : `${cast}/${eligible} completed eligible formal votes recorded in the last 365 days`,
   });
 
   // 6. Governance sign-offs — do current officers have both forms on file,
@@ -282,7 +296,6 @@ export function computePostHealth(inputs: PostHealthInputs): PostHealthResult {
   }
 
   // 7. Annual Review
-  const currentYear = new Date().getFullYear();
   if (
     isNewPost &&
     (!annualReview || annualReview.review_year !== currentYear)
@@ -435,5 +448,14 @@ export function computePostHealth(inputs: PostHealthInputs): PostHealthResult {
         ? "yellow"
         : "red";
 
-  return { overall, score, dimensions, coverage, critical };
+  return {
+    overall,
+    score,
+    dimensions,
+    coverage,
+    critical,
+    provisional: !policy.confirmed,
+    evaluatedAt: evaluation.toISOString(),
+    policyVersion: inputs.evidence?.policy_version ?? null,
+  };
 }

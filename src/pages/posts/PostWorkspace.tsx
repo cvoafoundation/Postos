@@ -1,3 +1,4 @@
+import { healthSourcePath } from "@/lib/healthSnapshot";
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -606,8 +607,8 @@ export default function PostWorkspace() {
         <section className="panel p-5">
           <h2 className="font-display text-xl">Company Documents & Files</h2>
           <p className="text-sm mt-3">
-            Open this company’s drive for minutes, agreements, plans, and working
-            documents. Existing workspace and sharing permissions apply.
+            Open this company’s drive for minutes, agreements, plans, and
+            working documents. Existing workspace and sharing permissions apply.
           </p>
           <Link className="btn-gold inline-block mt-4" to={`/drive?post=${id}`}>
             Open Company Drive
@@ -633,8 +634,8 @@ export default function PostWorkspace() {
             )}
             {!active ? (
               <p className="text-sm mt-3">
-                Operating health starts when the company is active. Follow launch
-                requirements in Company Development.
+                Operating health starts when the company is active. Follow
+                launch requirements in Company Development.
               </p>
             ) : score ? (
               <>
@@ -647,7 +648,7 @@ export default function PostWorkspace() {
                   Operational indicators use current account-linked staff,
                   recorded receipts, published meetings, and dated records.
                   Thresholds are{" "}
-                  {data.policy.settings.confirmed
+                  {!score.provisional
                     ? "confirmed by National"
                     : "provisional and awaiting National review"}
                   . Missing financial records require attention. Neutral signals
@@ -660,15 +661,21 @@ export default function PostWorkspace() {
                 )}
                 <div className="grid sm:grid-cols-2 gap-3 mt-4">
                   {score.dimensions.map((d) => (
-                    <div
+                    <Link
+                      to={healthSourcePath(id!, d.key, data.can_manage)}
                       key={d.key}
-                      className={`panel p-3 border-l-4 ${healthColor(d.status)}`}
+                      className={`panel p-3 hover:border-gold border-l-4 ${healthColor(d.status)}`}
                     >
                       <strong className="text-sm">
                         {d.label} · {d.status}
                       </strong>
                       <p className="text-xs text-muted mt-1">{d.detail}</p>
-                    </div>
+                      <span className="text-xs underline">
+                        {data.can_manage
+                          ? "View source records →"
+                          : "View rating detail →"}
+                      </span>
+                    </Link>
                   ))}
                 </div>
               </>
@@ -706,8 +713,8 @@ export default function PostWorkspace() {
               {showAdmin && (
                 <div className="mt-4">
                   <p className="text-sm">
-                    Archive removes the company from current operations lists and
-                    preserves its records and access. Account suspension is
+                    Archive removes the company from current operations lists
+                    and preserves its records and access. Account suspension is
                     managed separately in Accounts & Access.
                   </p>
                   <label className="block text-sm mt-3">
