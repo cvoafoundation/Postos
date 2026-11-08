@@ -288,6 +288,7 @@ export default function MembershipRoster() {
 
       <div className="flex flex-wrap gap-4 mb-4">
         <MembershipListExport />
+        {isNational && <Link className="text-gold text-sm hover:underline" to="/members/payments">Membership Payments →</Link>}
         <Link className="text-gold text-sm" to="/directory">CVOA Member Directory →</Link>
         <button className="text-gold text-sm" onClick={() => { loadMembers(); if(query.trim()) searchGlobally(query) }}>Refresh Roster</button>
       </div>
