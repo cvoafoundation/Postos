@@ -112,20 +112,19 @@
   .skip-navigation, .page-actions { display: none !important; }
 }
 
-/* Shared footer; the supplied symbol and Lovelo wordmark stay readable at mobile sizes. */
+/* Keep the shared MOXOM credit small and tucked into the lower-right corner. */
 .moxom-footer {
   flex-shrink: 0;
-  min-height: 80px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   background: #000;
   border-top: 1px solid #26272b;
-  padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 6px max(14px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) 14px;
 }
-.moxom-footer-lockup { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.moxom-footer-caption { color: #a9a9a3; font-size: 11px; line-height: 1.5; white-space: nowrap; }
-.moxom-footer-symbol { display: block; flex: none; width: 32px; height: 36px; }
-.moxom-footer-wordmark { display: block; width: 102px; height: auto; }
+.moxom-footer-lockup { display: flex; align-items: center; gap: 5px; }
+.moxom-footer-caption { color: #a9a9a3; font-size: 9px; line-height: 1.4; white-space: nowrap; }
+.moxom-footer-symbol { display: block; flex: none; width: 14px; height: 15px; }
+.moxom-footer-wordmark { display: block; width: 52px; height: auto; }
 .public-page-content > .min-h-screen { min-height: 0; }
 @media print { .moxom-footer { display: none !important; } }
