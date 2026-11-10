@@ -1,3 +1,4 @@
+import { MembershipProgress } from "../../components/membership/MembershipProgress";
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -144,6 +145,7 @@ function MemberOverview() {
               below. Use Refresh to retry.
             </p>
           )}
+          {!errors.membership && <MembershipProgress member={member} hasDocument={verification?.has_document} />}
           <section
             className="panel p-5 sm:p-6"
             aria-labelledby="next-steps-heading"

@@ -1,3 +1,4 @@
+import { ResolutionFollowThrough } from './ResolutionFollowThrough'
 import { useEffect, useState, type ChangeEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
@@ -271,6 +272,10 @@ export default function ResolutionDetail() {
           </div>
         }
       />
+
+      {isNational && (resolution.status === 'passed' || resolution.status === 'implemented') && (
+        <ResolutionFollowThrough key={resolution.id} resolutionId={resolution.id} />
+      )}
 
       <div className="flex items-center gap-3 mb-6">
         <StatusBadge label={RESOLUTION_STATUS_LABELS[resolution.status]} tone={statusTone(resolution.status)} />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 export interface ModuleItem {
@@ -9,11 +10,22 @@ export interface ModuleItem {
   path: string;
   module: string;
   next_step: string;
+  owner?: string | null;
+  waiting_since?: string | null;
+  deadline?: string | null;
+  work_status?: string | null;
 }
+function waitingLabel(since: string, today: string) {
+  const days = Math.max(0, Math.floor((Date.parse(today) - Date.parse(since)) / 86_400_000));
+  if (!Number.isFinite(days)) return `Open since ${since}`;
+  return days === 0 ? "Opened today" : `Open ${days} ${days === 1 ? "day" : "days"}`;
+}
+
 export function ModuleWork() {
   const [data, setData] = useState<{
       total: number;
       items: ModuleItem[];
+      membership_attention?: { paid_unlinked: number; approval_mail: number };
     } | null>(null),
     [error, setError] = useState(""),
     [filter, setFilter] = useState("All"),
@@ -21,7 +33,7 @@ export function ModuleWork() {
   useEffect(() => {
     let active = true;
     async function load() {
-      const r = await supabase.rpc("ops_module_queue");
+      const r = await supabase.rpc("ops_priority_work");
       if (!active) return;
       if (r.error) {
         setError(r.error.message);
@@ -43,6 +55,7 @@ export function ModuleWork() {
   const modules = ["All", ...new Set(data?.items.map((i) => i.module) || [])];
   const items =
     data?.items.filter((i) => filter === "All" || i.module === filter) || [];
+  const today = new Date().toLocaleDateString("en-CA");
   return (
     <section className="panel p-5" aria-label="Connected module work">
       <div className="flex justify-between gap-3">
@@ -72,6 +85,9 @@ export function ModuleWork() {
         </p>
       ) : (
         <>
+          {data.membership_attention && <p className="text-sm text-muted mt-4">
+            {data.membership_attention.paid_unlinked} paid memberships need a linked login · {data.membership_attention.approval_mail} approval emails need attention
+          </p>}
           <div className="flex flex-wrap gap-2 mt-4">
             {modules.map((m) => (
               <button
@@ -85,14 +101,14 @@ export function ModuleWork() {
             ))}
           </div>
           <p className="text-xs text-muted my-3">
-            {data.total} source items · showing up to 100 by date · refreshed
+            {data.total} source items · showing up to 100 by priority · refreshed
             every 30 seconds
           </p>
           <div className="divide-y divide-hairline">
             {items.map((item) => (
-              <a
+              <Link
                 key={item.id}
-                href={item.path}
+                to={item.path}
                 className="py-4 flex gap-3 justify-between hover:text-gold"
               >
                 <div>
@@ -102,13 +118,16 @@ export function ModuleWork() {
                   <p className="text-sm font-semibold mt-1">{item.title}</p>
                   <p className="text-xs text-muted mt-2">{item.next_step}</p>
                   <p className="text-xs text-muted mt-2">
-                    {item.due_date
-                      ? `Reference / due date: ${item.due_date}`
-                      : "No date recorded"}
+                    {item.owner ? `Owner: ${item.owner}` : "Owner not recorded in this view"}
+                    {item.waiting_since && ` · ${waitingLabel(item.waiting_since, today)}`}
+                    {item.deadline
+                      ? ` · ${item.deadline < today ? "Overdue" : "Due"} ${item.deadline}`
+                      : !item.waiting_since && item.due_date ? ` · Reference date ${item.due_date}` : ""}
+                    {item.work_status === "blocked" && " · Blocked"}
                   </p>
                 </div>
                 <ArrowUpRight size={17} className="shrink-0 mt-4" />
-              </a>
+              </Link>
             ))}
           </div>
           {!items.length && (

@@ -98,6 +98,7 @@ const BuildAPostDetail = lazy(
 const MemberDirectory = lazy(() => import("@/pages/members/MemberDirectory"));
 const MembershipRoster = lazy(() => import("@/pages/members/MembershipRoster"));
 const MembershipReview = lazy(() => import("@/pages/members/MembershipReview"));
+const MembershipPayments = lazy(() => import("@/pages/members/MembershipPayments"));
 const PostOfficersDirectory = lazy(
   () => import("@/pages/founding-team/PostOfficersDirectory"),
 );
@@ -486,6 +487,10 @@ function AuthenticatedApp() {
             }
           />
           <Route path="/members" element={<RosterRoute />} />
+          <Route
+            path="/members/payments"
+            element={<RoleGuard roles={[]}><MembershipPayments /></RoleGuard>}
+          />
           <Route path="/directory" element={<MemberDirectory />} />
           <Route
             path="/membership-verification"
