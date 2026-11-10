@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Link } from 'react-router-dom'
 type Verification = { id: string; full_name: string; status: string; has_document: boolean }
 const MIME: Record<string, string> = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png' }
-export default function ServiceVerification() {
+export default function ServiceVerification({ onSubmitted }: { onSubmitted?: () => void } = {}) {
   const { profile } = useAuth()
   const [records, setRecords] = useState<Verification[]>([])
   const [selected, setSelected] = useState('')
@@ -40,7 +40,7 @@ export default function ServiceVerification() {
       }
       const submitted = await supabase.rpc('cvoa_submit_member_upload', { p_path: path })
       if (submitted.error) throw submitted.error
-      setRecords(submitted.data ?? []); setInputVersion(v => v + 1); setFile(null); setPendingUpload(null); setMessage('Your DD-214 was submitted and is awaiting staff review.')
+      setRecords(submitted.data ?? []); setInputVersion(v => v + 1); setFile(null); setPendingUpload(null); setMessage('Your DD-214 was submitted and is awaiting staff review. You do not need to submit it again.'); onSubmitted?.()
     } catch (e) { setError(e instanceof Error ? e.message : (e as { message?: string })?.message ?? 'Could not submit your document. Try again.') }
     finally { setBusy(false) }
   }
@@ -52,7 +52,7 @@ export default function ServiceVerification() {
     {!loading && !records.length && !error && <p className="text-sm text-muted">Contact National to link your existing membership before uploading.</p>}
     {records.length > 1 && <label className="block text-sm">Membership<select className="input-field mt-1" disabled={busy || !!pendingUpload} value={selected} onChange={e => { setSelected(e.target.value); setFile(null); setMessage(null) }}>{records.map(r => <option key={r.id} value={r.id}>{r.full_name}</option>)}</select></label>}
     {current && <>
-      <p className="text-sm">{current.has_document ? current.status === 'verified' ? 'Service verified' : current.status === 'rejected' ? 'Replacement document requested' : 'Document submitted · awaiting review' : 'DD-214 needed'}</p>
+      <p className="text-sm">{current.has_document ? current.status === 'verified' ? 'Service verified' : current.status === 'rejected' ? 'Replacement document requested' : 'Document submitted · awaiting review. No action needed.' : 'DD-214 needed'}</p>
       {current.has_document && <p className="text-xs text-muted">A replacement submission will require a new review.</p>}
       <label className="block text-sm">{current.has_document ? 'Replacement DD-214' : 'Your DD-214'}<input key={`${profile?.id}-${selected}-${inputVersion}`} type="file" className="input-field mt-2" accept=".pdf,.jpg,.jpeg,.png" disabled={busy || !!pendingUpload} onChange={e => { setFile(e.target.files?.[0] ?? null); setError(null); setMessage(null) }} /></label>
       <p className="text-xs text-muted">PDF, JPG, or PNG · maximum 10 MB. Submit through this page rather than email.</p>

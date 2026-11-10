@@ -338,14 +338,14 @@ export default function GovernanceSession() {
       }),
     );
   }
-  function actionForm(a: RecordData = {}) {
+  function actionForm(a: RecordData = {}, requireOwner = false) {
     form(
       a.id ? "Update action" : "Assign action",
       a.id ? "action_update" : "action",
       [
         text("title", "Action", !a.id),
-        selectPerson,
-        { key: "due_date", label: "Due date", type: "date" },
+        { ...selectPerson, required: requireOwner },
+        { key: "due_date", label: "Due date", type: "date", required: requireOwner },
         ...(a.id
           ? [
               choice("status", "Progress", [
@@ -1364,11 +1364,17 @@ export default function GovernanceSession() {
       {tab === "actions" && (
         <section className="panel p-5 space-y-4">
           <h2 className="font-display text-xl">Decisions &amp; execution</h2>
-          {data.decisions.map((d: RecordData) => (
-            <p className="border-b border-hairline py-3" key={d.id}>
-              <strong>{d.identifier}</strong> {d.text}
-            </p>
-          ))}
+          {data.decisions.map((d: RecordData) => {
+            const assignments = data.actions.filter((a: RecordData) => a.decision_id === d.id);
+            return <div className="border-b border-hairline py-3" key={d.id}>
+              <p><strong>{d.identifier}</strong> {d.text}</p>
+              <p className="text-xs text-muted mt-1">{assignments.length
+                ? `${assignments.filter((a: RecordData) => a.status === "completed").length} of ${assignments.length} assignments completed`
+                : "No follow-through assigned"}</p>
+              {official && editable && <button type="button" className="btn-ghost mt-2"
+                onClick={() => actionForm({ decision_id: d.id }, true)}>Assign follow-through</button>}
+            </div>;
+          })}
           {official && editable && (
             <button className="btn-gold" onClick={() => actionForm()}>
               Assign action

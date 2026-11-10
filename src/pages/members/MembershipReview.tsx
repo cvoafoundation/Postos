@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/AppShell'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -43,7 +43,8 @@ export default function MembershipReview() {
   useMarkNotificationViewed('dd214_review')
   const { profile, isNational } = useAuth()
   const [members, setMembers] = useState<ReviewMember[]>([])
-  const [filter, setFilter] = useState<'pending' | 'verified' | 'rejected' | 'all'>('pending')
+  const [params] = useSearchParams()
+  const [filter, setFilter] = useState<'pending' | 'verified' | 'rejected' | 'all'>(() => params.get('status') === 'verified' ? 'verified' : 'pending')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [actionError, setActionError] = useState('')

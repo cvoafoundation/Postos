@@ -1,3 +1,4 @@
+import { MembershipProgress } from '@/components/membership/MembershipProgress'
 import ServiceVerification from '@/components/membership/ServiceVerification'
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -189,6 +190,7 @@ export default function MyMembership() {
         error={error}
         retry={() => setVersion((v) => v + 1)}
       />
+      {!loading && !error && <MembershipProgress member={member} hasDocument={!!member?.dd214_storage_path} />}
       {message && (
         <p role="status" className="panel p-4 text-sm text-status-active mb-4">
           {message}
@@ -209,7 +211,7 @@ export default function MyMembership() {
       {member && (
         <>
           <MembershipCardVisual member={member} role={profile?.role} />
-          <ServiceVerification />
+          <ServiceVerification onSubmitted={() => setVersion(v => v + 1)} />
           <div className="grid md:grid-cols-2 gap-6 mt-8">
             <section className="panel p-5">
               <h2 className="font-display text-xl mb-3">

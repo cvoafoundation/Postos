@@ -1,3 +1,4 @@
+import { topHealthIntervention } from "@/lib/healthFollowThrough";
 import { healthSourcePath } from "@/lib/healthSnapshot";
 import type { Post, PostStatus } from "@/lib/types";
 import type { HealthPolicy, PostHealthResult } from "@/lib/postHealth";
@@ -132,14 +133,14 @@ export function dashboardActions(
       detail: `Overdue since ${task.due_date} · Owner: ${task.owner || "Unassigned"}`,
       path: task.path,
     });
-  if (health)
-    for (const issue of health.dimensions.filter((d) => d.status === "red"))
-      actions.push({
-        id: issue.key,
-        title: `Address ${issue.label.toLowerCase()}`,
-        detail: issue.detail,
-        path: healthSourcePath(data.post.id, issue.key, data.can_manage),
-      });
+  const issue = health && topHealthIntervention(health);
+  if (issue)
+    actions.push({
+      id: issue.key,
+      title: `Address ${issue.label.toLowerCase()}`,
+      detail: `${issue.detail} Start with: ${issue.responsibility}.`,
+      path: healthSourcePath(data.post.id, issue.key, data.can_manage),
+    });
   const activation =
     data.account_staff?.filter((s) => !s.email_confirmed || !s.has_signed_in) ??
     [];

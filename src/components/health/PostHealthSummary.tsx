@@ -1,3 +1,7 @@
+import { Link } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
+import { healthSourcePath } from "@/lib/healthSnapshot";
+import { topHealthIntervention } from "@/lib/healthFollowThrough";
 import { usePostHealth, healthColor } from "@/lib/usePostHealth";
 export function PostHealthSummary({
   postId,
@@ -12,7 +16,10 @@ export function PostHealthSummary({
     status === "active_post" ? [postId] : [],
     version,
   );
+  const { profile, isNational } = useAuth();
+  const mayOpen = isNational || ["state_commander", "post_commander", "post_officer"].includes(profile?.role ?? "");
   const result = scores[postId];
+  const next = result ? topHealthIntervention(result) : null;
   return (
     <section
       className={`panel p-5 mb-5 border-l-4 ${healthColor(result?.overall)}`}
@@ -38,6 +45,12 @@ export function PostHealthSummary({
           starts when the company becomes active.
         </p>
       )}
+      {next && <div className="mt-3 border border-hairline rounded p-3">
+        <p className="text-sm font-semibold">Priority to address: {next.label}</p>
+        <p className="text-sm text-muted mt-1">{next.detail}</p>
+        <p className="text-xs text-muted mt-1">Start with: {next.responsibility}</p>
+        {mayOpen && <Link className="text-xs text-gold inline-block mt-2" to={healthSourcePath(postId, next.key, isNational)}>Open supporting record →</Link>}
+      </div>}
       {result && (
         <>
           <p className="text-xs text-muted mt-2 mb-3">
