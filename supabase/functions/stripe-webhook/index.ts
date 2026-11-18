@@ -86,6 +86,8 @@ Deno.serve(async (req) => {
         if (receipt.error) throw receipt.error
         return new Response(JSON.stringify({received:true}), {headers:{'Content-Type':'application/json'}})
       }
+      // The Register has a separate, signature-verified webhook in the same Stripe account.
+      if (session.metadata?.kind === 'register_pro') return new Response(JSON.stringify({received:true}), {headers:{'Content-Type':'application/json'}})
       const memberId = session.metadata?.member_id
       const type = session.metadata?.membership_type
       if (!memberId || !['annual','lifetime'].includes(type ?? '') || session.currency !== 'usd' || session.amount_total !== (type === 'lifetime' ? 49999 : 4999)) throw new Error('Checkout amount or metadata does not match membership pricing.')
@@ -147,6 +149,10 @@ Deno.serve(async (req) => {
     if (event.type === 'invoice.payment_succeeded') {
       const invoice = event.data.object as Stripe.Invoice
       if(invoice.billing_reason === 'subscription_cycle' && typeof invoice.subscription === 'string') {
+        // Only renew subscriptions already linked to a CVOA membership.
+        const membership = await supabase.from('members').select('id').eq('stripe_subscription_id', invoice.subscription).limit(1)
+        if (membership.error) throw membership.error
+        if (!membership.data?.length) return new Response(JSON.stringify({received:true}), {headers:{'Content-Type':'application/json'}})
         if(invoice.currency !== 'usd' || invoice.amount_paid !== 4999) throw new Error('Unexpected recurring membership amount.')
         const periodEnd = Math.max(...invoice.lines.data.map(line => line.period.end))
         if(!Number.isFinite(periodEnd)) throw new Error('Recurring invoice period is missing.')

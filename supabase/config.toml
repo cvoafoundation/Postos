@@ -2,3 +2,7 @@
 # worker secret; disabling the gateway JWT check does not make sending public.
 [functions.member-broadcasts]
 verify_jwt = false
+
+# CVOA member JWTs and the Register bridge secret are verified inside the function.
+[functions.register-access]
+verify_jwt = false

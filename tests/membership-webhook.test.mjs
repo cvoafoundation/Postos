@@ -44,8 +44,9 @@ function fixture(options = {}) {
         select: () => q,
         eq: () => q,
         update: () => q,
+        limit: () => q,
         single: async () => ({ data: state.member ?? null }),
-        then: (resolve) => resolve({ error: state.updateError }),
+        then: (resolve) => resolve({ data:state.membershipRows ?? [{id:'member-test'}], error: state.updateError }),
       };
       return q;
     },
@@ -163,3 +164,6 @@ test("annual subscription invoice uses its paid-through period and persists idem
   assert.equal(f.state.calls[0][0], "cvoa_renew_subscription");
   assert.equal(f.state.calls[0][1].p_invoice, "invoice-test");
 });
+
+test("Register checkout is acknowledged without activating a CVOA membership",async()=>{const f=fixture();f.event.data.object.metadata={kind:'register_pro'};f.event.data.object.amount_total=999;assert.equal((await f.invoke()).status,200);assert.equal(f.state.calls.length,0);});
+test("Register recurring invoices do not pass through membership amount validation",async()=>{const f=fixture({membershipRows:[],event:{type:'invoice.payment_succeeded',data:{object:{id:'inv_register',billing_reason:'subscription_cycle',subscription:'sub_register',currency:'usd',amount_paid:999}}}});assert.equal((await f.invoke()).status,200);assert.equal(f.state.calls.length,0);});

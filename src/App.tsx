@@ -18,6 +18,7 @@ const MembershipVerification = lazy(
 const MembershipCardPage = lazy(
   () => import("@/pages/members/MembershipCardPage"),
 );
+const RegisterAccess = lazy(() => import("@/pages/members/RegisterAccess"));
 const Login = lazy(() => import("@/pages/Login"));
 const SetPassword = lazy(() => import("@/pages/SetPassword"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
@@ -500,6 +501,7 @@ function AuthenticatedApp() {
             path="/my-membership"
             element={membershipOnly ? <MembershipCardPage /> : <MyMembership />}
           />
+          <Route path="/register" element={<RegisterAccess />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/file-complaint" element={<FileComplaint />} />
           <Route

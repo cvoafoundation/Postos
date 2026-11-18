@@ -127,6 +127,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   useOnNotificationViewed(refetchCounts)
 
   const navItems = membershipOnly ? [
+    { to: '/register', label: 'The Veterans Register', icon: Mail },
     { to: '/my-membership', label: 'Membership Card', icon: CreditCard },
     { to: '/congress', label: 'Veterans Congress', icon: Landmark },
     { to: '/file-complaint', label: 'Ethics Tribunal', icon: Gavel },
@@ -158,6 +159,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     ...(profile?.role === 'post_commander' || isNational
       ? [{ to: '/role-applications', label: 'Role Applications', icon: UserCog, section: 'role_applications' as const }]
       : []),
+    { to: '/register', label: 'The Veterans Register', icon: Mail },
     { to: '/directory', label: 'Member Directory', icon: IdCard },
     { to: '/my-membership', label: 'Card & Membership', icon: CreditCard },
     { to: '/member-home', label: 'My CVOA', icon: GitBranch },

@@ -1,0 +1,13 @@
+# The Veterans Register member extension
+
+This is the CVOA.ONE half of the staged Register access integration. Pair it with the Register PR and `docs/CVOA_REGISTER_ACCESS.md` before deployment. Existing membership prices and category entitlements remain unchanged. Every current membership category is eligible; no officer/staff role shortcut grants access.
+
+New `/register` workspace: free member activation, subject selection, and explicit opt-in/out for email updates. It is available in membership-only workspaces as well as standard accounts. Internal roster data and military documents never leave CVOA.ONE. Nonmember Register identities stay in the Register database, not CVOA.ONE auth.
+
+The Edge Function validates CVOA JWTs for member actions and a separate shared secret for Register server actions. One-use verifier-bound codes expire in two minutes. It sends fixed-template sign-in emails using existing Workspace SMTP credentials and can queue/deliver opted-in published-record updates. Bridge status reveals only eligibility. Subscription checkout remains in CVOA's Stripe account, with separate Register products and handler.
+
+Apply the additive migration only to the Postos database, configure `REGISTER_INTEGRATION_SECRET` and `REGISTER_SITE_URL`, and deploy `register-access` using its included `verify_jwt=false` configuration (verification is performed inside the function). Keep `REGISTER_UPDATES_ENABLED` unset/false until the scheduling, opt-in, sender, unsubscribe, and owned-inbox tests pass. Configure a Supabase Cron worker every five minutes to POST `{"action":"deliver"}` with the Vault-held integration secret; each call drains at most five recipients. A daily Register-side dispatch after source collection queues new reviewed/public records. Exact required settings and release gates are documented in the companion repository.
+
+The existing dues webhook patch ignores `register_pro` checkout events and checks a subscription is linked to a member before applying dues-only amount validation. This prevents $9.99/$99 Register charges from being mistaken for $49.99 membership renewals. Apply this patch before routing new Register events through the account.
+
+Run `node --test tests/membership-webhook.test.mjs tests/register-integration-db.test.mjs tests/register-bridge.test.mjs` and `npm run build`. Tests mock delivery and use disposable PostgreSQL. They do not establish deployed credentials, actual member sign-in, real SMTP delivery, live Stripe state, or commercial hosting eligibility. No production migration, message, payment, or membership change was performed by preparing this branch.
